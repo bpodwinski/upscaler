@@ -87,6 +87,57 @@ Cost: **0.044 ms** at ratio 2 (the candidate's two-pass form measured 0.231 ms;
 deliberately do not fire (the 1-frame comparison sees only the per-frame delta;
 blend + variance clip track ramps — verified no lag/ghosting on Q9 ramp finals).
 
+## 5. Still-scene convergence defect — DONE (2026-07-24, consumer report 3)
+
+The first full-pipeline consumer (ssgiDev demo 16, GUIDES-HANDOFF-RESPONSE
+report 3) observed visible still-camera output jitter, flickering
+`Disocclusion` silhouettes, and a never-settling rolling `AccumulationAge` —
+at every ratio including NativeAA, immune to every exposed knob. Reproduced
+in OUR bench (Q1, capture mode — no consumer code): sustained
+consecutive-frame meanAbsDiff **0.211** after 3 s settle, and — decisive —
+**same-jitter-phase** diff 0.182 one period apart, so history itself churned
+aperiodically, not just the benign per-phase pattern. Metrology tool:
+`scripts/measure-convergence.mjs` (CDP, deterministic capture API,
+consecutive + phase-locked diffs, debug-view PNGs). Three stacked defects:
+
+1. **Reconstruct depth-clip vote starved of agreement** (`reconstruct.ts`).
+   Only positive-separation taps voted OR carried weight, so at a still
+   silhouette one bilinear tap straddling the previous frame's dilated-depth
+   quantization (boundary lands up to a texel away per phase) became the sole
+   voter → disocclusion 1.0 at edges, re-flipping with jitter phase. Fix:
+   every valid tap votes (taps at/behind the surface = confidence 1) and the
+   **best tap wins** (max, not weighted mean) — any tap recognizing the
+   current surface means same surface; a genuine trail has every tap on the
+   old occluder and still reads ~1. This supersedes the 2026-07-22 "skip,
+   never veto" semantics (skipping still let lone outliers decide).
+2. **Clip-magnitude history aging** (`accumulate.ts`, removed). Aging
+   `sampleCount` by `clipAmount` put convergence out of reach wherever the
+   converged mean sat outside one jitter phase's variance box (any contrasty
+   edge; normalized by `extents` it also fired on numerically-tiny deviations
+   on flat walls) — equilibrium age stayed low, alpha stayed high, the age
+   view rolled forever. FSR2 never ages on rectification strength; stale
+   shading is the clip's + shading detector's job.
+3. **Clip write-back re-snapping converged history** (`accumulate.ts`).
+   With 1+2 fixed, phase-locked diff was STILL 0.183: the blend stores the
+   *clipped* history, so each phase's box re-snaps the buffer regardless of
+   alpha (clip fully disabled: 0.005). Fix: `STILL_CLAMP_RELAX` — widen the
+   box ×9 only at full stillness (<0.05 render-texel motion) × converged
+   history × no disocclusion/shading-change/reactivity; any signal restores
+   full rectification. The locks mechanism generalized softly to everywhere.
+
+Q1 ratio 2 ladder (consecutive / phase-locked meanAbsDiff, 0–255): pre
+0.211/0.182 → fix 1+2: 0.182/0.183 → +relax ×4: 0.116/0.038 → **+relax ×8:
+0.112/0.018** (shipped) → rectification off (floor): 0.109/0.005. NativeAA
+ratio 1: 0.081/0.003. New **Q12 cornell-still-convergence** (enclosed box,
+IGN-dithered Vogel point-light shadows — the consumer's screen-anchored-
+dither aggravator, camera per their repro pose): **0.024/0.012**, disocclusion
+view fully black, age saturated (consumer's cornell measured 0.19–0.76; their
+converging SVGF reference is 0.039). No-regression: Q3 disocclusion shows the
+documented thin trailing crescents only, final ghost-free; Q4 mid-orbit final
+clean (the relax fades out above 0.5 texel/frame motion). Runs under
+`bench/results/raw/convergence/` (pre-fix / post-fix / exp-noclip /
+exp-still8 / post-fix2 labels).
+
 ## Explicitly not planned (measured against)
 
 - Lanczos2/bicubic history filtering (+47% accumulate, no visible win).

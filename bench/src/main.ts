@@ -56,6 +56,9 @@ const displaySize = () => ({
 
 //* Renderer
 const renderer = new THREE.WebGPURenderer({ antialias: false });
+// Q12's cornell point light casts shadows; scenes without shadow-casting
+// lights compile identical shaders, so every other scenario is unaffected.
+renderer.shadowMap.enabled = true;
 renderer.setPixelRatio(dpr);
 renderer.setSize(
     automated ? config.dimensions.width / dpr : window.innerWidth,

@@ -10,6 +10,7 @@ import * as THREE from 'three/webgpu';
 export interface BenchScene {
     scene: THREE.Scene;
     roomScene: THREE.Scene;
+    cornellScene: THREE.Scene;
     reactiveScene: THREE.Scene;
     /** Advances animations. @param time - Elapsed seconds @param animate - Freeze toggle */
     update(time: number, animate: boolean): void;
@@ -133,6 +134,73 @@ export function createBenchScene(): BenchScene {
     );
     roomBall.position.set(2, 1.6, -2);
     roomScene.add(roomBall);
+
+    //* Cornell Convergence Room (Q12) =======================================
+    // Mirrors the first consumer's still-camera repro (GUIDES-HANDOFF-RESPONSE
+    // report 3): an enclosed box lit by a shadow-casting point light. three's
+    // WebGPU point shadows use an IGN-dithered Vogel filter whose dither is
+    // SCREEN-anchored, so under camera jitter every penumbra texel re-rolls
+    // each frame — deliberately unstable input luminance. A converged temporal
+    // pipeline must hold a still image against exactly this.
+    const cornellScene = new THREE.Scene();
+    cornellScene.background = new THREE.Color(0x05060a);
+    const cornellLight = new THREE.PointLight(0xfff4e5, 60, 0, 2);
+    cornellLight.position.set(0, 5.4, 0.4);
+    cornellLight.castShadow = true;
+    cornellLight.shadow.mapSize.set(1024, 1024);
+    cornellLight.shadow.bias = -0.004;
+    cornellScene.add(cornellLight);
+    cornellScene.add(new THREE.AmbientLight(0x8090b0, 0.25));
+
+    const cornellWall = (color: number, width: number, height: number) => {
+        const wall = new THREE.Mesh(
+            new THREE.PlaneGeometry(width, height),
+            new THREE.MeshStandardMaterial({ color, roughness: 0.95 }),
+        );
+        wall.receiveShadow = true;
+        cornellScene.add(wall);
+        return wall;
+    };
+    const cornellFloor = cornellWall(0xd8d4cc, 6, 6);
+    cornellFloor.rotation.x = -Math.PI / 2;
+    const cornellCeiling = cornellWall(0xd8d4cc, 6, 6);
+    cornellCeiling.rotation.x = Math.PI / 2;
+    cornellCeiling.position.y = 6;
+    const cornellBack = cornellWall(0xd8d4cc, 6, 6);
+    cornellBack.position.set(0, 3, -3);
+    const cornellLeft = cornellWall(0xb02020, 6, 6);
+    cornellLeft.rotation.y = Math.PI / 2;
+    cornellLeft.position.set(-3, 3, 0);
+    const cornellRight = cornellWall(0x1fa03a, 6, 6);
+    cornellRight.rotation.y = -Math.PI / 2;
+    cornellRight.position.set(3, 3, 0);
+
+    const cornellBoxMaterial = new THREE.MeshStandardMaterial({ color: 0xd0ccc2, roughness: 0.9 });
+    const cornellTall = new THREE.Mesh(new THREE.BoxGeometry(1.9, 3.6, 1.9), cornellBoxMaterial);
+    cornellTall.position.set(-1.05, 1.8, -0.7);
+    cornellTall.rotation.y = 0.3;
+    const cornellShort = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.7, 1.7), cornellBoxMaterial);
+    cornellShort.position.set(1.15, 0.85, 0.9);
+    cornellShort.rotation.y = -0.35;
+    for (const box of [cornellTall, cornellShort]) {
+        box.castShadow = true;
+        box.receiveShadow = true;
+        cornellScene.add(box);
+    }
+
+    // Emissive ceiling panel — a bright thin region under the light, the kind
+    // of high-contrast edge the convergence meter is most sensitive to.
+    const cornellPanel = new THREE.Mesh(
+        new THREE.PlaneGeometry(2, 1.6),
+        new THREE.MeshStandardMaterial({
+            color: 0x000000,
+            emissive: 0xfff4e5,
+            emissiveIntensity: 4,
+        }),
+    );
+    cornellPanel.rotation.x = Math.PI / 2;
+    cornellPanel.position.set(0, 5.98, 0.4);
+    cornellScene.add(cornellPanel);
 
     //* Floor
     const floor = new THREE.Mesh(
@@ -303,5 +371,5 @@ export function createBenchScene(): BenchScene {
             .multiplyScalar(frame.hostPreExposure ?? 1);
     }
 
-    return { scene, roomScene, reactiveScene, update, applyFrame, resetDeterministicState };
+    return { scene, roomScene, cornellScene, reactiveScene, update, applyFrame, resetDeterministicState };
 }

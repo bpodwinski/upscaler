@@ -95,12 +95,14 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     textureStore(dilatedMotion, gid.xy, vec4f(uvDelta, 0.0, 0.0));
 
     //* Depth Clip — disocclusion from the just-dilated depth + motion.
-    // AMD's formulation (ffx_fsr2_depth_clip.h ComputeDepthClip, via the
-    // GPU-verified candidate port): each bilinear tap of last frame's dilated
-    // depth votes a confidence that its separation from the current depth is
-    // within the viewport/depth-scaled tolerance; disocclusion is the weighted
-    // complement, and only positive separations (current surface was occluded)
-    // count at all.
+    // Derived from AMD's formulation (ffx_fsr2_depth_clip.h ComputeDepthClip,
+    // via the GPU-verified candidate port): each bilinear tap of last frame's
+    // dilated depth votes a confidence that its separation from the current
+    // depth is within the viewport/depth-scaled tolerance. We diverge in the
+    // aggregation — the best tap wins instead of a positive-separation-only
+    // weighted mean — because our cross-frame compare (unlike upstream's
+    // same-frame scatter) carries the previous frame's silhouette
+    // quantization; see the vote comment below.
     let uv = (vec2f(gid.xy) + 0.5) * C.renderSizeInv;
     // Texel i samples the scene at i + jitter, so the previous frame's
     // equivalent position shifts by the jitter delta — without this the
@@ -122,35 +124,43 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
         fraction.x * fraction.y
     );
     let halfViewportWidth = length(C.renderSize * 0.5);
-    var separationConfidence = 0.0;
-    var weightSum = 0.0;
+    var surfaceConfidence = 0.0;
+    var sawValidTap = false;
     for (var index = 0; index < 4; index++) {
         let weight = weights[index];
         if (weight <= DEPTH_TAP_WEIGHT_FLOOR) { continue; }
         let p = clamp(base + offsets[index], vec2i(0), maxCoord);
         let prevDepth = textureLoad(previousDepth, p, 0).r;
         let difference = curDepth - prevDepth;
-        // A tap at or behind the current surface can't witness an occluder —
-        // it contributes nothing. It must NOT veto the pixel: on a depth
-        // gradient the four taps routinely straddle the current depth, and a
-        // veto turns that into a binary 0↔1 flip per jitter phase (the
-        // grazing-floor flicker this pass shipped with).
-        if (difference <= 0.0) { continue; }
-        // Tolerance: the viewport/depth-scaled quantization term (reference
-        // formulation), widened by the neighborhood's own relief so a slope's
-        // legitimate per-texel depth change is not read as separation.
-        let required = max(
-            DEPTH_SEPARATION_CONSTANT * halfViewportWidth * max(curDepth, prevDepth),
-            localRelief,
-        );
-        separationConfidence += clamp(required / max(difference, 1.0e-7), 0.0, 1.0) * weight;
-        weightSum += weight;
+        // A tap at or behind the current surface recognizes it as visible last
+        // frame — full confidence. Taps in front witness a possible occluder,
+        // with confidence falling as the separation exceeds the tolerance.
+        var tapConfidence = 1.0;
+        if (difference > 0.0) {
+            // Tolerance: the viewport/depth-scaled quantization term (reference
+            // formulation), widened by the neighborhood's own relief so a
+            // slope's legitimate per-texel depth change is not read as
+            // separation.
+            let required = max(
+                DEPTH_SEPARATION_CONSTANT * halfViewportWidth * max(curDepth, prevDepth),
+                localRelief,
+            );
+            tapConfidence = clamp(required / max(difference, 1.0e-7), 0.0, 1.0);
+        }
+        // MAX vote, not a weighted mean: the previous dilated-depth field is
+        // quantized to texels, so its silhouette boundary lands up to a texel
+        // away from this frame's — on a still scene one straddling tap then
+        // reads the old occluder and, under a mean (worse: under the old
+        // positive-difference-only vote, where agreeing taps carried no
+        // weight), re-disoccludes every silhouette every frame — rolling
+        // accumulation-age rings and permanent edge shimmer (consumer report
+        // 3). If ANY footprint tap recognizes the current surface, it is the
+        // same surface; a genuine disocclusion trail has every tap on the old
+        // occluder and still reads ~1.
+        surfaceConfidence = max(surfaceConfidence, tapConfidence);
+        sawValidTap = true;
     }
-    let disocclusion = select(
-        0.0,
-        clamp(1.0 - separationConfidence / max(weightSum, 1.0e-6), 0.0, 1.0),
-        weightSum > 0.0,
-    );
+    let disocclusion = select(0.0, clamp(1.0 - surfaceConfidence, 0.0, 1.0), sawValidTap);
     textureStore(maskOutput, gid.xy, vec4f(disocclusion, 0.0, 0.0, 1.0));
 }
 `,

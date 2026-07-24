@@ -88,11 +88,11 @@ const BASELINE_FINGERPRINTS: Record<string, string> = {
     // Updated 2026-07-22: depth-clip flicker fix — reference tap-skip semantics
     // (no all-taps veto), jitter-delta-compensated reprojection, and a
     // neighborhood-relief-widened separation tolerance (grazing-angle planes).
-    reconstruct: '46f7b9e4',
+    reconstruct: '669ee05e',
     // Added 2026-07-21: multi-scale shading-change detector (NEXT-STEPS item 4).
     shadingChange: '41ed97fa',
     // Updated 2026-07-21: DeltaPreExposure history correction (NEXT-STEPS item 2).
-    accumulate: 'a2a4ec79',
+    accumulate: '612f610d',
     luminancePyramid: 'e4b7a644',
     // Updated 2026-07-22: reactive merge-not-overwrite (guides spec M3) — the
     // generator max-merges an incoming mask instead of being suppressed by it.

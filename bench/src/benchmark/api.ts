@@ -90,7 +90,7 @@ class BrowserBenchmarkApi implements UpscalerBenchmarkApi {
         bench.resetDeterministicState();
         const frameZero = scenario.frame(0);
         this._applyFrameState(frameZero);
-        pipeline?.reset(bench.scene, camera, 0);
+        pipeline?.reset(this._inputScene(frameZero), camera, 0);
         this._clock.reset();
     }
 
@@ -204,13 +204,18 @@ class BrowserBenchmarkApi implements UpscalerBenchmarkApi {
         await pipeline.prepareTiming();
         pipeline.advanceAutomatedFrame(frame);
         pipeline.renderInput(
-            bench.scene,
+            this._inputScene(scenarioFrame),
             camera,
             scenarioFrame.particlesVisible ? bench.reactiveScene : undefined,
         );
         pipeline.dispatchResolver(camera, config.timestepSeconds, frame);
         pipeline.present();
         this._clock.seek(frame + 1);
+    }
+
+    /** Scene rendered as upscaler input for a frame (Q12 swaps in cornell). */
+    private _inputScene(frame: BenchmarkFrameState): THREE.Scene {
+        return frame.scene === 'cornell' ? this._context.bench.cornellScene : this._context.bench.scene;
     }
 
     private _applyFrameState(frame: BenchmarkFrameState): void {

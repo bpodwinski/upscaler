@@ -78,6 +78,24 @@ const LOCK_PEAK_HI : f32 = 2.0;
 const LOCK_CLAMP_RELAX : f32 = 12.0;   // how much a full lock widens the variance AABB
 const LOCK_HISTORY_BOOST : f32 = 0.7;  // how much a full lock favors history in the blend
 
+//* Still-scene convergence relax.
+// The variance AABB is built from ONE jitter phase's 3×3 taps, so on
+// high-frequency content (sub-texel grid lines, moiré regions) the CONVERGED
+// supersampled mean falls outside some phases' boxes — and because the blend
+// stores the clipped history back, the buffer is re-snapped to each phase's
+// box forever: the still image never stops churning no matter how small alpha
+// gets (measured on Q1: disabling the clip drops the same-phase frame diff
+// from 0.18 to 0.005). Where rectification has nothing legitimate to catch —
+// no motion, converged history, no disocclusion/shading-change/reactivity —
+// widen the box so the converged mean survives; any of those signals returns
+// the pixel to full rectification. This is the locks mechanism generalized
+// (softly, ×9 vs the locks' ×13) from thin features to everywhere.
+// Q1-measured (consecutive / same-phase diff): no relax 0.116/0.038 at ×4,
+// 0.112/0.018 at ×8, rectification fully off 0.109/0.005.
+const STILL_CLAMP_RELAX : f32 = 8.0;   // box widening at full stillness + convergence
+const STILL_MOTION_LO : f32 = 0.05;    // render-texel motion where the relax starts fading
+const STILL_MOTION_HI : f32 = 0.5;     // ...and where it is fully off
+
 //* Shading-change aging (FSR2/3's "luminance instability").
 // The detection itself lives in the dedicated signed-difference pyramid pass
 // (shadingChange.ts) — a coarse-mip signal that fires on coherent regional luma
@@ -276,20 +294,27 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     // it so shading changes cannot ghost. A lock widens the box so a protected
     // thin feature keeps its accumulated value instead of being pulled toward
     // the (darker/brighter) neighborhood mean.
-    let extents = sqrt(variance) * CLIP_GAMMA * (1.0 + lockLife * LOCK_CLAMP_RELAX);
+    let motionTexels = length(motion * C.renderSize);
+    let stillRelax = STILL_CLAMP_RELAX *
+        (1.0 - smoothstep(STILL_MOTION_LO, STILL_MOTION_HI, motionTexels)) *
+        clamp(sampleCount / C.maxAccumulation, 0.0, 1.0) *
+        (1.0 - disocclusion) * (1.0 - shadingChange) * (1.0 - reactivity);
+    let extents = sqrt(variance) * CLIP_GAMMA *
+        (1.0 + lockLife * LOCK_CLAMP_RELAX + stillRelax);
     let historyYcc = rgbToYCoCg(history.rgb);
     let clippedYcc = clipToAABB(mean, extents, historyYcc);
-    let clipAmount = clamp(
-        length(clippedYcc - historyYcc) / max(length(extents), 1.0e-4),
-        0.0, 1.0,
-    );
     let rectifiedHistory = yCoCgToRgb(clippedYcc);
 
-    // Disocclusion discards history outright; heavy clipping ages it so
-    // changed regions re-converge quickly instead of averaging with stale data
-    // — but a lock protects its feature from that clip-driven aging.
+    // Disocclusion discards history outright. Deliberately NO aging by clip
+    // magnitude (an earlier form aged by clipAmount): the neighborhood box is
+    // built from the current jitter phase's taps, so at any contrasty edge the
+    // CONVERGED history sits outside some phases' boxes and a clip-driven age
+    // makes convergence unreachable — sample count saturates at a low
+    // equilibrium and the still-scene output shimmers forever (consumer
+    // report 3's rolling accumulation age). Stale shading is already handled
+    // by the clip itself plus the shading-change detector's SHADING_AGE path;
+    // this matches FSR2, which never ages history on rectification strength.
     sampleCount *= (1.0 - disocclusion);
-    sampleCount *= (1.0 - 0.5 * clipAmount * (1.0 - lockLife));
     // A detected shading change ages history so the new shading converges fast;
     // a lock protects its thin feature from this (aliasing there is not a change).
     sampleCount *= (1.0 - SHADING_AGE * shadingChange * (1.0 - lockLife));

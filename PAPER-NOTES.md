@@ -59,6 +59,46 @@ candidate bundle still implements it) on the same grazing-plane scene —
 does the repaired gather match the scatter's mask exactly, or only its
 stability? Cross-vendor timing for the cost claim.
 
+**Amended 2026-07-24:** repair (a) was itself insufficient — skipping
+agreement taps leaves lone straddling taps as the only voters, which
+re-disoccludes every *still* silhouette per jitter phase (the previous
+dilated-depth field's boundary is texel-quantized, so one bilinear tap
+routinely reads the old occluder). The complete repair is (a′): every valid
+tap votes, agreement = full confidence, and the **best tap wins** (max
+aggregation) — "any tap that recognizes the current surface means same
+surface." Genuine trails keep reading ~1 (all taps on the old occluder).
+Evidence: NEXT-STEPS §5, Q1 phase-locked churn + Q12 disocclusion-black.
+
+## 6. EMA temporal AA cannot converge if rectification writes back
+
+**Claim:** In a bounded-memory (EMA) temporal accumulator with per-frame
+neighborhood rectification, still-scene convergence is impossible whenever
+(i) history age is reduced as a function of clip magnitude, or (ii) the
+*clipped* history is what gets stored — because the variance box is built
+from ONE jitter phase's taps, and on high-frequency content the converged
+supersampled mean falls outside some phases' boxes. (i) pins equilibrium
+age low (alpha never shrinks); (ii) re-snaps the stored history to each
+phase's box regardless of alpha. Measured signature that separates the two
+from benign per-phase shimmer: the **same-jitter-phase frame diff** one
+period apart (0.182 with both defects, 0.183 with only (ii), 0.005 with
+rectification off). The fix that keeps anti-ghosting: gate box width on
+stillness × convergence × absence of disocclusion/shading-change/reactivity
+signals — rectify fully the moment any signal fires (FSR2's lock relaxation
+generalized from thin features to everywhere). Shipped ×9 relax: 0.018
+phase-locked, motion scenarios unchanged.
+
+**Evidence:** `bench/docs/NEXT-STEPS.md` §5 (full measurement ladder);
+`scripts/measure-convergence.mjs` (the phase-locked metric);
+`bench/results/raw/convergence/*`; consumer cross-validation in
+GUIDES-HANDOFF-RESPONSE.md report 3 (independent repro + their converging
+α=1/N counter-example). Cornell + IGN-dithered Vogel shadow (screen-anchored
+dither = adversarially unstable input luminance): 0.024 consecutive.
+
+**Still needs:** a formal fixed-point argument (under what box statistics is
+the converged mean a fixed point of clip∘blend?); comparison against FSR2's
+actual still behavior on the same scene; sensitivity of the ghosting
+trade-off to the relax factor on a scene with sub-detector lighting drift.
+
 ## 3. Source-faithful pass graphs measured against fused re-derivations
 
 **Claim:** porting FSR 3.1.5's pass graph faithfully to WebGPU costs

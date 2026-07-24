@@ -22,7 +22,8 @@ declare type BenchmarkScenarioId =
     | 'Q8'
     | 'Q9'
     | 'Q10'
-    | 'Q11';
+    | 'Q11'
+    | 'Q12';
 declare type BenchmarkDebugView =
     | 'final'
     | 'motion-vectors'
@@ -206,6 +207,8 @@ declare interface BenchmarkFrameState {
     particlesVisible: boolean;
     /** App-baked exposure factor driven into the scene color + resolver (Q11). */
     hostPreExposure?: number;
+    /** Scene rendered as the upscaler input; defaults to the main torture scene. */
+    scene?: 'main' | 'cornell';
 }
 
 declare interface BenchmarkCaptureRequest {

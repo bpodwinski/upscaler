@@ -108,6 +108,13 @@ function q10(frame: number): BenchmarkFrameState {
     };
 }
 
+function q12(frame: number): BenchmarkFrameState {
+    // The first consumer's cornell repro pose (report 3): still camera looking
+    // straight into the box. The only per-frame variation is the upscaler's
+    // own jitter (plus the screen-anchored shadow dither it provokes).
+    return { ...state(frame, [0, 2.6, 8.8], [0, 2.6, 0]), scene: 'cornell' };
+}
+
 const SCENARIOS: Record<BenchmarkScenarioId, BenchmarkScenarioDefinition> = {
     Q0: {
         id: 'Q0',
@@ -304,6 +311,29 @@ const SCENARIOS: Record<BenchmarkScenarioId, BenchmarkScenarioDefinition> = {
         subruns: [],
         unsupported: null,
         frame: q11,
+    },
+    Q12: {
+        id: 'Q12',
+        name: 'cornell-still-convergence',
+        // Long enough to prove sustained convergence, not just initial settle.
+        endFrame: 479,
+        captures: ['0', '1', '23', 'P-1', 'P', '2*P-1', '119', '239', '479'],
+        debugViews: [
+            'final',
+            'motion-vectors',
+            'disocclusion',
+            'accumulation-age',
+            'locks',
+            'shading-change',
+        ],
+        rois: {
+            full: [0, 0, 1, 1],
+            box_silhouettes: [0.3, 0.35, 0.45, 0.5],
+            shadow_penumbra: [0.15, 0.6, 0.7, 0.35],
+        },
+        subruns: [],
+        unsupported: null,
+        frame: q12,
     },
 };
 
