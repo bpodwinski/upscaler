@@ -82,7 +82,8 @@ export interface UpscalerNodeOptions {
      * split late stage — one reconstruct dispatch serves both. The guides
      * node's `depth`/`velocity`/`camera` should be the same ones handed to
      * {@link upscale}. See `examples/13-guides-node`.
-     * @experimental Rides on the guides contract (TEMPORAL-GUIDES-SPEC.md).
+     * @experimental See {@link TemporalGuidesNode} — the contract is accepted,
+     * the node wiring is not yet externally consumed.
      */
     guides?: TemporalGuidesNode;
 }

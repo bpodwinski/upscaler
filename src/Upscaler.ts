@@ -532,8 +532,6 @@ export class Upscaler {
      * Available on the `temporal` and `guides` paths after `configure()`.
      * See {@link TemporalGuides} for each product's contract, and
      * TEMPORAL-GUIDES-SPEC.md for the full picture.
-     * @experimental Contract frozen (spec M0) but pre-acceptance — may shift
-     * until the first external consumer integration lands.
      */
     get guides(): TemporalGuides {
         if (!this._guides) {
@@ -549,7 +547,6 @@ export class Upscaler {
      * True while a split frame is in flight — {@link dispatchGuides} has run
      * this frame and {@link dispatchUpscale} hasn't yet. Lets a driver decide
      * between finishing the split frame and the monolithic {@link dispatch}.
-     * @experimental See {@link guides}.
      */
     get guidesPending(): boolean {
         return this._guidesPending;
@@ -668,7 +665,6 @@ export class Upscaler {
      * final color afterwards, then finish with {@link dispatchUpscale}. On
      * the `guides` path this is the whole frame. Queue ordering makes the
      * outputs visible to any work submitted afterwards — no explicit sync.
-     * @experimental See {@link guides}.
      * @param inputs - Depth + velocity (+ optional reset/deltaTime)
      * @param camera - The scene camera (near/far and projection type)
      */
@@ -717,7 +713,6 @@ export class Upscaler {
      * geometry stage (reactive, exposure, shading change, accumulate, and
      * the RCAS/output pass). Requires {@link dispatchGuides} earlier in the
      * same frame; equivalent to {@link dispatch} apart from the split.
-     * @experimental See {@link guides}.
      * @param inputs - Scene color (+ optional reactive/exposure inputs)
      * @param camera - The camera passed to {@link dispatchGuides}
      */

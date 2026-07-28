@@ -223,8 +223,6 @@ export interface GuideDispatchInputs {
  *   {@link Upscaler.dispatchUpscale} — for consumers that run before the
  *   late stage they are the *previous frame's* state (the correct prior).
  * - Channels not documented here are reserved and may be repurposed.
- * @experimental Contract frozen (spec M0) but pre-acceptance — may shift
- * until the first external consumer integration lands.
  */
 export interface TemporalGuides {
     /**

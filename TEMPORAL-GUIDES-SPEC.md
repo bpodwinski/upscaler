@@ -1,10 +1,14 @@
 # Temporal Guides — opening the upscaler's internals (spec)
 
-Status: **handed off for consumer integration** (2026-07-22): M1–M5 all
-landed + GPU-verified (M4 followed post-handoff, same day), M6 (their
-demo-10 A/B) is the exit criterion. Consumer report 1
-([GUIDES-HANDOFF-RESPONSE.md](GUIDES-HANDOFF-RESPONSE.md)): linked build +
-M2 contract accepted, verified live, nothing blocked. Integration entry point:
+Status: **program complete** (M6 PASS, 2026-07-24). M1–M5 landed +
+GPU-verified (M4 followed post-handoff); M6, the consumer's cross-repo A/B,
+passed — their SSGI temporal stack fed by this bundle measured bit-identical
+still-camera stability against their private front-end, so the
+`@experimental` tag came off the raw guides surface and `MomentsPass`
+(consumer reports 1–2 in
+[GUIDES-HANDOFF-RESPONSE.md](GUIDES-HANDOFF-RESPONSE.md)). The TSL surface
+(M4) keeps the tag: same contract, but no external consumer has wired the
+node yet. Integration entry point:
 [GUIDES-HANDOFF.md](GUIDES-HANDOFF.md). Contract frozen at M0
 (consumer review in [GUIDES-SPEC-RESPONSE.md](GUIDES-SPEC-RESPONSE.md),
 resolution in §10).
@@ -284,14 +288,26 @@ when the consumer lab has accepted.
   check vs CPU reference on a seeded DataTexture in BOTH linear and ycocg
   spaces — validation-clean, max rel. error <0.1% (f16 tol 1%), coarse
   variance non-negative.
-- **M6 — cross-repo acceptance.** The consumer's demo-10 guides lab and SVGF
-  lab run against a tarball/linked build; their A/B (guides-fed SSGI temporal
-  vs private logic) is the program's exit criterion, per the brief.
+- **M6 — cross-repo acceptance. PASS (consumer report 2, 2026-07-24).** Their
+  demo 17 ran the identical SSGI temporal stack fed by their private guides
+  pass vs this bundle (guides-only path; the split shaders differ by one
+  uniform flag for the D1 UV-delta convention). Recorded: **still-camera
+  stability bit-identical** (both arms 1.3984197255291004 — at convergence
+  disocc≈0/vel≈0 make the blend independent of guide source, the strongest
+  parity statement available); teleport reconvergence 1.275 s vs 1.288 s
+  (inside one 500 ms sampling interval); across-arm meanAbsDiff 0.84 below
+  the 1.40 within-arm temporal noise. Their verdict: drop-in replacement for
+  their private temporal front-end. `MomentsPass` was separately
+  field-verified in their demo-14 SVGF (variance identity held on GPU
+  readback; variance-guided à-trous denoises σ=0.3 + fireflies a bilateral
+  can't). Their 15-ptref (unbiased PT ground truth) stays deferred on their
+  side — no asks here.
 
-Sequencing note: M1+M2 unblock the consumer's guides lab; M3–M5 can proceed
-in parallel with their integration. The guides API ships marked
-`@experimental` until M6 passes, so `main` never carries a frozen contract we
-haven't seen consumed.
+Sequencing note: M1+M2 unblocked the consumer's guides lab; M3–M5 proceeded
+in parallel with their integration. The guides API shipped marked
+`@experimental` until M6 passed, so `main` never carried a frozen contract we
+hadn't seen consumed — the tag came off the raw surface + `MomentsPass` with
+M6's PASS, and stays only on the M4 TSL node until someone wires it.
 
 ## 9. Open questions for the consumer side
 

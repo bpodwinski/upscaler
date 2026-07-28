@@ -42,8 +42,6 @@ export interface MomentsPassConfig {
  * moments.dispatch({ source: giTexture });   // per frame
  * // sample moments.moments (.rg) / moments.coarseMoments
  * ```
- * @experimental Contract frozen (spec M0) but pre-acceptance — may shift
- * until the first external consumer integration lands.
  */
 export class MomentsPass {
     private readonly _renderer: WebGPURenderer;
