@@ -219,8 +219,8 @@ explicit acceptance test), RCAS denoise on `06-screenspace-gi`.
   - **Jitter default = ON for temporal** (`UpscalerConfig.jitter`, `UpscalerNodeOptions.jitter`): jitter buys *reconstruction* (detail beyond render res) but only if the input is re-rendered under the jittered projection each frame. Because a composable node's inputs are graph dependencies three renders *in-pipeline* — after this node's `onBeforeRenderPipeline` jitter hook offsets the camera — the offset **does** land on them, so **both** `upscale()` and `upscaleScene()` default jitter **on** (this is how real FSR/DLSS run). Opt **out** (`{ jitter: false }`) only when the input is *not* re-rendered in-graph — an externally-filled `texture()`, or a noisy GI/RT buffer you want reprojected/denoised but not reconstructed (the raw `Upscaler` / example 06 is usually the better fit there). Jitter-off stays a full temporal upscale (reproject + accumulate + denoise), just no sub-pixel offset. When off, `beginFrame` no-ops `setViewOffset`, jitter constants stay zero, and the node skips the hook + velocity compensation. A temporal node that never receives depth+velocity `console.warn`s once. `09-kitchen-sink` toggles jitter on the same in-graph pipeline to A/B it.
   - Color path (both): the node emits linear/HDR color. When it is the final graph node, three's RenderPipeline applies the renderer's configured tone mapping and output color space; otherwise it can feed later linear post-processing. **Note:** three renamed `PostProcessing` → `RenderPipeline` (deprecation warning only).
   - The composable node *does* render its inputs in-graph, so an SSGI-in-a-graph pipeline jitters correctly and there's no owning-render/consuming-inputs split. An imperative pipeline that composites *outside* the post render (its own RT loop) still wants the raw `Upscaler` — `examples/06-screenspace-gi` stays on it as the imperative reference.
-- **Temporal guides (contract accepted — M6 PASS 2026-07-24; only the TSL node
-  stays `@experimental`).** The production
+- **Temporal guides (raw contract accepted — M6 PASS 2026-07-24; linked TSL
+  package surface accepted 2026-07-29).** The production
   working set is published as `upscaler.guides` (`TemporalGuides` — dilated
   motion/depth, disocclusion, reactive, shading change, exposure, locks, history)
   and the frame can be driven split: `dispatchGuides({depth, velocity})` right
@@ -260,7 +260,15 @@ explicit acceptance test), RCAS denoise on `06-screenspace-gi`.
   color chain so its dispatch precedes effect renders.
   `examples/13-guides-node` is its live reference (exposes
   `window.__guidesNodeExample` + tsl handles for the CDP harness; the
-  dispatch-spy probe there proves the pure split path steady-state). Also in this program: reactive is
+  dispatch-spy probe there proves the pure split path steady-state).
+  `scripts/verify-packed-guides.mjs` builds + packs the library, unpacks it in
+  an isolated consumer location, builds this same graph against the artifact
+  (never the source alias), and on real GPU asserts shared ownership, stable
+  guide node identity while ping-pong backings re-point, split early/late
+  dispatch, zero monolithic fallback after warmup, and clean WebGPU/WGSL logs.
+  The package-boundary smoke graduates the linked TSL API; it is not evidence
+  of an independent external TSL integration. CI runs its `--build-only` mode
+  and remains GPU-free. Also in this program: reactive is
   merge-not-overwrite (`generateReactive` max-merges an incoming mask;
   passing `guides.reactive` back while `reactiveOpaqueColor` is set throws —
   the generator writes that texture), and `MomentsPass`/`shaders/moments.ts`

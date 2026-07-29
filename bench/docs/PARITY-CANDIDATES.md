@@ -18,7 +18,9 @@ demonstrated visual win on the deterministic scenarios.
 these bundles were extracted and landed in production in re-derived, cheaper forms —
 conditioned-space RCAS, host pre-exposure correction, AMD's disocclusion threshold,
 and the multi-scale shading-change detector. Evidence: [NEXT-STEPS.md](NEXT-STEPS.md).
-The bundles themselves stay registered as bench variants for future re-testing.
+The bundles themselves stay registered as bench variants for future re-testing. Their
+WGSL and orchestration are frozen bench-owned snapshots in `bench/src/candidates/`;
+they are excluded from the production source, build artifacts, and published package.
 
 ## What is already production behavior
 

@@ -6,9 +6,13 @@ passed — their SSGI temporal stack fed by this bundle measured bit-identical
 still-camera stability against their private front-end, so the
 `@experimental` tag came off the raw guides surface and `MomentsPass`
 (consumer reports 1–2 in
-[GUIDES-HANDOFF-RESPONSE.md](GUIDES-HANDOFF-RESPONSE.md)). The TSL surface
-(M4) keeps the tag: same contract, but no external consumer has wired the
-node yet. Integration entry point:
+[GUIDES-HANDOFF-RESPONSE.md](GUIDES-HANDOFF-RESPONSE.md)). The linked TSL
+surface (M4) is graduated after Example 13 passed build-only and real-GPU
+verification while resolving `@pmndrs/upscaler` from the packed npm artifact.
+That package-boundary acceptance covers shared ownership, stable texture-node
+identity with ping-pong re-pointing, and steady-state split dispatch with zero
+monolithic fallback after warmup; it does not claim an independent external
+TSL consumer. Integration entry point:
 [GUIDES-HANDOFF.md](GUIDES-HANDOFF.md). Contract frozen at M0
 (consumer review in [GUIDES-SPEC-RESPONSE.md](GUIDES-SPEC-RESPONSE.md),
 resolution in §10).
@@ -166,8 +170,8 @@ So `MomentPyramid` is a **new, standalone, signal-agnostic pass**:
   reads exactly one coarse neighborhood and nothing deeper (§10, answer 4).
   No full chain.
 - Lives in its own files (`shaders/moments.ts` + a small `MomentsPass`
-  driver / `moments()` node), exported `@experimental`. It touches nothing
-  in the core pipeline — zero regression surface.
+  driver / `moments()` node) as a standalone exported primitive. It touches
+  nothing in the core pipeline — zero regression surface.
 - Our own pipeline does **not** adopt it initially (accumulate's inline 3×3
   is fused and cheap; swapping it for a consumed pyramid is a perf/quality
   trade to measure separately, if ever). One primitive, external consumers
@@ -276,12 +280,16 @@ when the consumer lab has accepted.
   pure split path steady-state (120 guides + 120 late, 0 monolithic over
   1 s) on one shared upscaler; standalone mode CDP-driven under a
   validation error scope (clean, early products live, late products null,
-  warning fires). Originally deferred per §10 answer 5; built post-handoff
-  so the surface is ready when composite-side consumption lands. Was: gate
-  design sketched at handoff.
+  warning fires). Package-boundary acceptance followed on 2026-07-29:
+  the same Example 13 graph was built from an isolated unpack of the npm
+  artifact and passed a real-GPU CDP smoke with 16 guides + 16 late
+  dispatches, two observed ping-pong backings on one stable texture node,
+  and zero monolithic fallbacks after warmup. This graduates the maintained
+  package surface without claiming independent external TSL mileage.
 - **M5 — `MomentPyramid` (§5). DONE (`52c3b12`, 2026-07-22).** Shipped as
-  `MomentsPass` + `shaders/moments.ts`, `@experimental`, zero coupling to
-  the upscaling pipeline. Deviations recorded: outputs are rgba16float
+  `MomentsPass` + `shaders/moments.ts`, initially `@experimental` and
+  graduated with M6, zero coupling to the upscaling pipeline. Deviations
+  recorded: outputs are rgba16float
   (`.rg` used — rg16float is not a core WebGPU storage format); the coarse
   level is the single 4×-reduction the consumer asked for (§10 answer 4).
   Gates met: structural tests + fingerprint (172 tests green); scripted GPU
@@ -307,7 +315,8 @@ Sequencing note: M1+M2 unblocked the consumer's guides lab; M3–M5 proceeded
 in parallel with their integration. The guides API shipped marked
 `@experimental` until M6 passed, so `main` never carried a frozen contract we
 hadn't seen consumed — the tag came off the raw surface + `MomentsPass` with
-M6's PASS, and stays only on the M4 TSL node until someone wires it.
+M6's PASS. The M4 linked TSL tag came off after the later packed-artifact
+Example 13 acceptance described above.
 
 ## 9. Open questions for the consumer side
 

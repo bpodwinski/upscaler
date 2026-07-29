@@ -38,10 +38,6 @@ type GuideTextureNode = ReturnType<typeof passTexture>;
  * Products are fetched with {@link getTextureNode}; ping-ponged products are
  * re-pointed automatically each frame, so the returned node is stable.
  *
- * @experimental The guide *contract* is accepted (spec M6); this node's
- * graph plumbing — node identity, per-frame re-pointing, linked-vs-standalone
- * wiring — has only our own GPU verification (`examples/13-guides-node`) and
- * no external consumer yet, so its ergonomics may still shift.
  */
 export class TemporalGuidesNode extends TempNode {
     readonly isTemporalGuidesNode = true;
@@ -265,7 +261,6 @@ export class TemporalGuidesNode extends TempNode {
  * @param velocity - Render-res jitter-free velocity texture node
  * @param camera - Scene camera (perspective or orthographic)
  * @returns The guides node — call `.getTextureNode(name)` for the products
- * @experimental See {@link TemporalGuidesNode}.
  */
 export const temporalGuides = (
     depth: TextureNodeLike,

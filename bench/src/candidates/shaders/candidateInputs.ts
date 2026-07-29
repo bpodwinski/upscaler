@@ -1,5 +1,9 @@
-import { WGSL_COLOR, WGSL_CONSTANTS, WGSL_DEPTH } from './common';
-import { assembleShader } from './wgsl';
+import {
+    WGSL_COLOR,
+    WGSL_CONSTANTS,
+    WGSL_DEPTH,
+} from '../../../../src/shaders/common';
+import { assembleShader } from '../../../../src/shaders/wgsl';
 
 /**
  * Source-policy reactive generator. Numeric/policy controls are compile-time

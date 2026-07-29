@@ -1,6 +1,7 @@
 import type * as THREE from 'three/webgpu';
 
 import { Upscaler } from '@pmndrs/upscaler';
+import { CandidateUpscaler } from '../candidates/CandidateUpscaler';
 import {
     RCAS_HOISTED_EXPOSURE_SHADER,
     RCAS_LEGACY_SHADER,
@@ -25,24 +26,17 @@ interface BenchmarkTimerBridge {
 /**
  * Adapts the unchanged production upscaler to the benchmark lifecycle.
  */
-export class BaselineBenchmarkResolver implements BenchmarkResolver {
+class BenchmarkResolverAdapter implements BenchmarkResolver {
     readonly metadata: BenchmarkVariantMetadata;
 
-    private readonly _upscaler: Upscaler;
+    private readonly _upscaler: Upscaler | CandidateUpscaler;
 
     constructor(
-        renderer: THREE.WebGPURenderer,
+        upscaler: Upscaler | CandidateUpscaler,
         metadata: BenchmarkVariantMetadata,
-        rcasShader?: string,
-        candidateBundle?: string,
     ) {
         this.metadata = metadata;
-        const options = {
-            renderer,
-            _rcasShader: rcasShader,
-            _candidateBundle: candidateBundle,
-        };
-        this._upscaler = new Upscaler(options);
+        this._upscaler = upscaler;
         this._upscaler.init();
         if (typeof metadata.settings.rcasDenoise === 'boolean')
             this._upscaler.settings.rcasDenoise = metadata.settings.rcasDenoise;
@@ -117,20 +111,30 @@ export class BaselineBenchmarkResolver implements BenchmarkResolver {
 
     dispatch(inputs: BenchmarkResolverDispatch, camera: unknown): void {
         this._timer.setNextFrameTag(inputs.frameTag);
-        this._upscaler.dispatch(
-            {
-                color: inputs.color as THREE.Texture,
-                depth: inputs.depth as THREE.Texture | undefined,
-                velocity: inputs.velocity as THREE.Texture | undefined,
-                reactive: inputs.reactive as THREE.Texture | undefined,
-                transparencyAndComposition: inputs.transparencyAndComposition as
-                    | THREE.Texture
-                    | undefined,
-                preExposureTexture: inputs.preExposureTexture as THREE.Texture | undefined,
-                deltaTime: inputs.deltaTime,
-            },
-            camera as THREE.PerspectiveCamera,
-        );
+        const dispatchInputs = {
+            color: inputs.color as THREE.Texture,
+            depth: inputs.depth as THREE.Texture | undefined,
+            velocity: inputs.velocity as THREE.Texture | undefined,
+            reactive: inputs.reactive as THREE.Texture | undefined,
+            preExposureTexture: inputs.preExposureTexture as THREE.Texture | undefined,
+            deltaTime: inputs.deltaTime,
+        };
+        const dispatchCamera = camera as THREE.PerspectiveCamera;
+
+        if (this._upscaler instanceof CandidateUpscaler) {
+            this._upscaler.dispatch(
+                {
+                    ...dispatchInputs,
+                    transparencyAndComposition: inputs.transparencyAndComposition as
+                        | THREE.Texture
+                        | undefined,
+                },
+                dispatchCamera,
+            );
+            return;
+        }
+
+        this._upscaler.dispatch(dispatchInputs, dispatchCamera);
     }
 
     reset(): void {
@@ -160,6 +164,53 @@ export class BaselineBenchmarkResolver implements BenchmarkResolver {
 
     dispose(): void {
         this._upscaler.dispose();
+    }
+}
+
+function createProductionUpscaler(
+    renderer: THREE.WebGPURenderer,
+    rcasShader?: string,
+): Upscaler {
+    const options = { renderer, _rcasShader: rcasShader };
+    return new Upscaler(options);
+}
+
+function createCandidateUpscaler(
+    renderer: THREE.WebGPURenderer,
+    candidateBundle: string,
+): CandidateUpscaler {
+    const options = {
+        renderer,
+        // The source bundles run RCAS without FLAG_INPUT_REINHARD, where both
+        // historical forms are identical.
+        _rcasShader: RCAS_PER_TAP_SHADER,
+        _candidateBundle: candidateBundle,
+    };
+    return new CandidateUpscaler(options);
+}
+
+/**
+ * Adapts the production upscaler to the benchmark lifecycle.
+ */
+export class BaselineBenchmarkResolver extends BenchmarkResolverAdapter {
+    constructor(
+        renderer: THREE.WebGPURenderer,
+        metadata: BenchmarkVariantMetadata,
+        rcasShader?: string,
+    ) {
+        super(createProductionUpscaler(renderer, rcasShader), metadata);
+    }
+}
+
+/**
+ * Adapts one frozen source-bundle snapshot to the benchmark lifecycle.
+ */
+export class CandidateBenchmarkResolver extends BenchmarkResolverAdapter {
+    constructor(
+        renderer: THREE.WebGPURenderer,
+        metadata: BenchmarkVariantMetadata,
+    ) {
+        super(createCandidateUpscaler(renderer, metadata.id), metadata);
     }
 }
 
@@ -229,12 +280,5 @@ export function createSourceBundleResolver(
     renderer: unknown,
     metadata: BenchmarkVariantMetadata,
 ): BenchmarkResolver {
-    return new BaselineBenchmarkResolver(
-        renderer as THREE.WebGPURenderer,
-        metadata,
-        // The bundles run RCAS without FLAG_INPUT_REINHARD, where the per-tap
-        // and conditioned forms are identical — keep the measured identity.
-        RCAS_PER_TAP_SHADER,
-        metadata.id,
-    );
+    return new CandidateBenchmarkResolver(renderer as THREE.WebGPURenderer, metadata);
 }

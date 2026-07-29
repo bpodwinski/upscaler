@@ -25,11 +25,45 @@ const ASSEMBLED_CHUNKS = [
 
 let activeResolverCount = 0;
 
+const RESOLVER_FACTORIES = {
+    baseline: createBaselineResolver,
+    'local-baseline-5d6a65e': createBaselineResolver,
+    'local-baseline-through-e00-harness': createBaselineResolver,
+    'rcas-fsr315-limiter': createRcasNumericParityResolver,
+    'rcas-fsr315-numeric': createRcasNumericParityResolver,
+    'rcas-hoisted-exposure-v1': createRcasExperimentResolver,
+    'rcas-tonemap-space-v1': createRcasExperimentResolver,
+    'source-filter-bundle-v1': createSourceBundleResolver,
+    'source-structural-bundle-v1': createSourceBundleResolver,
+    'source-spd-resolver-bundle-v1': createSourceBundleResolver,
+} satisfies Record<BenchmarkVariantId, BenchmarkVariantDefinition['create']>;
+
+/**
+ * Returns the factory used by the default benchmark registry.
+ * @param id - Registered benchmark variant
+ * @returns The resolver factory assigned to that identity
+ */
+export function getBenchmarkResolverFactory(
+    id: BenchmarkVariantId,
+): BenchmarkVariantDefinition['create'] {
+    return RESOLVER_FACTORIES[id];
+}
+
+/**
+ * Reports which upscaler implementation owns a benchmark identity.
+ * @param id - Registered benchmark variant
+ * @returns The production pipeline or frozen candidate snapshot owner
+ */
+export function getBenchmarkUpscalerKind(
+    id: BenchmarkVariantId,
+): 'production' | 'candidate' {
+    return getBenchmarkResolverFactory(id) === createSourceBundleResolver
+        ? 'candidate'
+        : 'production';
+}
+
 function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
-    const sourceBundle =
-        id === 'source-filter-bundle-v1' ||
-        id === 'source-structural-bundle-v1' ||
-        id === 'source-spd-resolver-bundle-v1';
+    const sourceBundle = getBenchmarkUpscalerKind(id) === 'candidate';
     const structural =
         id === 'source-structural-bundle-v1' || id === 'source-spd-resolver-bundle-v1';
     const spdResolver = id === 'source-spd-resolver-bundle-v1';
@@ -164,40 +198,14 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
     };
 }
 
-const DEFAULT_DEFINITIONS: BenchmarkVariantDefinition[] = [
-    'baseline',
-    'local-baseline-5d6a65e',
-    'local-baseline-through-e00-harness',
-].map((id) => ({
-    metadata: metadata(id as BenchmarkVariantId),
-    create: createBaselineResolver,
-}));
-DEFAULT_DEFINITIONS.push({
-    metadata: metadata('rcas-fsr315-limiter'),
-    create: createRcasNumericParityResolver,
-});
-DEFAULT_DEFINITIONS.push({
-    metadata: metadata('rcas-fsr315-numeric'),
-    create: createRcasNumericParityResolver,
-});
-DEFAULT_DEFINITIONS.push({
-    metadata: metadata('rcas-hoisted-exposure-v1'),
-    create: createRcasExperimentResolver,
-});
-DEFAULT_DEFINITIONS.push({
-    metadata: metadata('rcas-tonemap-space-v1'),
-    create: createRcasExperimentResolver,
-});
-for (const id of [
-    'source-filter-bundle-v1',
-    'source-structural-bundle-v1',
-    'source-spd-resolver-bundle-v1',
-] as const) {
-    DEFAULT_DEFINITIONS.push({
+const DEFAULT_DEFINITIONS: BenchmarkVariantDefinition[] = (
+    Object.keys(RESOLVER_FACTORIES) as BenchmarkVariantId[]
+).map((id) => {
+    return {
         metadata: metadata(id),
-        create: createSourceBundleResolver,
-    });
-}
+        create: getBenchmarkResolverFactory(id),
+    };
+});
 
 /**
  * Registry enforcing one active resolver across the page.

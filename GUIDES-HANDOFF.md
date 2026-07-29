@@ -20,9 +20,11 @@ review [GUIDES-SPEC-RESPONSE.md](GUIDES-SPEC-RESPONSE.md) is folded in as
 | Grazing-angle disocclusion stability fix | ✅ | commit `b16274a` — **baseline your lab on this or later**; earlier disocclusion flickered on grazing planes |
 | TSL node surface: `temporalGuides()` publishes the bundle as texture nodes; `upscale({guides})` shares one computation (split frame in-graph) | ✅ M4 | `temporalGuides` / `TemporalGuidesNode` exports; live reference `examples/13-guides-node`. Built post-handoff so it's ready when your composite-side consumption lands — nothing in your raw path depends on it |
 
-Everything guides-related is `@experimental`: the contract is frozen (M0)
-but may still shift until your integration (M6) accepts. Flag friction in a
-response doc rather than working around it.
+Historical note: this handoff originally marked everything guides-related
+`@experimental` pending consumer acceptance. The raw guides surface and
+`MomentsPass` graduated with the M6 PASS on 2026-07-24; the linked TSL surface
+graduated after packed-package build and real-GPU acceptance on 2026-07-29.
+The normative status is recorded in `TEMPORAL-GUIDES-SPEC.md`.
 
 ## Linked build
 
@@ -147,9 +149,10 @@ moments.dispatch({ source: giIrradiance });            // any float texture, per
 
 ## Verification expectations on your side
 
-- Your demo-10 A/B (guides-fed SSGI temporal vs private logic) is **M6 —
-  the program's exit criterion**. The guides API drops `@experimental` when
-  it passes.
+- Your demo-10 A/B (guides-fed SSGI temporal vs private logic) was **M6 —
+  the program's exit criterion**. It passed on 2026-07-24, graduating the raw
+  guides surface and `MomentsPass`; the linked TSL surface graduated after the
+  later packed-package acceptance.
 - `examples/12-temporal-guides` (npm run examples → :5300) is the live
   reference: split dispatch + the guide views, and it exposes
   `window.__guidesExample` (upscaler, renderer, camera, `Upscaler`,
@@ -164,10 +167,10 @@ moments.dispatch({ source: giIrradiance });            // any float texture, per
 ## Feedback loop
 
 Respond the way M0 worked: a doc in this repo (or a note pointing at one in
-yours) with accepted/friction/blocked per item. Known-open items on our
-side: the bench merged-mask capture scenario (deferred to your lab
-exercising the real merge) and the `@experimental` freeze pending your M6.
-(M4, deferred at handoff, has since landed — see the readiness table.)
+yours) with accepted/friction/blocked per item. The bench merged-mask capture
+scenario remains deferred to the consumer lab exercising the real merge.
+M4 and M6 have since landed, and both the raw and linked TSL package surfaces
+are graduated as recorded above.
 
 **Report 1 received** ([GUIDES-HANDOFF-RESPONSE.md](GUIDES-HANDOFF-RESPONSE.md),
 demo-16, against `34f784d`): linked build + M2 contract accepted and verified

@@ -17,14 +17,16 @@ We implemented the source-style pipeline — the full FSR 3.1.5 pass graph, incl
 Lanczos2 reconstruction, deringed bicubic history, atomic depth scatter, motion
 divergence, SPD-style mip chains, luma instability, and the coordinated source resolver —
 as three cumulative candidate graphs inside this repo, GPU-validated them, and A/B
-benchmarked them against the production path on deterministic scenes.
+benchmarked them against the production path on deterministic scenes. Those graphs are
+now frozen as bench-owned snapshots under `bench/src/candidates/`; neither their WGSL nor
+their orchestration is included in the published library.
 
 **The source-style graphs cost +36% to +76% more GPU compute and produced no visible
 quality improvement on our test scenarios.** The differences that exist are sub-4% RMSE
 spread across edge detail, with no artifacts, ghosting, or convergence failures on either
 side. On a library whose priority order is **performance > quality > realism**, that
 result decides the question: the simplified production path ships; the source-parity
-graphs remain in-repo as benchmark candidates.
+graphs remain in-repo only as frozen benchmark snapshots.
 
 | Comparison (ratio 2, 1920×1080 display, Apple Metal, ABBA timing) | GPU compute | Δ |
 | --- | --- | --- |
@@ -194,15 +196,16 @@ the emulations are part of why the source graphs measure slower here.
 Lanczos2 upsample + Catmull-Rom history, no deringed bicubic) survived because the
 source alternative cost +47% on accumulate and the deterministic quality scenarios
 (static convergence, camera motion, object-motion disocclusion) could not distinguish
-them visually. A divergence is kept only while that remains true — the candidates stay
-in-repo precisely so this can be re-tested as scenes, devices, or the library change.
+them visually. A divergence is kept only while that remains true — the frozen bench
+snapshots stay in-repo precisely so this can be re-tested as scenes, devices, or the
+library change without shipping candidate code to consumers.
 
 **3. Scope decisions.** Frame generation is out of scope (browser swapchain limits).
 MSAA input is rejected by design — FSR's temporal path *is* the anti-aliaser. The
-Transparency & Composition mask is accepted as a dispatch input for API compatibility
-but currently maps to the reactive path; upstream's distinct softer T&C channel is
-implemented in the structural candidate and will only be promoted with evidence that
-the reactive path is insufficient for real content.
+distinct softer Transparency & Composition channel exists only in the frozen structural
+benchmark candidate. Production `DispatchInputs` has no T&C option, and the production
+resolver neither maps nor consumes that channel. It will only be promoted with evidence
+that the reactive path is insufficient for real content.
 
 ## Honest limits of the evidence
 
