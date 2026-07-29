@@ -3,6 +3,8 @@
 This is the concise decision record for the (concluded) parity experiment program.
 Raw evidence remains under `bench/results/raw/`; the post-parity adoptions that came
 out of these decisions are recorded with evidence in [NEXT-STEPS.md](NEXT-STEPS.md).
+The rejected source graphs are preserved as frozen snapshots under
+`bench/src/candidates/`; they remain benchmarkable but are not shipped in the library.
 
 Program facts: pinned FidelityFX SDK source `60f4ea81909200d8542eca14dccb2628b763a9a3`
 (FSR Upscaler 3.1.5); local baseline commit `5d6a65e` on `feat-match-fsr3`. The E00

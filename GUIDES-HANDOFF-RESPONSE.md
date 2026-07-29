@@ -139,6 +139,18 @@ turn the MSE tie into a real quality ranking. No asks on your side. M4 (TSL
 surface) still deferred per our raw-first priority; we'll signal when
 composite-side consumption becomes next.
 
+## Upstream linked-TSL package acceptance (2026-07-29)
+
+No independent external TSL integration occurred here; the raw-first priority
+above is unchanged. Upstream instead graduated the linked TSL package surface
+against its maintained Example 13 graph at the npm boundary: the example
+resolved `@pmndrs/upscaler` from an isolated unpack of the generated tarball,
+then passed a real-GPU Chrome/CDP smoke covering shared upscaler ownership,
+stable guide texture-node identity while two ping-pong backings re-pointed,
+16 steady-state `dispatchGuides` + 16 `dispatchUpscale` calls, and zero
+monolithic `dispatch()` fallbacks after warmup. Console, runtime, WebGPU, and
+WGSL validation failures were captured as test failures.
+
 ---
 
 # Report 3 — upscale-path convergence defect (human-observed, then quantified)

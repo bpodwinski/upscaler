@@ -73,12 +73,12 @@ FSR Upscaler 3.1.5 dispatches:
 `prepare inputs` → `luma SPD` → `shading-change SPD` → `shading change` →
 `prepare reactivity` → `luma instability` → `accumulate` → optional `RCAS`
 
-### Authored benchmark candidates — not measured or adopted
+### Frozen benchmark snapshots — not shipped
 
-The remaining audit solutions now exist as three cumulative, internally selected compiled
-graphs. They are registered in the benchmark but have deliberately not been run. Their
-presence is not evidence of a quality or performance improvement, and none changes the
-default production path:
+The three cumulative audit graphs are frozen under `bench/src/candidates/` with their
+original WGSL fingerprints and benchmark orchestration. They were measured and rejected
+for production; none of their code is part of `src/`, `dist/`, or the published package.
+They remain registered only so the historical comparisons can be reproduced:
 
 1. `source-filter-bundle-v1`
    - source-style radial approximate Lanczos2 with adaptive kernel bias for the current
@@ -115,11 +115,12 @@ must determine whether that trade is acceptable. Reconstructed depth and new-loc
 use storage-buffer atomics because portable WebGPU does not expose the floating-point
 storage-texture atomics used by native implementations.
 
-`DispatchInputs.preExposureTexture` and
-`DispatchInputs.transparencyAndComposition` are the only new source-compatible dispatch
-inputs. Both are optional; the production fallback ignores them. All reactive generation
-and resolve stages remain in caller-domain color with no internal ACES, transfer function,
-or other presentation transform.
+`DispatchInputs.preExposureTexture` is the production source-compatible dispatch input.
+The distinct `transparencyAndComposition` input exists only on the bench-local candidate
+boundary for the frozen structural snapshots. Production `DispatchInputs` has no T&C
+option, and the production resolver neither maps nor consumes that channel. All reactive
+generation and resolve stages remain in caller-domain color with no internal ACES,
+transfer function, or other presentation transform.
 
 ### Core recommendation
 

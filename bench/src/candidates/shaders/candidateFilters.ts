@@ -1,6 +1,10 @@
-import { EASU_SHADER } from './easu';
-import { WGSL_COLOR, WGSL_CONSTANTS, WGSL_TONEMAP } from './common';
-import { assembleShader } from './wgsl';
+import { EASU_SHADER } from '../../../../src/shaders/easu';
+import {
+    WGSL_COLOR,
+    WGSL_CONSTANTS,
+    WGSL_TONEMAP,
+} from '../../../../src/shaders/common';
+import { assembleShader } from '../../../../src/shaders/wgsl';
 
 const EASU_APPROXIMATION_HELPERS = /* wgsl */ `
 // FSR1's low-precision helpers trade exact division for a bit estimate plus

@@ -145,15 +145,6 @@ export interface DispatchInputs {
      */
     reactive?: Texture;
     /**
-     * Optional Transparency & Composition mask at render resolution. This is
-     * intentionally softer than {@link reactive}: it tightens history
-     * rectification and reduces lock/history confidence without forcing the
-     * aggressive current-frame reset used for particles and untracked transparents.
-     * Consumed by source-style structural resolver candidates; ignored by the
-     * production fallback.
-     */
-    transparencyAndComposition?: Texture;
-    /**
      * Opaque-only scene color at render resolution. When provided, the
      * upscaler auto-generates a reactive mask from the difference between
      * this and the final `color` — FSR2's `GenerateReactiveMask` — and
