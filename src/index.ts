@@ -1,12 +1,16 @@
 export { Upscaler } from './Upscaler';
+export { MomentsPass, type MomentsPassConfig, type MomentsSpace } from './MomentsPass';
 export { UpscalePass, type UpscalePassConfig } from './UpscalePass';
 export { UpscalerNode, upscale, upscaleSpatial, upscaleScene, type UpscalerNodeOptions } from './UpscalerNode';
+export { TemporalGuidesNode, temporalGuides } from './TemporalGuidesNode';
 export {
     DebugView,
     QualityMode,
     type UpscalerConfig,
     type DispatchInputs,
+    type GuideDispatchInputs,
     type RuntimeSettings,
+    type TemporalGuides,
     type UpscalePath,
 } from './types';
 export { halton, generateJitterSequence } from './math/halton';

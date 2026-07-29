@@ -3,8 +3,9 @@ import { assembleShader } from './wgsl';
 
 /**
  * Reproject & accumulate — the core temporal upscaling pass (FSR2/3's
- * "accumulate" stage, simplified: luminance-stability locks and the
- * shading-change detector are Phase 3 work; see shaders README).
+ * "accumulate" stage, with luminance-stability locks, reactive-mask handling,
+ * and the shading-change response wired in; per-stage fidelity notes live in
+ * the shaders README).
  *
  * Per display pixel:
  * 1. Upsample the current jittered frame with a jitter-aware separable
@@ -30,7 +31,13 @@ import { assembleShader } from './wgsl';
  * - 6: history out (rgba16float storage, display size)
  * - 7: locks in, display size (rgba16float; r = lifetime, g = locked luma)
  * - 8: locks out (rgba16float storage, display size)
- * - 9: exposure, 1×1 (rgba16float; r = pre-exposure for this frame)
+ * - 9: exposure, 1×1 (rgba16float; r = conditioning pre-exposure for this
+ *      frame, b = host pre-exposure)
+ * - 10: reactive mask, render size (r = reactivity; 1×1 dummy when absent)
+ * - 11: previous frame's exposure, 1×1 (b = last frame's host pre-exposure,
+ *       for FSR3-style DeltaPreExposure history correction)
+ * - 12: shading-change response, ceil(render/2) (r32float from
+ *       shadingChange.ts; 1×1 zero dummy when the detector is off)
  */
 export const ACCUMULATE_SHADER = assembleShader(
     WGSL_CONSTANTS,
@@ -47,6 +54,8 @@ export const ACCUMULATE_SHADER = assembleShader(
 @group(0) @binding(8) var locksOut : texture_storage_2d<rgba16float, write>;
 @group(0) @binding(9) var exposureTex : texture_2d<f32>;
 @group(0) @binding(10) var reactiveMask : texture_2d<f32>;
+@group(0) @binding(11) var exposurePrevTex : texture_2d<f32>;
+@group(0) @binding(12) var shadingChangeTex : texture_2d<f32>;
 
 const PI : f32 = 3.14159265358979;
 // How hard a fully-reactive pixel snaps to the current frame in the blend.
@@ -69,15 +78,29 @@ const LOCK_PEAK_HI : f32 = 2.0;
 const LOCK_CLAMP_RELAX : f32 = 12.0;   // how much a full lock widens the variance AABB
 const LOCK_HISTORY_BOOST : f32 = 0.7;  // how much a full lock favors history in the blend
 
-//* Shading-change detection (FSR2/3's "luminance instability").
-// Distinguishes a genuine shading change (a light turning on, an animated
-// material) from mere motion by comparing the reprojected history's luma to the
-// current neighborhood's averaged luma — a coherent disagreement the local
-// variance can't explain. Measured on averaged luma so sub-pixel aliasing on
-// thin edges doesn't read as a change. Where it fires, history is aged so the
+//* Still-scene convergence relax.
+// The variance AABB is built from ONE jitter phase's 3×3 taps, so on
+// high-frequency content (sub-texel grid lines, moiré regions) the CONVERGED
+// supersampled mean falls outside some phases' boxes — and because the blend
+// stores the clipped history back, the buffer is re-snapped to each phase's
+// box forever: the still image never stops churning no matter how small alpha
+// gets (measured on Q1: disabling the clip drops the same-phase frame diff
+// from 0.18 to 0.005). Where rectification has nothing legitimate to catch —
+// no motion, converged history, no disocclusion/shading-change/reactivity —
+// widen the box so the converged mean survives; any of those signals returns
+// the pixel to full rectification. This is the locks mechanism generalized
+// (softly, ×9 vs the locks' ×13) from thin features to everywhere.
+// Q1-measured (consecutive / same-phase diff): no relax 0.116/0.038 at ×4,
+// 0.112/0.018 at ×8, rectification fully off 0.109/0.005.
+const STILL_CLAMP_RELAX : f32 = 8.0;   // box widening at full stillness + convergence
+const STILL_MOTION_LO : f32 = 0.05;    // render-texel motion where the relax starts fading
+const STILL_MOTION_HI : f32 = 0.5;     // ...and where it is fully off
+
+//* Shading-change aging (FSR2/3's "luminance instability").
+// The detection itself lives in the dedicated signed-difference pyramid pass
+// (shadingChange.ts) — a coarse-mip signal that fires on coherent regional luma
+// changes and cancels alias flicker. Where it fires, history is aged so the
 // surface re-converges to its new shading instead of ghosting the old.
-const SHADING_LO : f32 = 1.5;          // luma disagreement (in neighborhood std-devs) to start reacting
-const SHADING_HI : f32 = 4.0;          // ...and to treat as a full shading change
 const SHADING_AGE : f32 = 0.75;        // max fraction of accumulation dropped on a full change
 
 // Lanczos2 kernel (the same window FSR2 uses for its upsample taps).
@@ -137,7 +160,9 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     let motion = textureLoad(dilatedMotion, renderCoord, 0).xy;
     let disocclusion = textureLoad(masks, renderCoord, 0).r;
     // Pre-exposure for this frame (auto or manual) — divided back out at output.
-    let exposure = textureLoad(exposureTex, vec2i(0), 0).r;
+    // .b carries the app's host pre-exposure (1.0 when none is supplied).
+    let frameInfo = textureLoad(exposureTex, vec2i(0), 0);
+    let exposure = frameInfo.r;
     // Reactive mask: pixels the caller flags (particles, transparents) should
     // lean on the current frame instead of ghosting through history.
     var reactivity = 0.0;
@@ -198,24 +223,38 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
         return;
     }
 
-    let history = sampleHistoryCatmullRom(prevUV);
+    var history = sampleHistoryCatmullRom(prevUV);
+
+    //* Host Pre-Exposure Delta (FSR3's DeltaPreExposure)
+    // If the app changed the pre-exposure baked into its render since last
+    // frame, the reprojected history is in the old brightness domain and would
+    // read as a full-screen shading change — ratio-correct it in linear space.
+    // Without a preExposureTexture input both texels publish 1.0 and this is
+    // skipped, leaving the pass bit-identical. Conditioning exposure is
+    // deliberately not corrected here: it adapts smoothly by design.
+    let hostPrev = textureLoad(exposurePrevTex, vec2i(0), 0).b;
+    var hostRatio = 1.0;
+    if (hostPrev > 1.0e-4 && frameInfo.b > 1.0e-4) { hostRatio = frameInfo.b / hostPrev; }
+    if (abs(hostRatio - 1.0) > 1.0e-3) {
+        history = vec4f(tonemapInvertible(tonemapInvert(history.rgb) * hostRatio), history.a);
+    }
+
     var sampleCount = history.a * C.maxAccumulation;
 
     //* Neighborhood Statistics (YCoCg)
     let mean = m1 / 9.0;
     let variance = max(m2 / 9.0 - mean * mean, vec3f(0.0));
     let curY = rgbToYCoCg(current).x;
-    let histY = rgbToYCoCg(history.rgb).x;
     let contrast = boxMax.x - boxMin.x;
 
-    //* Shading-Change Detection
-    // Coherent luma disagreement between reprojected history and the current
-    // neighborhood, normalized by how much the neighborhood itself varies —
-    // large only when the surface's shading changed rather than just moved.
+    //* Shading Change (from the signed-difference pyramid pass)
+    // Half-render-resolution response in [0,1]; a zero dummy is bound when the
+    // detector is disabled.
     var shadingChange = 0.0;
     if (hasFlag(FLAG_SHADING_CHANGE)) {
-        let lumaSpread = sqrt(variance.x) + 0.5 * contrast + 1.0e-3;
-        shadingChange = smoothstep(SHADING_LO, SHADING_HI, abs(mean.x - histY) / lumaSpread);
+        let scDim = vec2i(textureDimensions(shadingChangeTex));
+        let scCoord = clamp(renderCoord / 2, vec2i(0), scDim - 1);
+        shadingChange = clamp(textureLoad(shadingChangeTex, scCoord, 0).r, 0.0, 1.0);
     }
 
     //* Luminance-Stability Lock
@@ -255,20 +294,27 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     // it so shading changes cannot ghost. A lock widens the box so a protected
     // thin feature keeps its accumulated value instead of being pulled toward
     // the (darker/brighter) neighborhood mean.
-    let extents = sqrt(variance) * CLIP_GAMMA * (1.0 + lockLife * LOCK_CLAMP_RELAX);
+    let motionTexels = length(motion * C.renderSize);
+    let stillRelax = STILL_CLAMP_RELAX *
+        (1.0 - smoothstep(STILL_MOTION_LO, STILL_MOTION_HI, motionTexels)) *
+        clamp(sampleCount / C.maxAccumulation, 0.0, 1.0) *
+        (1.0 - disocclusion) * (1.0 - shadingChange) * (1.0 - reactivity);
+    let extents = sqrt(variance) * CLIP_GAMMA *
+        (1.0 + lockLife * LOCK_CLAMP_RELAX + stillRelax);
     let historyYcc = rgbToYCoCg(history.rgb);
     let clippedYcc = clipToAABB(mean, extents, historyYcc);
-    let clipAmount = clamp(
-        length(clippedYcc - historyYcc) / max(length(extents), 1.0e-4),
-        0.0, 1.0,
-    );
     let rectifiedHistory = yCoCgToRgb(clippedYcc);
 
-    // Disocclusion discards history outright; heavy clipping ages it so
-    // changed regions re-converge quickly instead of averaging with stale data
-    // — but a lock protects its feature from that clip-driven aging.
+    // Disocclusion discards history outright. Deliberately NO aging by clip
+    // magnitude (an earlier form aged by clipAmount): the neighborhood box is
+    // built from the current jitter phase's taps, so at any contrasty edge the
+    // CONVERGED history sits outside some phases' boxes and a clip-driven age
+    // makes convergence unreachable — sample count saturates at a low
+    // equilibrium and the still-scene output shimmers forever (consumer
+    // report 3's rolling accumulation age). Stale shading is already handled
+    // by the clip itself plus the shading-change detector's SHADING_AGE path;
+    // this matches FSR2, which never ages history on rectification strength.
     sampleCount *= (1.0 - disocclusion);
-    sampleCount *= (1.0 - 0.5 * clipAmount * (1.0 - lockLife));
     // A detected shading change ages history so the new shading converges fast;
     // a lock protects its thin feature from this (aliasing there is not a change).
     sampleCount *= (1.0 - SHADING_AGE * shadingChange * (1.0 - lockLife));

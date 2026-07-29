@@ -18,6 +18,8 @@ export const FLAG_SHADING_CHANGE = 128;
 export const FLAG_REACTIVE = 256;
 export const FLAG_RCAS_DENOISE = 512;
 export const FLAG_EXTERNAL_EXPOSURE = 1024;
+// Consumed only by the standalone moments pass (its own constants buffer).
+export const FLAG_MOMENTS_YCOCG = 2048;
 
 /** Per-frame constants uniform block. Binding 0 in every FSR pass. */
 export const WGSL_CONSTANTS = /* wgsl */ `
@@ -94,28 +96,6 @@ fn tonemapInvertible(c : vec3f) -> vec3f {
 fn tonemapInvert(c : vec3f) -> vec3f {
     let m = min(max(max(c.r, c.g), max(c.b, 0.0)), 0.999);
     return c / (1.0 - m);
-}
-`;
-
-/**
- * Display transform: ACES filmic approximation (Narkowicz) + sRGB OETF.
- * Every output path (blit, EASU, RCAS) funnels through this so all bench
- * modes are visually comparable.
- */
-export const WGSL_DISPLAY_TRANSFORM = /* wgsl */ `
-fn acesFilm(x : vec3f) -> vec3f {
-    let a = 2.51; let b = 0.03; let c = 2.43; let d = 0.59; let e = 0.14;
-    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), vec3f(0.0), vec3f(1.0));
-}
-
-fn srgbEncode(c : vec3f) -> vec3f {
-    let lo = c * 12.92;
-    let hi = 1.055 * pow(max(c, vec3f(0.0)), vec3f(1.0 / 2.4)) - 0.055;
-    return select(hi, lo, c <= vec3f(0.0031308));
-}
-
-fn displayTransform(linearHdr : vec3f) -> vec3f {
-    return srgbEncode(acesFilm(linearHdr));
 }
 `;
 

@@ -1,4 +1,4 @@
-import { WGSL_CONSTANTS, WGSL_DISPLAY_TRANSFORM, WGSL_TONEMAP } from './common';
+import { WGSL_CONSTANTS } from './common';
 import { assembleShader } from './wgsl';
 
 /**
@@ -17,11 +17,12 @@ import { assembleShader } from './wgsl';
  * are replaced by exact `1/x` / `inverseSqrt` (negligible cost on modern
  * GPUs, and WGSL has no direct float bit-cast idiom for them), and taps are
  * `textureLoad`s instead of packed `textureGather`s — an acceptable trade
- * for a test bench (noted in the package README as a Phase 5 optimization).
+ * (gather packing is a deliberately deferred perf-only optimization; see the
+ * package README's status section).
  *
- * Per the FSR1 spec, EASU runs on display-referred (tonemapped, perceptual)
- * data, so the display transform is applied per tap here and RCAS runs on
- * this pass's output space directly.
+ * Per the FSR1 spec, EASU expects perceptual input. The upscaler does not
+ * choose or bake a presentation transform; callers that use the spatial path
+ * are responsible for supplying the intended color domain.
  *
  * Bindings:
  * - 1: input color, render resolution (linear HDR)
@@ -29,17 +30,14 @@ import { assembleShader } from './wgsl';
  */
 export const EASU_SHADER = assembleShader(
     WGSL_CONSTANTS,
-    WGSL_TONEMAP,
-    WGSL_DISPLAY_TRANSFORM,
     /* wgsl */ `
 @group(0) @binding(1) var inputColor : texture_2d<f32>;
 @group(0) @binding(2) var outputColor : texture_storage_2d<rgba16float, write>;
 
-// Loads a render-resolution texel in display space (clamped at the borders).
+// Loads a render-resolution texel in the caller's color domain.
 fn easuLoad(p : vec2i) -> vec3f {
     let clamped = clamp(p, vec2i(0), vec2i(C.renderSize) - 1);
-    let c = textureLoad(inputColor, clamped, 0).rgb;
-    return displayTransform(c * C.exposure);
+    return textureLoad(inputColor, clamped, 0).rgb;
 }
 
 // EASU operates on a green-weighted luma: L = 0.5*R + G + 0.5*B.

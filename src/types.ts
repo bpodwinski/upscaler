@@ -30,11 +30,15 @@ export enum QualityMode {
  *   baseline every other mode is compared against (and, at ratio 1, the
  *   "native" passthrough mode).
  * - `spatial` — single-frame FSR1 (EASU + RCAS). No history, no motion
- *   vectors required. Phase 1 baseline.
+ *   vectors required.
  * - `temporal` — FSR2/3-style jittered temporal accumulation. Requires depth
- *   and motion vectors. Phase 2.
+ *   and motion vectors.
+ * - `guides` — the temporal path's geometry front-end only (dilated
+ *   depth/motion + disocclusion via {@link Upscaler.dispatchGuides}), for
+ *   apps that consume the {@link TemporalGuides} bundle without upscaling.
+ *   No color input, no history, no output texture.
  */
-export type UpscalePath = 'bilinear' | 'spatial' | 'temporal';
+export type UpscalePath = 'bilinear' | 'spatial' | 'temporal' | 'guides';
 
 /**
  * Debug visualization modes rendered by the debug pass instead of the final
@@ -131,16 +135,31 @@ export interface DispatchInputs {
      * Optional reactive mask at render resolution — the red channel in `[0, 1]`
      * flags pixels whose current-frame color should dominate over history
      * (additive particles, transparent/animated surfaces that have no reliable
-     * depth or motion and would otherwise ghost). Higher = more reactive. Author
-     * it yourself (render your transparents' coverage) or via a future helper.
+     * depth or motion and would otherwise ghost). Higher = more reactive.
+     * Author it yourself (render your transparents' coverage), or let an
+     * effect write into `guides.reactive` between the split dispatches and
+     * pass that texture here. When {@link reactiveOpaqueColor} is also set,
+     * this mask **merges** (per-pixel `max`) with the auto-generated diff —
+     * it is never overwritten — but it must then be a different texture than
+     * the generated target (`guides.reactive`).
      */
     reactive?: Texture;
     /**
-     * Opaque-only scene color at render resolution. When provided (and no
-     * explicit {@link reactive} mask is given), the upscaler auto-generates the
-     * reactive mask from the difference between this and the final `color` —
-     * FSR2's `GenerateReactiveMask`. Render your scene once with transparents
-     * hidden into this buffer; `color` stays the full composited render.
+     * Optional Transparency & Composition mask at render resolution. This is
+     * intentionally softer than {@link reactive}: it tightens history
+     * rectification and reduces lock/history confidence without forcing the
+     * aggressive current-frame reset used for particles and untracked transparents.
+     * Consumed by source-style structural resolver candidates; ignored by the
+     * production fallback.
+     */
+    transparencyAndComposition?: Texture;
+    /**
+     * Opaque-only scene color at render resolution. When provided, the
+     * upscaler auto-generates a reactive mask from the difference between
+     * this and the final `color` — FSR2's `GenerateReactiveMask` — and
+     * max-merges any {@link reactive} input into it. Render your scene once
+     * with transparents hidden into this buffer; `color` stays the full
+     * composited render.
      */
     reactiveOpaqueColor?: Texture;
     /**
@@ -154,10 +173,103 @@ export interface DispatchInputs {
      * brightness. Mirrors FSR3's `exposure` dispatch resource.
      */
     exposureTexture?: Texture;
+    /**
+     * Optional host pre-exposure texture (red texel, typically 1×1): the
+     * exposure factor the app has already baked into this frame's input color.
+     * Unlike {@link exposureTexture}, this factor is part of the caller's
+     * color domain and is therefore preserved at output. The temporal path
+     * tracks its previous/current ratio and corrects reprojected history
+     * across a change (FSR3's `DeltaPreExposure`), so stepping or ramping the
+     * host exposure does not read as a full-screen shading change. Omission is
+     * equivalent to `1`.
+     */
+    preExposureTexture?: Texture;
     /** Drop all history this frame (camera cut, teleport, resize). */
     reset?: boolean;
     /** Seconds since the previous frame. */
     deltaTime?: number;
+}
+
+/**
+ * Per-frame inputs for {@link Upscaler.dispatchGuides} — the early, geometry
+ * stage of a split frame. Needs no color: the guides are signal-agnostic.
+ */
+export interface GuideDispatchInputs {
+    /** Scene depth at render resolution. */
+    depth: Texture;
+    /**
+     * Screen-space motion vectors at render resolution (NDC delta, as
+     * produced by three's `velocity` node).
+     */
+    velocity: Texture;
+    /** Drop all history this frame (camera cut, teleport, resize). */
+    reset?: boolean;
+    /** Seconds since the previous frame. */
+    deltaTime?: number;
+}
+
+/**
+ * The published per-frame data products ("temporal guides") other temporal
+ * consumers — SSGI/SSR temporal passes, denoisers, any TAA-class effect —
+ * can sample instead of re-deriving privately. All fields are ordinary three
+ * textures, consumable as TSL `texture()` nodes or via raw bind groups.
+ *
+ * Contract notes (full spec: TEMPORAL-GUIDES-SPEC.md):
+ * - Ping-ponged products resolve to the **most recently written** half, so
+ *   re-read the getter each frame (or re-point a texture node's `value`).
+ * - Early products (`dilatedMotion`, `dilatedDepth`, `previousDepth`,
+ *   `disocclusion`) are valid after {@link Upscaler.dispatchGuides}; the
+ *   rest are late products, valid after {@link Upscaler.dispatch} /
+ *   {@link Upscaler.dispatchUpscale} — for consumers that run before the
+ *   late stage they are the *previous frame's* state (the correct prior).
+ * - Channels not documented here are reserved and may be repurposed.
+ */
+export interface TemporalGuides {
+    /**
+     * Closest-depth-dilated motion at render res (rgba16float). `.xy` is a
+     * **UV delta** with the y-flip already applied: `prevUV = uv - motion`.
+     */
+    readonly dilatedMotion: Texture;
+    /** Dilated linear view depth (eye-Z) at render res (r32float, nearest-sample only). */
+    readonly dilatedDepth: Texture;
+    /** Previous frame's dilated linear view depth (r32float, nearest-sample only). */
+    readonly previousDepth: Texture;
+    /** Graded disocclusion at render res (rgba8unorm, `.r`): 0 stable → 1 fresh. */
+    readonly disocclusion: Texture;
+    /**
+     * The merged reactive mask target at render res (rgba8unorm, `.r`).
+     * Written by the generator on a dispatch with `reactiveOpaqueColor`
+     * (max-merged with any incoming mask). Storage-writable: an effect may
+     * also write reactivity into it between `dispatchGuides` and
+     * `dispatchUpscale` and pass it back as `DispatchInputs.reactive`
+     * (without `reactiveOpaqueColor`). `null` on the `guides` path.
+     */
+    readonly reactive: Texture | null;
+    /**
+     * Shading-change response at ceil(render/2) (r32float, nearest-sample
+     * only): 0..1 per block. `null` on the `guides` path.
+     */
+    readonly shadingChange: Texture | null;
+    /**
+     * The 1×1 exposure state (rgba16float): r = conditioning pre-exposure,
+     * g = average scene luma (exposed **beauty** luma — wrong space for GI
+     * statistics), b = host pre-exposure. `null` on the `guides` path.
+     */
+    readonly exposure: Texture | null;
+    /**
+     * Luminance-stability lock state at **display** res (rgba16float):
+     * r = lock lifetime, g = locked luma (conditioned tonemap space),
+     * b = shading-change age. A previous-frame prior for render-stage
+     * consumers. `null` on the `guides` path.
+     */
+    readonly lockStatus: Texture | null;
+    /**
+     * The accumulated history at **display** res (rgba16float): rgb in
+     * conditioned tonemap space (not display-ready), `.a` = accumulation
+     * age in frames (0..maxAccumulation). A previous-frame prior for
+     * render-stage consumers. `null` on the `guides` path.
+     */
+    readonly history: Texture | null;
 }
 
 /**

@@ -3,7 +3,7 @@ import { assembleShader } from './wgsl';
 
 /**
  * Reconstruct pass — fuses FSR2/3's "reconstruct & dilate" and "depth clip"
- * stages into one render-resolution dispatch (a Phase-5 merge: depth clip only
+ * stages into one render-resolution dispatch (fused deliberately: depth clip only
  * ever read the current pixel's own dilated depth and motion, both of which
  * this pass already has in-register, plus the previous frame's dilated depth).
  *
@@ -15,6 +15,20 @@ import { assembleShader } from './wgsl';
  *    dilated (linear) depth against last frame's dilated depth; a surface that
  *    was hidden behind something nearer last frame is disoccluded and its
  *    history must be dropped.
+ *
+ * The comparison is cross-frame (current depth vs last frame's dilated-depth
+ * texture) — deliberately cheaper than the reference, which scatters current
+ * depth into a same-frame "reconstructed previous depth" buffer and compares
+ * against that (measured +22–30% for those passes in the parity program). The
+ * price of the cross-frame form is sampling mismatch: the reprojected point
+ * carries sub-texel error (bilinear taps, jitter phase), so on steep depth
+ * gradients — a ground plane at grazing incidence — neighboring taps differ
+ * by many view units and a fixed tolerance reads that as separation
+ * (measured: full-screen disocclusion flicker on the distant floor in
+ * example 12). Two compensations make the cheap form sound: the reprojection
+ * is jitter-delta-compensated (same derivation as shadingChange.ts), and the
+ * separation tolerance is widened by the 3×3 neighborhood's own depth relief,
+ * which the dilation ring provides for free.
  *
  * Bindings:
  * - 1: scene depth (depth texture, render size)
@@ -35,27 +49,12 @@ export const RECONSTRUCT_SHADER = assembleShader(
 @group(0) @binding(5) var dilatedMotion : texture_storage_2d<rgba16float, write>;
 @group(0) @binding(6) var maskOutput : texture_storage_2d<rgba8unorm, write>;
 
-// Relative separation (fraction of current view depth) treated as a full
-// disocclusion. Depth differences below ~1.5% are considered the same surface,
-// absorbing depth-buffer quantization and dilation error.
-const DEPTH_SEPARATION_SCALE : f32 = 0.066;
-const DEPTH_SIMILARITY_FLOOR : f32 = 0.015;
-
-// Manual bilinear fetch — r32float is not filterable, but linear view-space
-// depth interpolates correctly by hand.
-fn samplePreviousDepth(uv : vec2f) -> f32 {
-    let pos = uv * C.renderSize - 0.5;
-    let base = floor(pos);
-    let frac = pos - base;
-    let maxCoord = vec2i(C.renderSize) - 1;
-    let p00 = clamp(vec2i(base), vec2i(0), maxCoord);
-    let p11 = clamp(vec2i(base) + 1, vec2i(0), maxCoord);
-    let d00 = textureLoad(previousDepth, p00, 0).r;
-    let d10 = textureLoad(previousDepth, vec2i(p11.x, p00.y), 0).r;
-    let d01 = textureLoad(previousDepth, vec2i(p00.x, p11.y), 0).r;
-    let d11 = textureLoad(previousDepth, p11, 0).r;
-    return mix(mix(d00, d10, frac.x), mix(d01, d11, frac.x), frac.y);
-}
+// AMD's separation tolerance (ffx_fsr2_depth_clip.h): the minimum view-depth
+// gap that reads as a different surface scales with viewport resolution and
+// scene depth, absorbing depth-buffer quantization without a scene-tuned guess.
+const DEPTH_SEPARATION_CONSTANT : f32 = 1.37e-5;
+// Bilinear taps lighter than this cannot vote (matches the reference).
+const DEPTH_TAP_WEIGHT_FLOOR : f32 = 6.1e-4;
 
 @compute @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) gid : vec3u) {
@@ -67,6 +66,7 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     // With a reversed depth buffer larger values are nearer; otherwise smaller.
     let reversed = hasFlag(FLAG_REVERSED_DEPTH);
     var bestDepth = textureLoad(sceneDepth, center, 0);
+    var farthestDepth = bestDepth;
     var bestCoord = center;
     for (var y = -1; y <= 1; y++) {
         for (var x = -1; x <= 1; x++) {
@@ -80,27 +80,87 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
                 bestDepth = d;
                 bestCoord = p;
             }
+            let farther = select((d > farthestDepth), (d < farthestDepth), reversed);
+            if (farther) { farthestDepth = d; }
         }
     }
 
     let curDepth = linearizeDepth(bestDepth);
+    // The neighborhood's own depth relief in view units — how much the local
+    // surface slopes across one texel ring. A reprojected tap can legitimately
+    // land anywhere inside this relief without being a different surface.
+    let localRelief = max(linearizeDepth(farthestDepth) - curDepth, 0.0);
     let uvDelta = textureLoad(sceneVelocity, bestCoord, 0).xy * C.motionScale;
     textureStore(dilatedDepth, gid.xy, vec4f(curDepth, 0.0, 0.0, 0.0));
     textureStore(dilatedMotion, gid.xy, vec4f(uvDelta, 0.0, 0.0));
 
     //* Depth Clip — disocclusion from the just-dilated depth + motion.
+    // Derived from AMD's formulation (ffx_fsr2_depth_clip.h ComputeDepthClip,
+    // via the GPU-verified candidate port): each bilinear tap of last frame's
+    // dilated depth votes a confidence that its separation from the current
+    // depth is within the viewport/depth-scaled tolerance. We diverge in the
+    // aggregation — the best tap wins instead of a positive-separation-only
+    // weighted mean — because our cross-frame compare (unlike upstream's
+    // same-frame scatter) carries the previous frame's silhouette
+    // quantization; see the vote comment below.
     let uv = (vec2f(gid.xy) + 0.5) * C.renderSizeInv;
-    let prevUV = uv - uvDelta;
+    // Texel i samples the scene at i + jitter, so the previous frame's
+    // equivalent position shifts by the jitter delta — without this the
+    // comparison point oscillates ±½ texel with the jitter sequence, which
+    // on a depth gradient reads as per-phase disocclusion flicker.
+    let prevUV = uv - uvDelta + (C.jitter - C.jitterPrev) * C.renderSizeInv;
     if (any(prevUV < vec2f(0.0)) || any(prevUV > vec2f(1.0))) {
         textureStore(maskOutput, gid.xy, vec4f(1.0, 0.0, 0.0, 1.0));
         return;
     }
-    // History is invalid when the previous surface was meaningfully nearer than
-    // the current one (i.e. the current surface was occluded).
-    let prevDepth = samplePreviousDepth(prevUV);
-    let separation = max(0.0, curDepth - prevDepth);
-    let relative = max(0.0, separation / max(curDepth, 1.0e-4) - DEPTH_SIMILARITY_FLOOR);
-    let disocclusion = clamp(relative / DEPTH_SEPARATION_SCALE, 0.0, 1.0);
+    let samplePosition = prevUV * C.renderSize - 0.5;
+    let base = vec2i(floor(samplePosition));
+    let fraction = fract(samplePosition);
+    let offsets = array<vec2i, 4>(vec2i(0, 0), vec2i(1, 0), vec2i(0, 1), vec2i(1, 1));
+    let weights = vec4f(
+        (1.0 - fraction.x) * (1.0 - fraction.y),
+        fraction.x * (1.0 - fraction.y),
+        (1.0 - fraction.x) * fraction.y,
+        fraction.x * fraction.y
+    );
+    let halfViewportWidth = length(C.renderSize * 0.5);
+    var surfaceConfidence = 0.0;
+    var sawValidTap = false;
+    for (var index = 0; index < 4; index++) {
+        let weight = weights[index];
+        if (weight <= DEPTH_TAP_WEIGHT_FLOOR) { continue; }
+        let p = clamp(base + offsets[index], vec2i(0), maxCoord);
+        let prevDepth = textureLoad(previousDepth, p, 0).r;
+        let difference = curDepth - prevDepth;
+        // A tap at or behind the current surface recognizes it as visible last
+        // frame — full confidence. Taps in front witness a possible occluder,
+        // with confidence falling as the separation exceeds the tolerance.
+        var tapConfidence = 1.0;
+        if (difference > 0.0) {
+            // Tolerance: the viewport/depth-scaled quantization term (reference
+            // formulation), widened by the neighborhood's own relief so a
+            // slope's legitimate per-texel depth change is not read as
+            // separation.
+            let required = max(
+                DEPTH_SEPARATION_CONSTANT * halfViewportWidth * max(curDepth, prevDepth),
+                localRelief,
+            );
+            tapConfidence = clamp(required / max(difference, 1.0e-7), 0.0, 1.0);
+        }
+        // MAX vote, not a weighted mean: the previous dilated-depth field is
+        // quantized to texels, so its silhouette boundary lands up to a texel
+        // away from this frame's — on a still scene one straddling tap then
+        // reads the old occluder and, under a mean (worse: under the old
+        // positive-difference-only vote, where agreeing taps carried no
+        // weight), re-disoccludes every silhouette every frame — rolling
+        // accumulation-age rings and permanent edge shimmer (consumer report
+        // 3). If ANY footprint tap recognizes the current surface, it is the
+        // same surface; a genuine disocclusion trail has every tap on the old
+        // occluder and still reads ~1.
+        surfaceConfidence = max(surfaceConfidence, tapConfidence);
+        sawValidTap = true;
+    }
+    let disocclusion = select(0.0, clamp(1.0 - surfaceConfidence, 0.0, 1.0), sawValidTap);
     textureStore(maskOutput, gid.xy, vec4f(disocclusion, 0.0, 0.0, 1.0));
 }
 `,
