@@ -29,12 +29,16 @@ import { addRenderScale, basePercent } from '../shared/ui';
 //*   pass(scene) → SSGI + SSR → denoise → composite → upscale() → screen
 //*
 //* This is the whole-scene temporal path: the scene *and* both effects render at
-//* 1/ratio, and FSR3 upscales the final composited frame. FSR3 doubles as the
-//* effects' temporal resolver (their per-frame noise rotation converges under
-//* FSR3's jittered accumulation) — so, like example 06, there is NO separate
-//* TRAA. Because the composable `upscale()` node registers its inputs as graph
-//* dependencies, three renders the whole reduced-res chain in-pipeline, jittered,
-//* right before the FSR compute — no manual driving.
+//* 1/ratio, and FSR3 upscales the final composited frame. There is NO separate
+//* TRAA — but note FSR3 does NOT satisfy SSGI's TRAA contract: SSGINode's
+//* `useTemporalFiltering` rotates the sampling pattern on a 6-frame cycle, and
+//* that per-frame GI swing inflates FSR3's variance clip along silhouettes, so
+//* stale history streaks out of moving edges. We turn it off and take three's
+//* documented alternative (static pattern + DenoiseNode); FSR3 still owns AA
+//* and residual-noise convergence. Because the composable `upscale()` node
+//* registers its inputs as graph dependencies, three renders the whole
+//* reduced-res chain in-pipeline, jittered, right before the FSR compute — no
+//* manual driving.
 
 const { renderer, dpr } = await bootRenderer();
 
@@ -132,6 +136,10 @@ function configure(): void {
         // three r185's SSGINode splits its output into separate AO + GI nodes
         // (getAONode/getGINode) — the old single-texture getTextureNode() is gone.
         const giPass = ssgi(beauty, depth, normal, camera);
+        // SSGI's rotating temporal pattern requires a true TRAA to resolve;
+        // under FSR3 it ghost-streaks off moving silhouettes. Static pattern +
+        // DenoiseNode is three's documented recipe for the no-TRAA case.
+        giPass.useTemporalFiltering = false;
         const ao = sw(giPass.getAONode());
         const gi = sw(denoise(giPass.getGINode() as never, depth, normal, camera));
         // beauty * AO  +  albedo * indirect-bounce
