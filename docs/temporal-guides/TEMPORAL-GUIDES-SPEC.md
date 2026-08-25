@@ -16,7 +16,7 @@ TSL consumer. Integration entry point:
 [GUIDES-HANDOFF.md](GUIDES-HANDOFF.md). Contract frozen at M0
 (consumer review in [GUIDES-SPEC-RESPONSE.md](GUIDES-SPEC-RESPONSE.md),
 resolution in §10).
-Request: [bench/docs/FSR3-BRIEF.md](bench/docs/FSR3-BRIEF.md) — the consuming
+Request: [bench/docs/FSR3-BRIEF.md](../../bench/docs/FSR3-BRIEF.md) — the consuming
 pipeline (SSGI temporal pass, an SVGF-style denoiser, any TAA-class effect)
 wants the upscaler's early data products as first-class outputs instead of
 re-deriving worse versions privately. This spec maps that request onto what
@@ -57,7 +57,7 @@ product's space, resolution, and latency so a consumer can't mis-apply it.
 The brief prescribes a 4-pass decomposition ("pass boundaries, not a
 monolith"). We decline the *dispatch* shape and keep the *data* shape:
 
-- Our fusions are measured wins from the parity program (see `PARITY.md`):
+- Our fusions are measured wins from the parity program (see `../research/PARITY.md`):
   dilate + depth-clip fused is 0.035 ms where the source's split form costs
   ~3×; the shading detector is one fused dispatch at 0.044 ms vs the
   two-pass candidate's 0.231 ms. Splitting dispatches to mirror the brief's

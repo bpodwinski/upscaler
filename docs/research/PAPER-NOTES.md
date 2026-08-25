@@ -26,7 +26,7 @@ them); 4×4 is the smallest stable scale.
 
 **Evidence:** `src/shaders/shadingChange.ts` (inline comments record the
 measured floors); five GPU tuning iterations in
-`bench/docs/NEXT-STEPS.md` (item 4); PARITY.md §3. Measured on Q1/Q4/Q9/Q11.
+`bench/docs/NEXT-STEPS.md` (item 4); `docs/research/PARITY.md` §3. Measured on Q1/Q4/Q9/Q11.
 
 **Still needs:** a minimal synthetic reproduction (checkerboard + jitter, no
 upscaler) showing the bias analytically and numerically; comparison against
@@ -50,7 +50,7 @@ in-register. The gather + repairs form retains the scatter's stability at
 the gather's cost.
 
 **Evidence:** commit `b16274a`; `src/shaders/reconstruct.ts` (inline);
-PARITY.md §1 ("the price of skipping the scatter"); flicker metrology in the
+`docs/research/PARITY.md` §1 ("the price of skipping the scatter"); flicker metrology in the
 commit message (example-12 disocclusion quadrant, before/after);
 `bench/results/raw/GUIDES-M1/capture-depthfix`.
 
@@ -90,7 +90,7 @@ phase-locked, motion scenarios unchanged.
 **Evidence:** `bench/docs/NEXT-STEPS.md` §5 (full measurement ladder);
 `scripts/measure-convergence.mjs` (the phase-locked metric);
 `bench/results/raw/convergence/*`; consumer cross-validation in
-GUIDES-HANDOFF-RESPONSE.md report 3 (independent repro + their converging
+`docs/temporal-guides/GUIDES-HANDOFF-RESPONSE.md` report 3 (independent repro + their converging
 α=1/N counter-example). Cornell + IGN-dithered Vogel shadow (screen-anchored
 dither = adversarially unstable input luminance): 0.024 consecutive.
 
@@ -111,7 +111,8 @@ behaviors *were* worth adopting (conditioned-space RCAS −34%, AMD's
 disocclusion tolerance, DeltaPreExposure) and which were not.
 
 **Evidence:** the whole parity program — `bench/docs/PARITY-DECISIONS.md`,
-`bench/docs/PARITY-CANDIDATES.md`, `bench/docs/NEXT-STEPS.md`, PARITY.md.
+`bench/docs/PARITY-CANDIDATES.md`, `bench/docs/NEXT-STEPS.md`,
+`docs/research/PARITY.md`.
 Candidate bundles remain runnable
 (`node scripts/run-benchmark.mjs --smoke --variant <A> --comparison <B>`).
 
@@ -132,7 +133,8 @@ early product (it derives from final color by construction), so the correct
 contract is previous-frame priors, which is also exactly what
 history-rejection consumers want.
 
-**Evidence:** `TEMPORAL-GUIDES-SPEC.md` (+ `GUIDES-SPEC-RESPONSE.md`, the
+**Evidence:** `docs/temporal-guides/TEMPORAL-GUIDES-SPEC.md`
+(+ `docs/temporal-guides/GUIDES-SPEC-RESPONSE.md`, the
 consumer-side review); implementation on branch `feat-temporal-guides`
 (M1/M2 commits); the acceptance A/B (guides-fed SSGI temporal vs private
 logic) will live in the consumer repo's demo-10 lab.
@@ -152,7 +154,8 @@ PARITY-DECISIONS) that long ABBA sequences show monotonic drift that
 forbids fine-margin claims.
 
 **Evidence:** `bench/results/raw/GUIDES-M1/` (timing vs timing-pre/pre2 vs
-timing-post-wt); CLAUDE.md bench caveat; TEMPORAL-GUIDES-SPEC.md M1 notes.
+timing-post-wt); CLAUDE.md bench caveat;
+`docs/temporal-guides/TEMPORAL-GUIDES-SPEC.md` M1 notes.
 
 **Still needs:** nothing much — this is a workshop/appendix note, but worth
 a paragraph wherever the timing methodology is described.

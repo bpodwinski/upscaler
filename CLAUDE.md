@@ -30,7 +30,7 @@ live" section remains the guide for visual regressions.
 **Parity program concluded (2026-07-21):** the three source-style FSR 3.1.5 candidate
 graphs were GPU-verified and A/B-benchmarked against production — **+36% / +6.5% /
 +76% GPU compute with no visual win**; none adopted. Consumer-facing rationale in
-`PARITY.md` (root); evidence + decisions in `bench/docs/PARITY-DECISIONS.md` /
+`docs/research/PARITY.md`; evidence + decisions in `bench/docs/PARITY-DECISIONS.md` /
 `PARITY-CANDIDATES.md`. **Post-parity
 items 1–3 landed the same day** (see `bench/docs/NEXT-STEPS.md` for evidence):
 (1) RCAS now sharpens in conditioned tonemap space, inverting once — **−34% RCAS,
@@ -229,7 +229,8 @@ explicit acceptance test), RCAS denoise on `06-screenspace-gi`.
   after the G-buffer (geometry guides only — reconstruct is the whole early
   stage), then `dispatchUpscale({color, …})`; `path: 'guides'` runs the early
   stage alone with no output texture. Contracts + program plan:
-  `TEMPORAL-GUIDES-SPEC.md` (root); consumer M0 review: `GUIDES-SPEC-RESPONSE.md`.
+ `docs/temporal-guides/TEMPORAL-GUIDES-SPEC.md`; consumer M0 review:
+ `docs/temporal-guides/GUIDES-SPEC-RESPONSE.md`.
   **Mechanisms a change must not break:** (1) guide textures are allocated via
   `_createSharedTexture` — a three `StorageTexture` + `initTexture()`, with the
   raw handle fetched back through `getGPUTexture()`; passes bind the raw handle,
@@ -280,9 +281,9 @@ explicit acceptance test), RCAS denoise on `06-screenspace-gi`.
   shared chunk re-fingerprints every shader).
 - **MSAA input — rejected by design.** FSR's temporal path *is* the anti-aliaser (Native AA mode is exactly that), so the correct input is an aliased, single-sample, jittered render with MSAA **off** — MSAA is redundant with FSR's own AA, costs perf, and a multisampled texture can't even bind to the compute passes. (Stacking a *temporal* AA — TAA/`traa` — before FSR is worse still: double-jitter smear; example 06 already drops `traa` for this reason.) `Upscaler` warns once if handed a multisampled input (`_checkMsaa`).
 
-**Performance structure:** dilate + depth-clip are fused into the single `reconstruct.ts` dispatch (GPU-verified disocclusion unchanged); the shading detector is one fused workgroup-local reduction instead of the source's SPD mip chain + resolve pair. The measured story of these divergences from FSR 3.1.5 — and the four upstream behaviors adopted in re-derived form — is `PARITY.md` (root) with evidence in `bench/docs/NEXT-STEPS.md`.
+**Performance structure:** dilate + depth-clip are fused into the single `reconstruct.ts` dispatch (GPU-verified disocclusion unchanged); the shading detector is one fused workgroup-local reduction instead of the source's SPD mip chain + resolve pair. The measured story of these divergences from FSR 3.1.5 — and the four upstream behaviors adopted in re-derived form — is `docs/research/PARITY.md` with evidence in `bench/docs/NEXT-STEPS.md`.
 
-**Paper material:** findings that clear the "surprised us + measured + others would hit it" bar are tracked in `PAPER-NOTES.md` (root) — claim, evidence pointers, and what a publication-grade version still needs. Add new entries there as they land; don't let them live only in commit messages.
+**Paper material:** findings that clear the "surprised us + measured + others would hit it" bar are tracked in `docs/research/PAPER-NOTES.md` — claim, evidence pointers, and what a publication-grade version still needs. Add new entries there as they land; don't let them live only in commit messages.
 
 ## Deferred / out of scope
 

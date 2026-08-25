@@ -2,7 +2,7 @@
 
 Outcome of the parity program: no candidate bundle adopted wholesale (see
 [PARITY-DECISIONS.md](PARITY-DECISIONS.md) and the consumer-facing
-[/PARITY.md](../../PARITY.md)). Four items survived as adoption-worthy, and
+[`PARITY.md`](../../docs/research/PARITY.md)). Four items survived as adoption-worthy, and
 **all four landed on 2026-07-21** — this document is the evidence record for
 each. Nothing from the parity program remains open.
 

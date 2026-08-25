@@ -326,7 +326,7 @@ export class Upscaler {
      * disocclusion, and the late data products) as ordinary three textures.
      * Available on the `temporal` and `guides` paths after `configure()`.
      * See {@link TemporalGuides} for each product's contract, and
-     * TEMPORAL-GUIDES-SPEC.md for the full picture.
+     * docs/temporal-guides/TEMPORAL-GUIDES-SPEC.md for the full picture.
      */
     get guides(): TemporalGuides {
         if (!this._guides) {

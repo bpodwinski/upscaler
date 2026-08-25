@@ -135,7 +135,7 @@ Each frame the projection is offset by a sub-pixel **jitter** (Halton(2,3) seque
 
 The **spatial path** (`path: 'spatial'`) is a faithful FSR1 port: EASU's edge-direction-rotated, anisotropically-stretched 12-tap Lanczos kernel, then RCAS. No history, no motion vectors — also the fallback story for content that can't produce velocity.
 
-Full per-pass details and deviations from the FidelityFX reference: [`src/shaders/README.md`](./src/shaders/README.md). For the measured story of how this implementation relates to real FSR 3.1.5 — what matches, what was re-derived into cheaper forms, and the benchmark evidence — see [`PARITY.md`](./PARITY.md).
+Full per-pass details and deviations from the FidelityFX reference: [`src/shaders/README.md`](./src/shaders/README.md). For the measured story of how this implementation relates to real FSR 3.1.5 — what matches, what was re-derived into cheaper forms, and the benchmark evidence — see [`PARITY.md`](./docs/research/PARITY.md).
 
 ### Integration approach
 
@@ -155,11 +155,11 @@ An app that never upscales can run `path: 'guides'` for the geometry products al
 
 The same surface exists declaratively for `THREE.PostProcessing` graphs: `temporalGuides(depth, velocity, camera)` publishes the bundle as texture nodes (`guides.getTextureNode('disocclusion')`), and `upscale(color, depth, velocity, camera, { guides })` shares one computation — the guides dispatch runs as soon as the G-buffer has rendered, in-graph effects consume the products, and the upscale finishes the split frame.
 
-Per-product contracts (format, space, resolution, latency) are documented on the `TemporalGuides` type and in [`TEMPORAL-GUIDES-SPEC.md`](./TEMPORAL-GUIDES-SPEC.md); `examples/12-temporal-guides` (raw) and `examples/13-guides-node` (TSL) are the live references. The contract is **accepted**: an external SSGI/SVGF consumer swapped its private temporal front-end for the raw bundle and measured bit-identical still-camera stability (spec M6). The linked TSL surface is also graduated: Example 13 is built and real-GPU smoke-tested through the packed npm artifact, proving shared ownership, stable guide-node identity with ping-pong re-pointing, and steady-state split execution across the package boundary. This is package-boundary verification of the maintained reference graph, not a claim of an independent external TSL integration.
+Per-product contracts (format, space, resolution, latency) are documented on the `TemporalGuides` type and in [`TEMPORAL-GUIDES-SPEC.md`](./docs/temporal-guides/TEMPORAL-GUIDES-SPEC.md); `examples/12-temporal-guides` (raw) and `examples/13-guides-node` (TSL) are the live references. The contract is **accepted**: an external SSGI/SVGF consumer swapped its private temporal front-end for the raw bundle and measured bit-identical still-camera stability (spec M6). The linked TSL surface is also graduated: Example 13 is built and real-GPU smoke-tested through the packed npm artifact, proving shared ownership, stable guide-node identity with ping-pong re-pointing, and steady-state split execution across the package boundary. This is package-boundary verification of the maintained reference graph, not a claim of an independent external TSL integration.
 
 ## Status
 
-The pipeline is **feature-complete and GPU-verified**: spatial (FSR1) and temporal paths, luminance-stability locks, auto-exposure (+ external and host pre-exposure inputs), multi-scale shading-change detection, reactive masks (explicit + auto-generated), RCAS with opt-in denoise, imperative `UpscalePass`, the composable TSL nodes (`upscale` / `upscaleScene` / `upscaleSpatial`), and the raw + linked-TSL temporal-guides surfaces. A benchmarking program A/B-compared this implementation against source-style FSR 3.1.5 pass graphs on-GPU; the adopted results and remaining divergences — with measurements — are written up in [`PARITY.md`](./PARITY.md).
+The pipeline is **feature-complete and GPU-verified**: spatial (FSR1) and temporal paths, luminance-stability locks, auto-exposure (+ external and host pre-exposure inputs), multi-scale shading-change detection, reactive masks (explicit + auto-generated), RCAS with opt-in denoise, imperative `UpscalePass`, the composable TSL nodes (`upscale` / `upscaleScene` / `upscaleSpatial`), and the raw + linked-TSL temporal-guides surfaces. A benchmarking program A/B-compared this implementation against source-style FSR 3.1.5 pass graphs on-GPU; the adopted results and remaining divergences — with measurements — are written up in [`PARITY.md`](./docs/research/PARITY.md).
 
 Deliberately **not** planned:
 
@@ -177,6 +177,7 @@ src/
   shaders/             — WGSL sources as TS modules + assembler (unit-tested)
   internal/            — device access, constants UBO, pass + timestamp helpers
 bench/                 — Vite test bench (npm run dev)
+docs/                  — design records, research, and implementation plans
 ```
 
 ## Develop
