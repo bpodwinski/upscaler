@@ -29,7 +29,8 @@ shader/pipeline edits hot-reload here just like in the bench.
 | 11 | **Reactive mask (node)** (`11-node-reactive`) | The reactive mask through the composable node — an in-graph coverage pass, toggleable to A/B ghost trails. |
 | 12 | **Temporal guides** (`12-temporal-guides`) | The upscaler as a data-products provider: the split `dispatchGuides()`/`dispatchUpscale()` frame, guide textures sampled live (raw driver). |
 | 13 | **Guides node** (`13-guides-node`) | The same split frame, declaratively: `temporalGuides()` publishes the bundle into the graph, a toy effect consumes disocclusion pre-upscale, `upscale({ guides })` shares one computation. |
-
+| 14 | **Path tracer · alpha** (`14-pathtracer-alpha`) | A transparent canvas over page content: `three-gpu-pathtracer`'s WebGPU renderer accumulates at half resolution with a zero-alpha background, and the FSR1 spatial path upscales coverage along with color (issue #15). Needs network — model/HDRI and the Draco decoder are streamed. |
+| 15 | **Transparent canvas** (`15-transparent-canvas`) | Alpha on the *temporal* path — coverage reconstructed from jitter, not interpolated. The acceptance demo for temporal RGBA; toggles temporal/spatial on sub-texel wires. |
 Most interactive demos have a **render scale ×** slider (1.0×–3.0×) that sweeps the
 base render resolution, with the resulting size + base % shown in the HUD.
 
@@ -68,8 +69,9 @@ inspector can't give you per-GPU-pass times. Notes for the DPR demo:
 Demos `01`–`05` drive the library through [`shared/UpscalePresenter.ts`](shared/UpscalePresenter.ts),
 which encapsulates the whole imperative integration recipe (jitter-free velocity,
 MRT output count matched to the render-target attachment count, float depth, the
-linear/HDR output, and renderer-owned presentation). `06` and `12` drive the raw
-`Upscaler` directly (an external effect graph, and the split guides frame).
+linear/HDR output, and renderer-owned presentation). `06`, `12`, and `14` drive the raw
+`Upscaler` directly (an external effect graph, the split guides frame, and a
+path-traced RGBA buffer).
 `07`–`11` and `13` are the TSL-node surface — no presenter at all, the node owns
 the recipe inside the post graph. New imperative demos should reuse the presenter
 rather than re-deriving the wiring; new graph demos should start from `07`.
@@ -91,3 +93,28 @@ FSR3 is a raw compute pipeline that owns the final present, while three's
 
 Because the pass graph compiles asynchronously, `06` waits (via an `isBacked()`
 check) until the depth/velocity GPU textures exist before the first dispatch.
+
+### The `14` pattern (transparent canvas)
+
+Alpha survives every path, so a renderer created with `alpha: true` composites over
+the page. Three things have to line up:
+
+1. `new WebGPURenderer({ alpha: true })` (the swap chain goes to `'premultiplied'`)
+   plus `renderer.setClearAlpha(0)` and `scene.background = null`, so the render
+   leaves the background at alpha 0.
+2. The input the upscaler is handed must actually carry that alpha — for `14` that
+   is the path tracer's own RGBA accumulation target.
+3. The present must keep it. `UpscalePass.present()` already does (its quad is
+   `transparent: true` + `NoBlending` — a full-screen present is an overwrite, and
+   an opaque material would resolve alpha to 1); a hand-rolled present quad needs
+   the same two flags. The TSL nodes need nothing special.
+
+`14` also pins the path tracer's size (`synchronizeRenderSize` and `dynamicLowRes`
+off) because both resize the accumulation target behind the caller's back, while the
+upscaler is configured for one fixed render resolution.
+
+Its assets are pinned to a **commit**, not a branch. The rover model was re-compressed
+upstream (meshopt → Draco) mid-development, which broke a `main`-branch URL without any
+change on our side; a commit URL is immutable, so the example keeps needing exactly the
+decoder it ships with. Both `DRACOLoader` and `MeshoptDecoder` are attached anyway, so
+re-pointing `MODEL_URL` at another model in that data set needs no code change.

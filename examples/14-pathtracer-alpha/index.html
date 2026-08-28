@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>14 · Path tracer over a transparent canvas</title>
+        <style>
+            :root {
+                color-scheme: dark;
+                --text: #cfd8e3;
+                --muted: #8592a3;
+                --accent: #7dd3fc;
+            }
+            html,
+            body {
+                margin: 0;
+                height: 100%;
+                overflow: hidden;
+                background: #0b0d10;
+                color: var(--text);
+                font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+            }
+            /* The canvas is transparent — everything in #page is the backdrop
+               the upscaled alpha channel has to let through. */
+            canvas {
+                display: block;
+                position: fixed;
+                inset: 0;
+                z-index: 1;
+            }
+            #page {
+                position: fixed;
+                inset: 0;
+                z-index: 0;
+                overflow: hidden;
+            }
+            body[data-backdrop='grid'] #page {
+                background:
+                    linear-gradient(rgba(125, 211, 252, 0.16) 1px, transparent 1px) 0 0 / 40px 40px,
+                    linear-gradient(90deg, rgba(125, 211, 252, 0.16) 1px, transparent 1px) 0 0 /
+                        40px 40px,
+                    radial-gradient(circle at 30% 20%, #1d2b3a, #0b0d10 70%);
+            }
+            body[data-backdrop='photo'] #page {
+                background:
+                    radial-gradient(circle at 20% 30%, #ff8a4c 0%, transparent 45%),
+                    radial-gradient(circle at 80% 25%, #7dd3fc 0%, transparent 45%),
+                    radial-gradient(circle at 50% 85%, #a78bfa 0%, transparent 50%), #10141a;
+            }
+            body[data-backdrop='text'] #page {
+                background: #f4f6fb;
+            }
+            #copy {
+                position: absolute;
+                inset: 0;
+                padding: 8vh 6vw;
+                font: 13px/2 ui-monospace, Menlo, monospace;
+                color: rgba(207, 216, 227, 0.55);
+                white-space: pre-wrap;
+                word-break: break-all;
+                user-select: none;
+            }
+            body[data-backdrop='text'] #copy {
+                color: rgba(16, 20, 26, 0.55);
+                font-size: 15px;
+            }
+            body[data-backdrop='grid'] #copy,
+            body[data-backdrop='photo'] #copy {
+                opacity: 0.5;
+            }
+            #badge {
+                position: fixed;
+                left: 12px;
+                top: 12px;
+                z-index: 2;
+                padding: 8px 11px;
+                background: rgba(8, 10, 14, 0.82);
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 8px;
+                color: #cfd8e3;
+                font: 11px/1.5 ui-monospace, Menlo, monospace;
+                white-space: pre;
+                pointer-events: none;
+            }
+            #badge b {
+                color: var(--accent);
+            }
+            #status {
+                position: fixed;
+                left: 50%;
+                top: 50%;
+                z-index: 3;
+                transform: translate(-50%, -50%);
+                color: var(--muted);
+                font: 12px/1.6 ui-monospace, Menlo, monospace;
+                pointer-events: none;
+            }
+            #note {
+                position: fixed;
+                left: 12px;
+                bottom: 12px;
+                z-index: 2;
+                max-width: 460px;
+                padding: 9px 12px;
+                background: rgba(8, 10, 14, 0.82);
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 8px;
+                color: var(--muted);
+                font: 11px/1.6 ui-monospace, Menlo, monospace;
+            }
+            #note b {
+                color: var(--text);
+            }
+            #note a {
+                color: var(--accent);
+            }
+        </style>
+    </head>
+    <body>
+        <div id="page">
+            <div id="copy">
+                the page is behind the canvas. the canvas is transparent. the path tracer renders at
+                half resolution with a zero-alpha background, the upscaler brings it back to display
+                resolution, and this text stays readable through every pixel the render did not
+                cover — including the half-covered ones along the silhouette. drag to orbit. switch
+                the backdrop from the panel to check the coverage against light and dark. the page
+                is behind the canvas. the canvas is transparent. the path tracer renders at half
+                resolution with a zero-alpha background, the upscaler brings it back to display
+                resolution, and this text stays readable through every pixel the render did not
+                cover — including the half-covered ones along the silhouette. drag to orbit. switch
+                the backdrop from the panel to check the coverage against light and dark.
+            </div>
+        </div>
+        <div id="badge"></div>
+        <div id="status">booting…</div>
+        <div id="note">
+            <b>Alpha through the upscaler.</b> The path tracer writes RGBA; EASU filters all four
+            channels and RCAS passes coverage through untouched, so the transparent canvas composites
+            over the page at display resolution. Model + HDRI from
+            <a href="https://github.com/gkjohnson/3d-demo-data" target="_blank" rel="noopener"
+                >gkjohnson/3d-demo-data</a
+            >.
+        </div>
+        <script type="module" src="./main.ts"></script>
+    </body>
+</html>

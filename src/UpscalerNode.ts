@@ -59,6 +59,14 @@ export interface UpscalerNodeOptions {
      */
     jitter?: boolean;
     /**
+     * Preserve the input's alpha through the upscale. Defaults to the
+     * renderer's own `alpha` — see {@link UpscalerOptions.alpha} for when the
+     * renderer's flag is the wrong signal and this should be set explicitly.
+     * In a post graph it often is: the canvas can be opaque while the node's
+     * output still feeds something that needs coverage.
+     */
+    alpha?: boolean;
+    /**
      * Optional reduced-res **reactive mask** texture node (red channel in
      * `[0, 1]`): flagged pixels favour the current frame over history, for
      * additive particles / transparent surfaces that have no reliable motion
@@ -214,9 +222,9 @@ export class UpscalerNode extends TempNode {
             // Linked guides mode shares one upscaler with the guides node —
             // that node dispatches the early stage, we finish the split frame.
             if (this._guidesNode) {
-                this._upscaler = this._guidesNode._acquireUpscaler(renderer);
+                this._upscaler = this._guidesNode._acquireUpscaler(renderer, this._options.alpha);
             } else {
-                this._upscaler = new Upscaler({ renderer });
+                this._upscaler = new Upscaler({ renderer, alpha: this._options.alpha });
                 this._upscaler.init();
             }
             // When we jitter, motion vectors must stay jitter-free — feed the

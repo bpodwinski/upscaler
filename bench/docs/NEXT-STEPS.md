@@ -2,9 +2,10 @@
 
 Outcome of the parity program: no candidate bundle adopted wholesale (see
 [PARITY-DECISIONS.md](PARITY-DECISIONS.md) and the consumer-facing
-[`PARITY.md`](../../docs/research/PARITY.md)). Four items survived as adoption-worthy, and
+[`PARITY.md`](../../docs/archive/research/PARITY.md)). Four items survived as adoption-worthy, and
 **all four landed on 2026-07-21** — this document is the evidence record for
-each. Nothing from the parity program remains open.
+each. Nothing from the parity program remains open. Items 5+ are later
+consumer-reported defects recorded in the same format.
 
 Every item follows the same gate: `npm test && npm run typecheck && npm run lint`,
 then an A/B timing + capture run
@@ -137,6 +138,134 @@ documented thin trailing crescents only, final ghost-free; Q4 mid-orbit final
 clean (the relax fades out above 0.5 texel/frame motion). Runs under
 `bench/results/raw/convergence/` (pre-fix / post-fix / exp-noclip /
 exp-still8 / post-fix2 labels).
+
+## 6. Alpha (RGBA) passthrough — DONE (2026-08-25, issue #15)
+
+Consumer report (gkjohnson, [#15](https://github.com/pmndrs/upscaler/issues/15)):
+the upscaler forces `vec4f(pix, 1.0)` in `easu.ts`/`rcas.ts`, so a transparent
+canvas over page content comes back fully opaque. Not the transparency the T&C
+mask ([#6](https://github.com/pmndrs/upscaler/issues/6)) is about — that one is
+partially-transparent *objects* in the scene; this is the alpha of the final
+buffer. #6 remains deferred and untouched.
+
+Reproduced and fixed:
+
+- **Where alpha lives.** The history texture's `.a` is the accumulation age, and
+  moving it would change the age's reprojection filter (Catmull-Rom → bilinear) on
+  the most convergence-sensitive path. So the resolved alpha goes in the **locks
+  texture's spare `.a`** (previously written as a literal `0.0`), and RCAS/blit read
+  it through a new binding (rcas 4, blit 5). On the bilinear and spatial paths that
+  binding is the color input itself, so one branch-free code path covers all three.
+- **Cost.** Zero extra fetch while locks are on: the lock path already samples
+  `locksIn` at `prevUV`, and that fetch is now hoisted so alpha shares it. EASU's
+  12 taps widen from `vec3f` to `vec4f`.
+- **Alpha rectification** is the local 3×3 alpha range, not the variance AABB with
+  `STILL_CLAMP_RELAX`/`LOCK_CLAMP_RELAX`. At a coverage edge the jittered taps span
+  0..1, so the box is wide and history accumulates; on a flat region the box
+  collapses and stale alpha cannot ghost. Item 5's relax machinery exists for
+  sub-texel luminance churn, which a coverage mask does not have — deliberately not
+  reused here.
+- **Opt-out, not opt-in.** `new Upscaler({ alpha: false })` compiles RGB-only
+  builds of EASU / accumulate / RCAS / blit. Those builds are **byte-identical to
+  the pre-alpha shaders** — `shaders.test.ts` pins all four fingerprints against
+  the values this repo shipped before RGBA landed, so the opt-out is provably the
+  old pipeline rather than a second code path that can drift. Selected at
+  construction (it picks pipelines, and the opaque RCAS/blit declare no alpha
+  binding, so the bind-group shapes differ). Default stays **on**: defaulting off
+  would ship the reported bug.
+- **Compile-time, not a runtime branch.** A `hasFlag()` around the work would be a
+  uniform branch, so no divergence — but it would not recover the cost, because
+  the register allocation for the wider path stays either way. Two shader builds
+  do recover it (measured below).
+
+Cost — interleaved ABBA, `--variant alpha-rgba-v1 --comparison alpha-opaque-v1`,
+300 samples/block, both sides current production on the production RCAS shader:
+
+| ratio | compute-sum (opaque → RGBA) | delta | accumulate | rcas |
+| --- | --- | --- | --- | --- |
+| 1 | 0.8887 → 0.9206 ms | +3.6% | +3.3% | +26.7% |
+| 2 | 0.6427 → 0.6753 ms | **+5.1%** | +3.4% | +27.2% |
+| 3 | 0.6006 → 0.6337 ms | +5.5% | +3.3% | +27.5% |
+
+The absolute cost is **flat at ~33 µs** (+14.6 µs accumulate, +18.1 µs rcas):
+both passes are display-resolution, so it does not scale with the ratio. The
+percentage only moves because the rest of the frame gets cheaper as the ratio
+rises. Noise floors: 0.3–0.4% on compute-sum and accumulate (delta is 10–15×
+that, solidly real); 9.7% on rcas, where the delta is ~2.8× the floor.
+
+**RCAS is the surprise: +27%.** Production RCAS is the cheap conditioned-space
+form at 0.067 ms (NEXT-STEPS item 1), so one extra display-resolution texture
+load is a large *relative* addition even though it is small in absolute terms. On
+the temporal path that load genuinely hits a second texture (the locks buffer);
+on the spatial path `alphaSource` is the color input itself and should be
+cache-warm, which this temporal-path benchmark does not measure.
+
+**Correction to an earlier measurement.** A first pass reported +2.6% total. That
+run compared two *separate* invocations (not interleaved) and, more importantly,
+used the default bench variant — which resolves to `RCAS_LEGACY_SHADER`, the
+heavy per-tap form. Against that baseline the same absolute load is a small
+relative cost, which understated the real figure. The table above supersedes it.
+
+**Reproducing it, including on a device.** The pair is registered in
+`bench/src/benchmark/variants.ts` and wrapped in `scripts/bench-alpha.mjs`:
+
+```bash
+npm run bench:alpha                              # local Chrome, ratios 1,2,3
+npm run bench:alpha -- --ratios 2 --blocks 8     # extra flags override the defaults
+npm run bench:alpha:device                       # a phone over remote debugging
+```
+
+The device mode defaults to `--cdp http://127.0.0.1:9222` and preflights it,
+because two things have to be reachable and only one of them is obvious:
+
+```bash
+adb forward tcp:9222 localabstract:chrome_devtools_remote   # drive the device
+adb reverse tcp:5199 tcp:5199                               # device -> host bench
+```
+
+`run-benchmark.mjs` hardcodes `http://127.0.0.1:5199` and binds the dev server to
+loopback, so without the **reverse** mapping the phone loads its own localhost
+and the run dies in a timeout with nothing to point at. The wrapper checks the
+DevTools endpoint, warns when `adb reverse --list` has no `tcp:5199`, and prints
+the two commands on failure. iOS cannot work at all here — Safari exposes no CDP.
+
+Two caveats on the numbers themselves: (1) `timestamp-query` is frequently absent
+on mobile browsers, and `GpuTimer` no-ops when it is, so the per-pass map comes
+back empty and only frame time is available — noisier, and it includes the scene
+render; (2) the cost is ALU and register pressure, exactly what diverges between
+desktop and a mobile tiler, so do not assume the ~33 µs transfers. Ratio 3 is the
+interesting row for mobile, and it is already the worst percentage on desktop.
+Device runs against a user-owned browser also lose the harness's cold-start and
+throttling controls, so give them more blocks than a local run needs.
+
+**Open alternative, not taken.** Putting alpha in the history texture's `.a` and
+moving the accumulation age into the locks buffer would make RCAS's alpha free
+(it would read the texture it already loads), removing ~18 µs of the 33 µs. It
+was rejected to keep the age on its exact Catmull-Rom reprojection rather than
+bilinear. The +27% figure is new evidence that this trade deserves a second look
+— but only behind `scripts/measure-convergence.mjs` on Q1/Q12, since it changes
+the most convergence-sensitive path in the pipeline. Do not do it casually.
+
+GPU verification (headless Chrome + CDP, Apple Metal-3, 2026-08-25):
+
+- **Spatial:** new `examples/14-pathtracer-alpha` — `three-gpu-pathtracer`'s WebGPU
+  branch accumulating an RGBA buffer at half resolution behind a transparent canvas.
+  Page content reads through the render at display resolution; forcing alpha back to
+  1.0 in the same scene reproduces the reported fully-opaque canvas exactly.
+- **Temporal:** transparent-canvas scene (torus knot + a thin bar), still and under
+  camera motion. Silhouette pixels measured as a clean 2-pixel ramp from the page
+  color into the object; no halo, no alpha trail under motion.
+- **Surfaces:** raw `Upscaler`, `UpscalePass`, and `upscaleScene()` all composite.
+  `UpscalePass`'s present quad needed `transparent: true` + `NoBlending` — an opaque
+  material resolves alpha to 1, and a full-screen present is an overwrite, not a
+  composite.
+- **No regressions:** examples 01/02/03/05/09/12/13 re-captured unchanged; locks and
+  accumulation-age debug views unchanged.
+
+Frozen-identity note: the alpha-source binding was added to **every** RCAS form, so
+`rcasPerTap` (and `easuSourceApprox`, which derives from `EASU_SHADER`) re-fingerprint.
+Their A/B pairings stay valid — candidate and baseline gained the same plumbing — and
+the new fingerprints are recorded in the two shader tests.
 
 ## Explicitly not planned (measured against)
 

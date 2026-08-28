@@ -30,7 +30,7 @@ live" section remains the guide for visual regressions.
 **Parity program concluded (2026-07-21):** the three source-style FSR 3.1.5 candidate
 graphs were GPU-verified and A/B-benchmarked against production — **+36% / +6.5% /
 +76% GPU compute with no visual win**; none adopted. Consumer-facing rationale in
-`docs/research/PARITY.md`; evidence + decisions in `bench/docs/PARITY-DECISIONS.md` /
+`docs/archive/research/PARITY.md`; evidence + decisions in `bench/docs/PARITY-DECISIONS.md` /
 `PARITY-CANDIDATES.md`. **Post-parity
 items 1–3 landed the same day** (see `bench/docs/NEXT-STEPS.md` for evidence):
 (1) RCAS now sharpens in conditioned tonemap space, inverting once — **−34% RCAS,
@@ -88,6 +88,15 @@ npm test           # vitest — jitter math, quality presets, WGSL module assemb
 npm run typecheck  # tsc --noEmit
 npm run lint       # eslint
 npm run build      # library build → dist/ (vite lib + tsc declarations)
+
+# How to run/read a benchmark, the Q0-Q12 scenario catalogue, and the device
+# setup: bench/docs/BENCHMARKING.md
+
+# RGBA-passthrough A/B (alpha on vs off, interleaved ABBA). --device drives a
+# phone over remote debugging; it preflights the CDP endpoint and the adb
+# reverse mapping the bench dev server needs. Evidence: bench/docs/NEXT-STEPS.md §6.
+npm run bench:alpha
+npm run bench:alpha:device
 
 # Still-scene convergence meter (GPU, headless Chrome + CDP): consecutive +
 # same-jitter-phase frame diffs plus debug-view PNGs on a deterministic
@@ -212,6 +221,44 @@ explicit acceptance test), RCAS denoise on `06-screenspace-gi`.
 - **Reactive-mask authoring helper.** `dispatch({ reactiveOpaqueColor })` auto-generates the mask from the opaque-vs-final color diff (`generateReactive.ts`, FSR2's `GenerateReactiveMask`); no explicit `reactive` mask needed. `UpscalePresenter.setReactiveOpaqueColor()` threads it; `examples/05-transparency` offers manual-coverage vs auto-diff. Caveat: jitter the opaque pass like the final or high-contrast edges leave faint reactivity (sub-pixel misalignment).
 - **RCAS denoise variant.** `rcas.ts` has FSR1's `FSR_RCAS_DENOISE` path (attenuate the sharpening lobe on lone luma outliers so grain from noisy inputs isn't amplified), gated by `settings.rcasDenoise` (`FLAG_RCAS_DENOISE`, off by default). Pairs with an upstream spatial denoiser; `examples/06-screenspace-gi` toggles it on for the reduced-res SSR/GI.
 
+**Alpha (RGBA) passthrough** (2026-08-25, issue #15). Every path preserves the input's
+alpha instead of writing 1.0, so a `WebGPURenderer({ alpha: true })` canvas stays
+transparent through the upscale. EASU filters RGBA with one kernel; RCAS sharpens RGB and
+passes the center tap's alpha; the temporal path resolves alpha with the accumulate pass's
+own Lanczos taps and blend weight. **The mechanism to not re-break:** the history
+texture's `.a` is the accumulation age, so resolved alpha is stored in the **locks
+texture's spare `.a`** and read by RCAS/blit through a dedicated binding (rcas 4, blit 5;
+bound to the color input itself on the bilinear/spatial paths, so one code path covers
+all three). This keeps the age on its exact Catmull-Rom reprojection — the delicate,
+measured part — and costs no extra fetch while locks are on, since the lock path already
+samples `locksIn` at `prevUV`. Alpha's rectification is the local 3×3 alpha range, not the
+variance AABB + relax terms (a coverage mask has no sub-texel luminance churn to protect).
+**The default follows `renderer.alpha`** — a transparent canvas is exactly the case that
+needs coverage carried through, and an opaque one cannot display it, so most users never
+touch the flag. Explicit `alpha: true/false` overrides (an opaque canvas whose output is
+composited elsewhere needs `true`; the renderer's flag cannot see that). Threaded through
+`UpscalePass`, `UpscalerNode`, and the linked-guides `_acquireUpscaler` handshake — which
+warns rather than silently ignoring a conflicting request, since pipelines are already
+compiled by then. `upscaler.alpha` reports the resolved value; `src/upscaler.test.ts` pins
+the resolution rule (GPU-free). `alpha: false` compiles RGB-only builds
+of EASU/accumulate/RCAS/blit that are **byte-identical to the pre-alpha shaders**
+(`shaders.test.ts` pins all four fingerprints — if one drifts the opt-out has silently
+become a second code path). It is a constructor option, not a setting: it selects
+pipelines, and the opaque RCAS/blit declare no alpha binding, so bind-group shapes differ
+with it. Deliberately compile-time rather than a `hasFlag()` branch — a uniform branch
+would not recover the cost, since the wider path's register allocation stays either way.
+Measured cost of alpha-on (interleaved ABBA, `alpha-rgba-v1` vs `alpha-opaque-v1`):
+**~33 µs flat** — +14.6 µs accumulate, +18.1 µs RCAS — which is +3.6% / +5.1% / +5.5% of
+compute at ratio 1 / 2 / 3. Both passes are display-res, so the absolute cost does not
+scale with ratio; the percentage only moves because the rest of the frame gets cheaper.
+**RCAS pays +27%** because production RCAS is the cheap conditioned-space form, so one
+extra display-res load is large relatively. Evidence + the rejected
+history/locks-swap alternative: `bench/docs/NEXT-STEPS.md` §6. GPU-verified across
+`UpscalePass`, the TSL nodes, and the raw `Upscaler`; the acceptance demos are
+`examples/14-pathtracer-alpha` (spatial) and `examples/15-transparent-canvas` (temporal). Note `UpscalePass`'s present quad is
+`transparent: true` + `NoBlending` — an opaque material resolves alpha to 1, and a
+full-screen present wants an overwrite, not a composite.
+
 **Public surfaces** (both GPU-verified):
 - **`UpscalePass`** (`src/UpscalePass.ts`) — the imperative drop-in (graduated from `UpscalePresenter`, which is now a re-export shim). Bakes in the MRT/jitter/velocity/present recipe. Covers renderer-agnostic / non-graph use.
 - **TSL nodes** (`src/UpscalerNode.ts`, native TSL, no pmndrs dep) — "the future" surface. **One node, one code path** — modelled on three's own `FSR1Node` / `TAAUNode`:
@@ -229,8 +276,8 @@ explicit acceptance test), RCAS denoise on `06-screenspace-gi`.
   after the G-buffer (geometry guides only — reconstruct is the whole early
   stage), then `dispatchUpscale({color, …})`; `path: 'guides'` runs the early
   stage alone with no output texture. Contracts + program plan:
- `docs/temporal-guides/TEMPORAL-GUIDES-SPEC.md`; consumer M0 review:
- `docs/temporal-guides/GUIDES-SPEC-RESPONSE.md`.
+ `docs/archive/temporal-guides/TEMPORAL-GUIDES-SPEC.md`; consumer M0 review:
+ `docs/archive/temporal-guides/GUIDES-SPEC-RESPONSE.md`.
   **Mechanisms a change must not break:** (1) guide textures are allocated via
   `_createSharedTexture` — a three `StorageTexture` + `initTexture()`, with the
   raw handle fetched back through `getGPUTexture()`; passes bind the raw handle,
@@ -281,9 +328,9 @@ explicit acceptance test), RCAS denoise on `06-screenspace-gi`.
   shared chunk re-fingerprints every shader).
 - **MSAA input — rejected by design.** FSR's temporal path *is* the anti-aliaser (Native AA mode is exactly that), so the correct input is an aliased, single-sample, jittered render with MSAA **off** — MSAA is redundant with FSR's own AA, costs perf, and a multisampled texture can't even bind to the compute passes. (Stacking a *temporal* AA — TAA/`traa` — before FSR is worse still: double-jitter smear; example 06 already drops `traa` for this reason.) `Upscaler` warns once if handed a multisampled input (`_checkMsaa`).
 
-**Performance structure:** dilate + depth-clip are fused into the single `reconstruct.ts` dispatch (GPU-verified disocclusion unchanged); the shading detector is one fused workgroup-local reduction instead of the source's SPD mip chain + resolve pair. The measured story of these divergences from FSR 3.1.5 — and the four upstream behaviors adopted in re-derived form — is `docs/research/PARITY.md` with evidence in `bench/docs/NEXT-STEPS.md`.
+**Performance structure:** dilate + depth-clip are fused into the single `reconstruct.ts` dispatch (GPU-verified disocclusion unchanged); the shading detector is one fused workgroup-local reduction instead of the source's SPD mip chain + resolve pair. The measured story of these divergences from FSR 3.1.5 — and the four upstream behaviors adopted in re-derived form — is `docs/archive/research/PARITY.md` with evidence in `bench/docs/NEXT-STEPS.md`.
 
-**Paper material:** findings that clear the "surprised us + measured + others would hit it" bar are tracked in `docs/research/PAPER-NOTES.md` — claim, evidence pointers, and what a publication-grade version still needs. Add new entries there as they land; don't let them live only in commit messages.
+**Paper material:** historical publication notes and their evidence pointers are retained in `docs/archive/research/PAPER-NOTES.md`. Treat them as archived research context, not maintained project documentation.
 
 ## Deferred / out of scope
 

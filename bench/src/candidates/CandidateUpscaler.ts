@@ -535,7 +535,7 @@ export class CandidateUpscaler {
      * disocclusion, and the late data products) as ordinary three textures.
      * Available on the `temporal` and `guides` paths after `configure()`.
      * See {@link TemporalGuides} for each product's contract, and
-     * docs/temporal-guides/TEMPORAL-GUIDES-SPEC.md for the full picture.
+     * docs/archive/temporal-guides/TEMPORAL-GUIDES-SPEC.md for the historical context.
      */
     get guides(): TemporalGuides {
         if (!this._guides) {
@@ -637,7 +637,12 @@ export class CandidateUpscaler {
 
         switch (this._path) {
             case 'bilinear':
-                this._encodeBlit(encoder, colorGPU.createView(), this._exposure![0].createView());
+                this._encodeBlit(
+                    encoder,
+                    colorGPU.createView(),
+                    this._exposure![0].createView(),
+                    colorGPU.createView(),
+                );
                 break;
             case 'spatial':
                 this._encodeSpatial(encoder, colorGPU);
@@ -767,10 +772,15 @@ export class CandidateUpscaler {
 
     //* Pass Encoding
 
+    // `alpha` names the texture whose .a carries the caller's alpha — the color
+    // input itself everywhere except the production temporal graph, where the
+    // input's .a is the accumulation age and the resolved alpha lives in the
+    // locks buffer (see src/shaders/accumulate.ts).
     private _encodeBlit(
         encoder: GPUCommandEncoder,
         input: GPUTextureView,
         exposure: GPUTextureView,
+        alpha: GPUTextureView,
     ): void {
         const bindGroup = this._blitPass.createBindGroup([
             { buffer: this._constants.buffer },
@@ -778,6 +788,7 @@ export class CandidateUpscaler {
             this._linearSampler,
             exposure,
             this._outputView(),
+            alpha,
         ]);
         const pass = encoder.beginComputePass({
             label: 'upscale-blit',
@@ -804,9 +815,19 @@ export class CandidateUpscaler {
         //* RCAS — sharpen in the caller's color domain
         const exposureView = this._exposure![0].createView();
         if (this.settings.sharpness > 0) {
-            this._encodeRcas(encoder, this._easuOutput!.createView(), exposureView);
+            this._encodeRcas(
+                encoder,
+                this._easuOutput!.createView(),
+                exposureView,
+                this._easuOutput!.createView(),
+            );
         } else {
-            this._encodeBlit(encoder, this._easuOutput!.createView(), exposureView);
+            this._encodeBlit(
+                encoder,
+                this._easuOutput!.createView(),
+                exposureView,
+                this._easuOutput!.createView(),
+            );
         }
     }
 
@@ -1047,9 +1068,19 @@ export class CandidateUpscaler {
             );
             debugPass.end();
         } else if (this.settings.sharpness > 0) {
-            this._encodeRcas(encoder, historyOut.createView(), exposureCur.createView());
+            this._encodeRcas(
+                encoder,
+                historyOut.createView(),
+                exposureCur.createView(),
+                locksOut.createView(),
+            );
         } else {
-            this._encodeBlit(encoder, historyOut.createView(), exposureCur.createView());
+            this._encodeBlit(
+                encoder,
+                historyOut.createView(),
+                exposureCur.createView(),
+                locksOut.createView(),
+            );
         }
     }
 
@@ -1403,22 +1434,38 @@ export class CandidateUpscaler {
             );
             debugPass.end();
         } else if (this.settings.sharpness > 0) {
-            this._encodeRcas(encoder, historyOut.createView(), exposureCur.createView());
+            // The candidate resolver graphs publish no alpha product, so the
+            // output pass reads the history's own .a. These bundles are frozen
+            // opaque-scene benchmark identities — never a transparency path.
+            this._encodeRcas(
+                encoder,
+                historyOut.createView(),
+                exposureCur.createView(),
+                historyOut.createView(),
+            );
         } else {
-            this._encodeBlit(encoder, historyOut.createView(), exposureCur.createView());
+            this._encodeBlit(
+                encoder,
+                historyOut.createView(),
+                exposureCur.createView(),
+                historyOut.createView(),
+            );
         }
     }
 
+    // See _encodeBlit for what `alpha` is bound to on each path.
     private _encodeRcas(
         encoder: GPUCommandEncoder,
         input: GPUTextureView,
         exposure: GPUTextureView,
+        alpha: GPUTextureView,
     ): void {
         const bindGroup = this._rcasPass.createBindGroup([
             { buffer: this._constants.buffer },
             input,
             exposure,
             this._outputView(),
+            alpha,
         ]);
         const pass = encoder.beginComputePass({
             label: 'upscale-rcas',

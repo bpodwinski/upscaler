@@ -9,7 +9,9 @@ declare type BenchmarkVariantId =
     | 'rcas-tonemap-space-v1'
     | 'source-filter-bundle-v1'
     | 'source-structural-bundle-v1'
-    | 'source-spd-resolver-bundle-v1';
+    | 'source-spd-resolver-bundle-v1'
+    | 'alpha-rgba-v1'
+    | 'alpha-opaque-v1';
 declare type BenchmarkScenarioId =
     | 'Q0'
     | 'Q1'

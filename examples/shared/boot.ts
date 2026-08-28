@@ -5,10 +5,15 @@ import * as THREE from 'three/webgpu';
  * a `WebGPURenderer` configured to present the upscaler's linear/HDR output,
  * and awaits `init()` — throwing loudly if three falls back to WebGL.
  *
- * @param options - Optional canvas parent (defaults to `document.body`)
+ * @param options.parent - Canvas parent (defaults to `document.body`)
+ * @param options.alpha - Request a transparent (premultiplied) canvas and a
+ *   zero clear alpha, so whatever the page draws behind the canvas shows
+ *   through wherever the render is not fully opaque
  * @returns The initialized renderer and the capped device-pixel-ratio used
  */
-export async function bootRenderer(options: { parent?: HTMLElement } = {}): Promise<{
+export async function bootRenderer(
+    options: { parent?: HTMLElement; alpha?: boolean } = {},
+): Promise<{
     renderer: THREE.WebGPURenderer;
     dpr: number;
 }> {
@@ -24,7 +29,9 @@ export async function bootRenderer(options: { parent?: HTMLElement } = {}): Prom
     // the panel's native density.
     const dpr = Math.min(window.devicePixelRatio, 2);
 
-    const renderer = new THREE.WebGPURenderer({ antialias: false });
+    // `alpha: true` puts the swap chain in 'premultiplied' mode and clears to
+    // alpha 0 — the mode a transparent canvas over page content needs.
+    const renderer = new THREE.WebGPURenderer({ antialias: false, alpha: options.alpha === true });
     renderer.setPixelRatio(dpr);
     renderer.setSize(window.innerWidth, window.innerHeight);
     // The upscaler does not own presentation; examples choose ACES + sRGB.

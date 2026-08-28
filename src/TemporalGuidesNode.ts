@@ -94,10 +94,21 @@ export class TemporalGuidesNode extends TempNode {
      * keeps dispatching the early stage.
      * @internal
      */
-    _acquireUpscaler(renderer: WebGPURenderer): Upscaler {
+    _acquireUpscaler(renderer: WebGPURenderer, alpha?: boolean): Upscaler {
         if (!this._upscaler) {
-            this._upscaler = new Upscaler({ renderer });
+            this._upscaler = new Upscaler({ renderer, alpha });
             this._upscaler.init();
+        } else if (alpha !== undefined && alpha !== this._upscaler.alpha) {
+            // The guides node's own setup already compiled the shared upscaler,
+            // so the late stage the owner is about to drive is locked to that
+            // build. Say so rather than silently ignoring the request.
+            console.warn(
+                `@pmndrs/upscaler: upscale({ guides }) asked for alpha: ${alpha}, but the ` +
+                    `linked guides node already built its upscaler with alpha: ` +
+                    `${this._upscaler.alpha} (following the renderer). Alpha selects pipelines, ` +
+                    `so it cannot change after init — construct the renderer with the matching ` +
+                    `\`alpha\`, or drive Upscaler directly for a split frame with a different one.`,
+            );
         }
         this._linked = true;
         return this._upscaler;

@@ -25,6 +25,11 @@ temporal graph. **Current status — Source-aligned FSR1 port:** its 12-tap EASU
 implementation retains the reference edge analysis, anisotropic Lanczos reconstruction,
 tap placement, and deringing.
 
+EASU also carries the caller's **alpha** through the kernel as a fourth channel — the
+same taps, weights, and anti-ringing clamp as color, with edge analysis still driven by
+FSR's RGB luma. That is the convention three's own `FSR1Node` uses. With an opaque input
+(alpha 1 everywhere) the result is identical to the pre-alpha `vec4f(pix, 1.0)` form.
+
 The WebGPU port uses native WGSL division and `inverseSqrt`, plus per-tap `textureLoad`
 calls, instead of AMD's approximation helpers and packed gathers. Those are implementation
 and profiling differences, not known algorithm gaps. The local path also assumes an
@@ -591,7 +596,8 @@ compute-pass sum.
 
 - **Current status:** Custom replacement coupled to the local resolver.
 - **Local implementation:** Stores sample count in history alpha and uses two RGBA16F
-  textures for lock state.
+  textures for lock state; the lock texture's previously unused alpha channel now carries
+  the resolved caller alpha (see *Alpha passthrough* below).
 - **FSR 3.1.5 behavior:** Uses presentation-resolution RGBA16F history with lock lifetime
   in alpha, render-resolution ping-ponged R8 accumulation, render-resolution RGBA16F
   four-frame luma history, and transient presentation-resolution R8 new locks.
@@ -631,6 +637,41 @@ required.
 **Decision:** **Adopted.** The library always exposes linear/HDR output. Integrations own
 the final transform; the examples choose three's ACES filmic tone mapping and sRGB output
 only as an example presentation policy.
+
+#### Alpha passthrough (`easu.ts`, `accumulate.ts`, `rcas.ts`, `blit.ts`)
+
+- **Current status:** Local extension with no FSR counterpart (added 2026-08-25 for
+  [issue #15](https://github.com/pmndrs/upscaler/issues/15)).
+- **Local implementation:** Every path preserves the input's alpha channel instead of
+  writing 1.0.
+  - **Spatial:** EASU filters RGBA; RCAS sharpens RGB and passes the center tap's alpha
+    through unchanged.
+  - **Temporal:** the accumulate pass upsamples alpha with the same jitter-aware Lanczos
+    taps as color, rectifies it against the local 3×3 alpha range, and blends it with the
+    same weight — so coverage converges on the same schedule as the color it belongs to.
+  - **Where alpha lives:** the history texture's `.a` is the accumulation age, so the
+    resolved alpha is stored in the locks texture's spare `.a` and read by RCAS/blit
+    through a dedicated binding. This keeps the color history's age on its exact
+    Catmull-Rom reprojection; alpha reprojects bilinearly with the locks (the fetch the
+    lock path already performs, so locks-on costs nothing extra).
+- **FSR 3.1.5 behavior:** No equivalent. FSR's resolvers target opaque swapchains and
+  never publish coverage.
+- **Why it differs / evidence confidence — Verified:** Browser canvases can be
+  transparent, and three's `FSR1Node` already passes alpha through, so forcing 1.0 made
+  the upscaler unusable behind a transparent canvas. GPU-verified 2026-08-25 on the
+  spatial path (`examples/14-pathtracer-alpha`, a path-traced RGBA buffer over page
+  content) and on the temporal path (transparent-canvas scene, still and moving), across
+  `UpscalePass`, the TSL nodes, and the raw `Upscaler`.
+
+**Decision:** **Adopted, unconditional.** No flag: with an opaque input every stage
+reduces to the previous math (a filtered/blended field of 1.0 is 1.0), so there is no
+behavior to opt into or out of.
+
+Rectification note: alpha's box is the *local 3×3 range*, not a variance AABB with the
+relax terms color uses. At a coverage edge the jittered taps span the full 0..1 range, so
+history passes untouched and accumulates; on a flat region the range collapses and stale
+alpha cannot ghost. The relax machinery exists for sub-texel luminance churn, which a
+coverage mask does not have.
 
 #### Raw WGSL and three.js integration
 

@@ -11,16 +11,17 @@ import {
     getActiveResolverCount,
 } from '../../bench/src/benchmark/variants';
 import { ComputePass } from '../internal/ComputePass';
-import { ACCUMULATE_SHADER } from './accumulate';
-import { BLIT_SHADER } from './blit';
+import { ACCUMULATE_OPAQUE_SHADER, ACCUMULATE_SHADER } from './accumulate';
+import { BLIT_OPAQUE_SHADER, BLIT_SHADER } from './blit';
 import { DEBUG_SHADER } from './debug';
-import { EASU_SHADER } from './easu';
+import { EASU_OPAQUE_SHADER, EASU_SHADER } from './easu';
 import { GENERATE_REACTIVE_SHADER } from './generateReactive';
 import { LUMINANCE_PYRAMID_SHADER } from './luminancePyramid';
 import { MOMENTS_SHADER } from './moments';
 import {
     RCAS_HOISTED_EXPOSURE_SHADER,
     RCAS_LEGACY_SHADER,
+    RCAS_OPAQUE_SHADER,
     RCAS_SHADER,
     RCAS_TONEMAP_SPACE_SHADER,
 } from './rcas';
@@ -42,9 +43,10 @@ const ALL_SHADERS: Record<string, string> = {
 };
 
 const BASELINE_BINDING_COUNTS: Record<string, number> = {
-    blit: 5,
+    // blit 6 / rcas 5 since 2026-08-25: the alpha-source binding (issue #15).
+    blit: 6,
     easu: 3,
-    rcas: 4,
+    rcas: 5,
     reconstruct: 7,
     shadingChange: 9,
     accumulate: 13,
@@ -57,18 +59,22 @@ const BASELINE_BINDING_COUNTS: Record<string, number> = {
 };
 
 const BASELINE_FINGERPRINTS: Record<string, string> = {
-    blit: '673108e1',
-    easu: '11632358',
-    // Updated 2026-07-21: conditioned-space sharpening adopted (NEXT-STEPS item 1).
-    rcas: '51bd6d54',
+    // Updated 2026-08-25: alpha passthrough (issue #15) — blit/rcas gained the
+    // alpha-source binding, easu carries alpha as a fourth kernel channel.
+    blit: 'ef2eec52',
+    easu: '48248d62',
+    // Updated 2026-07-21: conditioned-space sharpening adopted (NEXT-STEPS item 1);
+    // 2026-08-25: alpha passthrough.
+    rcas: 'e73374ac',
     // Updated 2026-07-22: depth-clip flicker fix — reference tap-skip semantics
     // (no all-taps veto), jitter-delta-compensated reprojection, and a
     // neighborhood-relief-widened separation tolerance (grazing-angle planes).
     reconstruct: '669ee05e',
     // Added 2026-07-21: multi-scale shading-change detector (NEXT-STEPS item 4).
     shadingChange: '41ed97fa',
-    // Updated 2026-07-21: DeltaPreExposure history correction (NEXT-STEPS item 2).
-    accumulate: '612f610d',
+    // Updated 2026-07-21: DeltaPreExposure history correction (NEXT-STEPS item 2);
+    // 2026-08-25: alpha resolved alongside color into the locks buffer's .a.
+    accumulate: '41204430',
     luminancePyramid: 'e4b7a644',
     // Updated 2026-07-22: reactive merge-not-overwrite (guides spec M3) — the
     // generator max-merges an incoming mask instead of being suppressed by it.
@@ -190,6 +196,47 @@ describe('RCAS load-strategy experiment shaders', () => {
             'pix = tonemapInvert(max(pix, vec3f(0.0))) / exposure;',
         );
         expect(RCAS_TONEMAP_SPACE_SHADER).toContain('lowerLimiterMultiplier');
+    });
+});
+
+// The `alpha: false` opt-out exists to be provably free, not merely cheap. Each
+// opaque build must be the byte-for-byte pre-alpha shader — the fingerprints
+// below are the ones this repo shipped before RGBA passthrough landed. If one
+// of these drifts, the opt-out has become a second code path and the A/B that
+// justifies it is measuring the wrong thing.
+describe('opaque builds reproduce the pre-alpha pipeline', () => {
+    const PRE_ALPHA_FINGERPRINTS: Record<string, string> = {
+        blit: '673108e1',
+        easu: '11632358',
+        rcas: '51bd6d54',
+        accumulate: '612f610d',
+    };
+    const OPAQUE_SHADERS: Record<string, string> = {
+        blit: BLIT_OPAQUE_SHADER,
+        easu: EASU_OPAQUE_SHADER,
+        rcas: RCAS_OPAQUE_SHADER,
+        accumulate: ACCUMULATE_OPAQUE_SHADER,
+    };
+
+    it.each(Object.keys(OPAQUE_SHADERS))('%s is byte-identical to the pre-alpha shader', (name) => {
+        expect(fingerprint(OPAQUE_SHADERS[name])).toBe(PRE_ALPHA_FINGERPRINTS[name]);
+    });
+
+    it('declares no alpha binding, so its bind group is one entry shorter', () => {
+        for (const source of [RCAS_OPAQUE_SHADER, BLIT_OPAQUE_SHADER]) {
+            expect(source).not.toContain('alphaSource');
+        }
+        const bindings = (source: string) =>
+            [...source.matchAll(/@group\(0\) @binding\((\d+)\)/g)].map((m) => Number(m[1]));
+        expect(bindings(RCAS_OPAQUE_SHADER)).toEqual([0, 1, 2, 3]);
+        expect(bindings(BLIT_OPAQUE_SHADER)).toEqual([0, 1, 2, 3, 4]);
+    });
+
+    it('keeps the RGBA builds distinct from them', () => {
+        expect(BLIT_SHADER).not.toBe(BLIT_OPAQUE_SHADER);
+        expect(EASU_SHADER).not.toBe(EASU_OPAQUE_SHADER);
+        expect(RCAS_SHADER).not.toBe(RCAS_OPAQUE_SHADER);
+        expect(ACCUMULATE_SHADER).not.toBe(ACCUMULATE_OPAQUE_SHADER);
     });
 });
 

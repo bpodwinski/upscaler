@@ -135,7 +135,24 @@ Each frame the projection is offset by a sub-pixel **jitter** (Halton(2,3) seque
 
 The **spatial path** (`path: 'spatial'`) is a faithful FSR1 port: EASU's edge-direction-rotated, anisotropically-stretched 12-tap Lanczos kernel, then RCAS. No history, no motion vectors — also the fallback story for content that can't produce velocity.
 
-Full per-pass details and deviations from the FidelityFX reference: [`src/shaders/README.md`](./src/shaders/README.md). For the measured story of how this implementation relates to real FSR 3.1.5 — what matches, what was re-derived into cheaper forms, and the benchmark evidence — see [`PARITY.md`](./docs/research/PARITY.md).
+### Alpha
+
+Every path upscales **RGBA**, not RGB: the input's alpha is filtered and accumulated alongside color rather than replaced with 1.0, so a `WebGPURenderer({ alpha: true })` canvas stays transparent through the upscale and composites over the page. EASU runs one kernel over all four channels (the convention three's own `FSR1Node` uses); RCAS sharpens color and passes coverage through untouched; the temporal path resolves alpha with the accumulate pass's own jitter-aware taps and blend weight, so a coverage edge converges on the same schedule as the color it belongs to. **It follows your renderer.** Create the canvas transparent (`new WebGPURenderer({ alpha: true })`) and coverage is carried through with no further configuration; an opaque canvas compiles RGB-only shader builds and pays nothing for a channel it cannot display.
+
+Override it when the renderer's flag is the wrong signal:
+
+```js
+// Opaque canvas, but the upscaled texture feeds a post graph that needs coverage.
+new Upscaler({ renderer, alpha: true });
+// Transparent canvas whose transparency is for something else on the page.
+new Upscaler({ renderer, alpha: false });
+```
+
+`UpscalePass` and the TSL nodes take the same option, and `upscaler.alpha` reports what was resolved. It is a constructor option rather than a runtime setting because it selects pipelines: alpha-on costs a flat ~33 µs of display-resolution work (~0.2% of a 60 fps frame), and alpha-off compiles shaders byte-identical to the pre-alpha ones.
+
+Live references: `examples/14-pathtracer-alpha` (`three-gpu-pathtracer` accumulating at half resolution behind a transparent canvas, spatial path) and `examples/15-transparent-canvas` (the temporal path, where jitter reconstructs coverage rather than just interpolating it).
+
+Full per-pass details and deviations from the FidelityFX reference: [`src/shaders/README.md`](./src/shaders/README.md). Historical parity research is archived in [`PARITY.md`](./docs/archive/research/PARITY.md).
 
 ### Integration approach
 
@@ -155,11 +172,11 @@ An app that never upscales can run `path: 'guides'` for the geometry products al
 
 The same surface exists declaratively for `THREE.PostProcessing` graphs: `temporalGuides(depth, velocity, camera)` publishes the bundle as texture nodes (`guides.getTextureNode('disocclusion')`), and `upscale(color, depth, velocity, camera, { guides })` shares one computation — the guides dispatch runs as soon as the G-buffer has rendered, in-graph effects consume the products, and the upscale finishes the split frame.
 
-Per-product contracts (format, space, resolution, latency) are documented on the `TemporalGuides` type and in [`TEMPORAL-GUIDES-SPEC.md`](./docs/temporal-guides/TEMPORAL-GUIDES-SPEC.md); `examples/12-temporal-guides` (raw) and `examples/13-guides-node` (TSL) are the live references. The contract is **accepted**: an external SSGI/SVGF consumer swapped its private temporal front-end for the raw bundle and measured bit-identical still-camera stability (spec M6). The linked TSL surface is also graduated: Example 13 is built and real-GPU smoke-tested through the packed npm artifact, proving shared ownership, stable guide-node identity with ping-pong re-pointing, and steady-state split execution across the package boundary. This is package-boundary verification of the maintained reference graph, not a claim of an independent external TSL integration.
+Per-product contracts (format, space, resolution, latency) are documented on the `TemporalGuides` type. The former working specification is retained in the [documentation archive](./docs/archive/temporal-guides/TEMPORAL-GUIDES-SPEC.md); `examples/12-temporal-guides` (raw) and `examples/13-guides-node` (TSL) are the live references. The contract is **accepted**: an external SSGI/SVGF consumer swapped its private temporal front-end for the raw bundle and measured bit-identical still-camera stability (spec M6). The linked TSL surface is also graduated: Example 13 is built and real-GPU smoke-tested through the packed npm artifact, proving shared ownership, stable guide-node identity with ping-pong re-pointing, and steady-state split execution across the package boundary. This is package-boundary verification of the maintained reference graph, not a claim of an independent external TSL integration.
 
 ## Status
 
-The pipeline is **feature-complete and GPU-verified**: spatial (FSR1) and temporal paths, luminance-stability locks, auto-exposure (+ external and host pre-exposure inputs), multi-scale shading-change detection, reactive masks (explicit + auto-generated), RCAS with opt-in denoise, imperative `UpscalePass`, the composable TSL nodes (`upscale` / `upscaleScene` / `upscaleSpatial`), and the raw + linked-TSL temporal-guides surfaces. A benchmarking program A/B-compared this implementation against source-style FSR 3.1.5 pass graphs on-GPU; the adopted results and remaining divergences — with measurements — are written up in [`PARITY.md`](./docs/research/PARITY.md).
+The pipeline is **feature-complete and GPU-verified**: spatial (FSR1) and temporal paths, RGBA (alpha) passthrough, luminance-stability locks, auto-exposure (+ external and host pre-exposure inputs), multi-scale shading-change detection, reactive masks (explicit + auto-generated), RCAS with opt-in denoise, imperative `UpscalePass`, the composable TSL nodes (`upscale` / `upscaleScene` / `upscaleSpatial`), and the raw + linked-TSL temporal-guides surfaces. A benchmarking program A/B-compared this implementation against source-style FSR 3.1.5 pass graphs on-GPU; its measurements are retained in the [parity archive](./docs/archive/research/PARITY.md).
 
 Deliberately **not** planned:
 

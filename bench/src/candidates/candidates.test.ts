@@ -54,7 +54,8 @@ const CANDIDATE_SHADERS: Record<string, string> = {
 };
 
 const CANDIDATE_BINDING_COUNTS: Record<string, number> = {
-    rcasPerTap: 4,
+    // 5 since 2026-08-25: the alpha-source binding, added to every RCAS form.
+    rcasPerTap: 5,
     easuSourceApprox: 3,
     exposureHistory: 7,
     generateReactiveSource: 4,
@@ -74,8 +75,11 @@ const CANDIDATE_BINDING_COUNTS: Record<string, number> = {
 };
 
 const CANDIDATE_FINGERPRINTS: Record<string, string> = {
-    rcasPerTap: '6beb7a73',
-    easuSourceApprox: '4139bd84',
+    // Both re-fingerprinted 2026-08-25: alpha passthrough (issue #15) reaches
+    // these through their production bases. The A/B pairings are unaffected —
+    // candidate and baseline gained the same plumbing.
+    rcasPerTap: '1246988b',
+    easuSourceApprox: '0f58117c',
     exposureHistory: 'bf1c681d',
     generateReactiveSource: '57ab78cd',
     prepareInputsSource: 'ce97e835',

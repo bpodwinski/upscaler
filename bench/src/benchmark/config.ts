@@ -10,6 +10,8 @@ const VARIANTS = [
     'source-filter-bundle-v1',
     'source-structural-bundle-v1',
     'source-spd-resolver-bundle-v1',
+    'alpha-rgba-v1',
+    'alpha-opaque-v1',
 ] as const;
 const SCENARIOS = ['Q0', 'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6', 'Q7', 'Q8', 'Q9', 'Q10', 'Q11', 'Q12'] as const;
 

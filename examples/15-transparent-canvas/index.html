@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>15 · Transparent canvas (temporal)</title>
+        <style>
+            :root {
+                color-scheme: dark;
+                --text: #cfd8e3;
+                --muted: #8592a3;
+                --accent: #7dd3fc;
+            }
+            html,
+            body {
+                margin: 0;
+                height: 100%;
+                overflow: hidden;
+                background: #0b0d10;
+                color: var(--text);
+                font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+            }
+            canvas {
+                display: block;
+                position: fixed;
+                inset: 0;
+                z-index: 1;
+            }
+            #page {
+                position: fixed;
+                inset: 0;
+                z-index: 0;
+                overflow: hidden;
+            }
+            body[data-backdrop='grid'] #page {
+                background:
+                    linear-gradient(rgba(125, 211, 252, 0.16) 1px, transparent 1px) 0 0 / 40px 40px,
+                    linear-gradient(90deg, rgba(125, 211, 252, 0.16) 1px, transparent 1px) 0 0 /
+                        40px 40px,
+                    radial-gradient(circle at 30% 20%, #1d2b3a, #0b0d10 70%);
+            }
+            body[data-backdrop='light'] #page {
+                background: #f4f6fb;
+            }
+            body[data-backdrop='photo'] #page {
+                background:
+                    radial-gradient(circle at 20% 30%, #ff8a4c 0%, transparent 45%),
+                    radial-gradient(circle at 80% 25%, #7dd3fc 0%, transparent 45%),
+                    radial-gradient(circle at 50% 85%, #a78bfa 0%, transparent 50%), #10141a;
+            }
+            #copy {
+                position: absolute;
+                inset: 0;
+                padding: 7vh 5vw;
+                font: 13px/2 ui-monospace, Menlo, monospace;
+                color: rgba(207, 216, 227, 0.5);
+                white-space: pre-wrap;
+                word-break: break-all;
+                user-select: none;
+            }
+            body[data-backdrop='light'] #copy {
+                color: rgba(16, 20, 26, 0.5);
+                font-size: 15px;
+            }
+            #badge {
+                position: fixed;
+                left: 12px;
+                top: 12px;
+                z-index: 2;
+                padding: 8px 11px;
+                background: rgba(8, 10, 14, 0.82);
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 8px;
+                color: #cfd8e3;
+                font: 11px/1.5 ui-monospace, Menlo, monospace;
+                white-space: pre;
+                pointer-events: none;
+            }
+            #badge b {
+                color: var(--accent);
+            }
+            #note {
+                position: fixed;
+                left: 12px;
+                bottom: 12px;
+                z-index: 2;
+                max-width: 470px;
+                padding: 9px 12px;
+                background: rgba(8, 10, 14, 0.82);
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 8px;
+                color: var(--muted);
+                font: 11px/1.6 ui-monospace, Menlo, monospace;
+            }
+            #note b {
+                color: var(--text);
+            }
+        </style>
+    </head>
+    <body>
+        <div id="page">
+            <div id="copy">
+                the canvas is transparent and this page is behind it. the scene renders at a
+                fraction of the display resolution with a zero-alpha background, and the temporal
+                path reconstructs coverage the same way it reconstructs color — from the sub-pixel
+                jitter, integrated over frames. the thin cyan wires are the test: at 2x they are
+                narrower than a render texel, so every alpha value along their edges is
+                reconstructed rather than interpolated. switch the path to spatial and the same
+                wires go soft, because FSR1 has no history to integrate. switch the backdrop to
+                light to check the coverage against a bright page instead of a dark one. the canvas
+                is transparent and this page is behind it. the scene renders at a fraction of the
+                display resolution with a zero-alpha background, and the temporal path reconstructs
+                coverage the same way it reconstructs color.
+            </div>
+        </div>
+        <div id="badge"></div>
+        <div id="note">
+            <b>Alpha on the temporal path.</b> Coverage is resolved by the accumulate pass with the
+            same jitter-aware taps and blend weight as color, then stored in the locks buffer's
+            spare alpha. Compare <b>temporal</b> vs <b>spatial</b> on the thin wires — and note the
+            debug views are unaffected, since they write opaque output.
+        </div>
+        <script type="module" src="./main.ts"></script>
+    </body>
+</html>

@@ -170,8 +170,9 @@ class BenchmarkResolverAdapter implements BenchmarkResolver {
 function createProductionUpscaler(
     renderer: THREE.WebGPURenderer,
     rcasShader?: string,
+    alpha?: boolean,
 ): Upscaler {
-    const options = { renderer, _rcasShader: rcasShader };
+    const options = { renderer, _rcasShader: rcasShader, alpha };
     return new Upscaler(options);
 }
 
@@ -197,8 +198,9 @@ export class BaselineBenchmarkResolver extends BenchmarkResolverAdapter {
         renderer: THREE.WebGPURenderer,
         metadata: BenchmarkVariantMetadata,
         rcasShader?: string,
+        alpha?: boolean,
     ) {
-        super(createProductionUpscaler(renderer, rcasShader), metadata);
+        super(createProductionUpscaler(renderer, rcasShader, alpha), metadata);
     }
 }
 
@@ -228,6 +230,30 @@ export function createBaselineResolver(
         renderer as THREE.WebGPURenderer,
         metadata,
         RCAS_LEGACY_SHADER,
+    );
+}
+
+/**
+ * Creates the RGBA-passthrough A/B pair. Both sides are the current production
+ * pipeline on the production RCAS shader; the only difference is which shader
+ * builds `Upscaler` compiles, so an interleaved run isolates the cost of alpha
+ * and nothing else. `alpha-opaque-v1` compiles shaders that are byte-identical
+ * to the pre-alpha pipeline (pinned by `shaders.test.ts`), so it is a true
+ * "before" rather than a re-implementation of one.
+ * @param renderer - Initialized three WebGPU renderer
+ * @param metadata - Registry metadata for the selected identity
+ * @returns One resolver instance on the requested alpha build
+ */
+export function createAlphaVariantResolver(
+    renderer: unknown,
+    metadata: BenchmarkVariantMetadata,
+): BenchmarkResolver {
+    return new BaselineBenchmarkResolver(
+        renderer as THREE.WebGPURenderer,
+        metadata,
+        // undefined = the production RCAS shader for the selected alpha build.
+        undefined,
+        metadata.id === 'alpha-rgba-v1',
     );
 }
 

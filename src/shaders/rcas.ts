@@ -14,7 +14,11 @@ import { assembleShader } from './wgsl';
  * production form. The spatial (EASU) path is identical in both: without
  * `FLAG_INPUT_REINHARD` no conditioning exists to undo.
  */
-function createRcasShader(fsr315NumericParity: boolean, conditionedInput = false): string {
+function createRcasShader(
+    fsr315NumericParity: boolean,
+    conditionedInput = false,
+    alpha = true,
+): string {
     const luma = fsr315NumericParity
         ? /* wgsl */ `
     // FSR's inexpensive luma is scaled by two; the scale cancels in ratios.
@@ -82,6 +86,18 @@ fn rcasLoad(p : vec2i) -> vec3f {
         : /* wgsl */ `
     let pix = (lobe * b + lobe * d + lobe * h + lobe * f + e) * rcpL;`;
 
+    // Alpha rides its own binding: on the temporal path binding 1 is the
+    // accumulate history, whose .a is the accumulation age, so the resolved
+    // alpha comes from the locks buffer's spare .a instead. On the spatial path
+    // it is the EASU output — the same texture as binding 1. RCAS never
+    // sharpens alpha (a coverage mask has no local contrast to preserve); the
+    // center tap passes through, as in FSR1Node. The opaque build declares no
+    // such binding, so its auto-derived bind group is one entry shorter.
+    const alphaBinding = alpha
+        ? '@group(0) @binding(4) var alphaSource : texture_2d<f32>;\n'
+        : '';
+    const alphaStore = alpha ? 'textureLoad(alphaSource, sp, 0).a' : '1.0';
+
     return assembleShader(
         WGSL_CONSTANTS,
         WGSL_TONEMAP,
@@ -89,7 +105,7 @@ fn rcasLoad(p : vec2i) -> vec3f {
 @group(0) @binding(1) var inputColor : texture_2d<f32>;
 @group(0) @binding(2) var exposureTex : texture_2d<f32>;
 @group(0) @binding(3) var outputColor : texture_storage_2d<rgba16float, write>;
-
+${alphaBinding}
 // Maximum sharpening lobe magnitude — set so a single tap cannot exceed the
 // local contrast ring (0.25 - 1/16 in the reference).
 const RCAS_LIMIT : f32 = 0.25 - (1.0 / 16.0);
@@ -136,7 +152,7 @@ ${denoise}
     let rcpL = 1.0 / (4.0 * lobe + 1.0);
 ${resolve}
 
-    textureStore(outputColor, gid.xy, vec4f(pix, 1.0));
+    textureStore(outputColor, gid.xy, vec4f(pix, ${alphaStore}));
 }
 `,
     );
@@ -203,7 +219,7 @@ function createRcasExperimentShader(loadStrategy: 'hoisted' | 'tonemap-space'): 
         .replace(
             `    let pix = (lobe * b + lobe * d + lobe * h + lobe * f + e) * rcpL;
 
-    textureStore(outputColor, gid.xy, vec4f(pix, 1.0));`,
+    textureStore(outputColor, gid.xy, vec4f(pix, textureLoad(alphaSource, sp, 0).a));`,
             `    var pix = (lobe * b + lobe * d + lobe * h + lobe * f + e) * rcpL;
     if (hasFlag(FLAG_INPUT_REINHARD)) {
         // Undo the conditioning once on the sharpened result instead of per tap.
@@ -211,7 +227,7 @@ function createRcasExperimentShader(loadStrategy: 'hoisted' | 'tonemap-space'): 
         pix = tonemapInvert(max(pix, vec3f(0.0))) / exposure;
     }
 
-    textureStore(outputColor, gid.xy, vec4f(pix, 1.0));`,
+    textureStore(outputColor, gid.xy, vec4f(pix, textureLoad(alphaSource, sp, 0).a));`,
         );
 }
 
@@ -234,6 +250,13 @@ export const RCAS_PER_TAP_SHADER = createRcasShader(true);
  * bench/docs/NEXT-STEPS.md item 1).
  */
 export const RCAS_SHADER = createRcasShader(true, true);
+
+/**
+ * Opaque build (`alpha: false`) of the production shader: no alpha binding, a
+ * literal 1.0 in the store. Byte-identical to the pre-alpha shader — the `rcas`
+ * fingerprint test pins that.
+ */
+export const RCAS_OPAQUE_SHADER = createRcasShader(true, true, false);
 
 /**
  * Benchmark candidate: production math with the exposure load hoisted out of

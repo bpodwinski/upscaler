@@ -18,8 +18,8 @@ import { GpuTimer } from './internal/GpuTimer';
 import { getDevice, getGPUTexture } from './internal/threeWebGPU';
 import { JitterSequence } from './math/jitter';
 import { getQualityModeRatio, getRenderResolution } from './math/resolution';
-import { ACCUMULATE_SHADER } from './shaders/accumulate';
-import { BLIT_SHADER } from './shaders/blit';
+import { ACCUMULATE_OPAQUE_SHADER, ACCUMULATE_SHADER } from './shaders/accumulate';
+import { BLIT_OPAQUE_SHADER, BLIT_SHADER } from './shaders/blit';
 import {
     FLAG_AUTO_EXPOSURE,
     FLAG_EXTERNAL_EXPOSURE,
@@ -33,10 +33,10 @@ import {
     FLAG_SHADING_CHANGE,
 } from './shaders/common';
 import { DEBUG_SHADER } from './shaders/debug';
-import { EASU_SHADER } from './shaders/easu';
+import { EASU_OPAQUE_SHADER, EASU_SHADER } from './shaders/easu';
 import { GENERATE_REACTIVE_SHADER } from './shaders/generateReactive';
 import { LUMINANCE_PYRAMID_SHADER } from './shaders/luminancePyramid';
-import { RCAS_SHADER } from './shaders/rcas';
+import { RCAS_OPAQUE_SHADER, RCAS_SHADER } from './shaders/rcas';
 import { RECONSTRUCT_SHADER } from './shaders/reconstruct';
 import { SHADING_CHANGE_SHADER } from './shaders/shadingChange';
 import {
@@ -51,8 +51,42 @@ import {
 } from './types';
 
 type JitterableCamera = PerspectiveCamera | OrthographicCamera;
-type UpscalerInternalOptions = {
+
+/** Constructor options for {@link Upscaler}. */
+export interface UpscalerOptions {
+    /** An initialized `WebGPURenderer`. */
     renderer: WebGPURenderer;
+    /**
+     * Preserve the input's alpha channel through the upscale.
+     *
+     * **Defaults to the renderer's own `alpha`** — i.e. `true` when the canvas
+     * was created transparent (`new WebGPURenderer({ alpha: true })`) and
+     * `false` otherwise. A transparent canvas is the case that needs coverage
+     * carried through, so it just works; an opaque one pays nothing for a
+     * channel it cannot show. Read {@link Upscaler.alpha} to see what was
+     * resolved.
+     *
+     * Set it explicitly to override:
+     * - `alpha: true` on an **opaque** canvas — when the upscaled texture is
+     *   not presented directly but composited somewhere that needs coverage
+     *   (a post graph, an offscreen layer, a texture handed to another pass).
+     *   The renderer's flag cannot see that, so say so here.
+     * - `alpha: false` on a **transparent** canvas — when the render itself is
+     *   opaque and the canvas transparency is for something else on the page.
+     *
+     * `false` compiles the RGB-only builds of EASU / accumulate / RCAS / blit,
+     * byte-identical to the pre-alpha shaders: no alpha binding, no extra
+     * fetch, none of the wider build's register pressure. Output alpha is then
+     * always 1. `true` costs a flat ~33 µs of display-resolution work
+     * (~0.2% of a 60 fps frame; see `bench/docs/NEXT-STEPS.md` §6).
+     *
+     * This selects pipelines, so it is fixed for the instance's lifetime rather
+     * than a per-frame setting, and must be decided before {@link init}.
+     */
+    alpha?: boolean;
+}
+
+type UpscalerInternalOptions = UpscalerOptions & {
     _rcasShader?: string;
 };
 
@@ -103,6 +137,11 @@ export class Upscaler {
 
     private readonly _renderer: WebGPURenderer;
     private readonly _rcasShader: string;
+    // Whether the RGBA pipelines are compiled. Fixed at construction: it picks
+    // shader builds, and the bind-group shapes differ with it — the opaque RCAS
+    // and blit declare no alpha binding, so their auto-derived layouts are one
+    // entry shorter, and passing an extra entry is a validation error.
+    private readonly _alpha: boolean;
     private _device!: GPUDevice;
     private _constants!: ConstantsBuffer;
     private _timer!: GpuTimer;
@@ -192,10 +231,26 @@ export class Upscaler {
     // hasn't. Guards against double-encoding the guides stage.
     private _guidesPending = false;
 
-    constructor(options: { renderer: WebGPURenderer });
+    constructor(options: UpscalerOptions);
     constructor(options: UpscalerInternalOptions) {
         this._renderer = options.renderer;
-        this._rcasShader = options._rcasShader ?? RCAS_SHADER;
+        // Derived, not fixed: a transparent canvas is exactly the case that
+        // needs alpha carried through, and an opaque one cannot display it. An
+        // explicit option still wins — see UpscalerOptions.alpha for when the
+        // renderer's flag is the wrong signal.
+        this._alpha = options.alpha ?? this._renderer.alpha === true;
+        this._rcasShader =
+            options._rcasShader ?? (this._alpha ? RCAS_SHADER : RCAS_OPAQUE_SHADER);
+    }
+
+    /**
+     * Whether the RGBA pipelines were compiled — the resolved value of
+     * {@link UpscalerOptions.alpha} after the renderer-derived default. Worth
+     * reading when the output's alpha is not what you expected: it reports what
+     * this instance actually built, not what was requested.
+     */
+    get alpha(): boolean {
+        return this._alpha;
     }
 
     /**
@@ -215,11 +270,21 @@ export class Upscaler {
             addressModeV: 'clamp-to-edge',
         });
 
-        this._blitPass = new ComputePass(device, 'blit', BLIT_SHADER);
-        this._easuPass = new ComputePass(device, 'easu', EASU_SHADER);
+        const alphaBuild = this._alpha;
+        this._blitPass = new ComputePass(
+            device,
+            'blit',
+            alphaBuild ? BLIT_SHADER : BLIT_OPAQUE_SHADER,
+        );
+        this._easuPass = new ComputePass(
+            device,
+            'easu',
+            alphaBuild ? EASU_SHADER : EASU_OPAQUE_SHADER,
+        );
         this._rcasPass = new ComputePass(device, 'rcas', this._rcasShader);
         this._reconstructPass = new ComputePass(device, 'reconstruct', RECONSTRUCT_SHADER);
-        this._accumulatePass = new ComputePass(device, 'accumulate', ACCUMULATE_SHADER, {
+        const accumulateShader = alphaBuild ? ACCUMULATE_SHADER : ACCUMULATE_OPAQUE_SHADER;
+        this._accumulatePass = new ComputePass(device, 'accumulate', accumulateShader, {
             shaderKey: 'baseline:accumulate',
             assembledChunks: [],
         });
@@ -326,7 +391,7 @@ export class Upscaler {
      * disocclusion, and the late data products) as ordinary three textures.
      * Available on the `temporal` and `guides` paths after `configure()`.
      * See {@link TemporalGuides} for each product's contract, and
-     * docs/temporal-guides/TEMPORAL-GUIDES-SPEC.md for the full picture.
+     * docs/archive/temporal-guides/TEMPORAL-GUIDES-SPEC.md for the historical context.
      */
     get guides(): TemporalGuides {
         if (!this._guides) {
@@ -428,7 +493,12 @@ export class Upscaler {
 
         switch (this._path) {
             case 'bilinear':
-                this._encodeBlit(encoder, colorGPU.createView(), this._exposure![0].createView());
+                this._encodeBlit(
+                    encoder,
+                    colorGPU.createView(),
+                    this._exposure![0].createView(),
+                    colorGPU.createView(),
+                );
                 break;
             case 'spatial':
                 this._encodeSpatial(encoder, colorGPU);
@@ -552,10 +622,15 @@ export class Upscaler {
 
     //* Pass Encoding
 
+    // `alpha` names the texture whose .a carries the caller's alpha. It is the
+    // color input itself everywhere except the temporal path, where the input's
+    // .a is the accumulation age and the resolved alpha lives in the locks
+    // buffer (see accumulate.ts).
     private _encodeBlit(
         encoder: GPUCommandEncoder,
         input: GPUTextureView,
         exposure: GPUTextureView,
+        alpha: GPUTextureView,
     ): void {
         const bindGroup = this._blitPass.createBindGroup([
             { buffer: this._constants.buffer },
@@ -563,6 +638,7 @@ export class Upscaler {
             this._linearSampler,
             exposure,
             this._outputView(),
+            ...(this._alpha ? [alpha] : []),
         ]);
         const pass = encoder.beginComputePass({
             label: 'upscale-blit',
@@ -589,9 +665,19 @@ export class Upscaler {
         //* RCAS — sharpen in the caller's color domain
         const exposureView = this._exposure![0].createView();
         if (this.settings.sharpness > 0) {
-            this._encodeRcas(encoder, this._easuOutput!.createView(), exposureView);
+            this._encodeRcas(
+                encoder,
+                this._easuOutput!.createView(),
+                exposureView,
+                this._easuOutput!.createView(),
+            );
         } else {
-            this._encodeBlit(encoder, this._easuOutput!.createView(), exposureView);
+            this._encodeBlit(
+                encoder,
+                this._easuOutput!.createView(),
+                exposureView,
+                this._easuOutput!.createView(),
+            );
         }
     }
 
@@ -827,22 +913,35 @@ export class Upscaler {
             );
             debugPass.end();
         } else if (this.settings.sharpness > 0) {
-            this._encodeRcas(encoder, historyOut.createView(), exposureCur.createView());
+            this._encodeRcas(
+                encoder,
+                historyOut.createView(),
+                exposureCur.createView(),
+                locksOut.createView(),
+            );
         } else {
-            this._encodeBlit(encoder, historyOut.createView(), exposureCur.createView());
+            this._encodeBlit(
+                encoder,
+                historyOut.createView(),
+                exposureCur.createView(),
+                locksOut.createView(),
+            );
         }
     }
 
+    // See _encodeBlit for what `alpha` is bound to on each path.
     private _encodeRcas(
         encoder: GPUCommandEncoder,
         input: GPUTextureView,
         exposure: GPUTextureView,
+        alpha: GPUTextureView,
     ): void {
         const bindGroup = this._rcasPass.createBindGroup([
             { buffer: this._constants.buffer },
             input,
             exposure,
             this._outputView(),
+            ...(this._alpha ? [alpha] : []),
         ]);
         const pass = encoder.beginComputePass({
             label: 'upscale-rcas',
