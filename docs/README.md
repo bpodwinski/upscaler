@@ -1,20 +1,23 @@
-# Project documents
+# Documentation
 
-Long-form design records and working notes live here rather than in the repository root.
+Maintained project documentation has not yet been written. The material below is
+historical working context and must not be treated as the current public contract.
 
-## Temporal guides
+## Archive
 
-- [Temporal guides specification](temporal-guides/TEMPORAL-GUIDES-SPEC.md)
-- [Consumer specification response](temporal-guides/GUIDES-SPEC-RESPONSE.md)
-- [Integration handoff](temporal-guides/GUIDES-HANDOFF.md)
-- [Integration handoff response](temporal-guides/GUIDES-HANDOFF-RESPONSE.md)
+### Temporal guides
 
-## Research
+- [Temporal guides specification](archive/temporal-guides/TEMPORAL-GUIDES-SPEC.md)
+- [Consumer specification response](archive/temporal-guides/GUIDES-SPEC-RESPONSE.md)
+- [Integration handoff](archive/temporal-guides/GUIDES-HANDOFF.md)
+- [Integration handoff response](archive/temporal-guides/GUIDES-HANDOFF-RESPONSE.md)
 
-- [FSR 3.1.5 parity report](research/PARITY.md)
-- [Paper notes](research/PAPER-NOTES.md)
+### Research
 
-## Plans
+- [FSR 3.1.5 parity report](archive/research/PARITY.md)
+- [Paper notes](archive/research/PAPER-NOTES.md)
 
-- [Issue 11 release design](plans/ISSUE-11-RELEASES-DESIGN.md)
-- [Issue 11 release implementation plan](plans/ISSUE-11-RELEASES-PLAN.md)
+### Plans
+
+- [Issue 11 release design](archive/plans/ISSUE-11-RELEASES-DESIGN.md)
+- [Issue 11 release implementation plan](archive/plans/ISSUE-11-RELEASES-PLAN.md)

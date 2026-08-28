@@ -16,7 +16,7 @@ TSL consumer. Integration entry point:
 [GUIDES-HANDOFF.md](GUIDES-HANDOFF.md). Contract frozen at M0
 (consumer review in [GUIDES-SPEC-RESPONSE.md](GUIDES-SPEC-RESPONSE.md),
 resolution in §10).
-Request: [bench/docs/FSR3-BRIEF.md](../../bench/docs/FSR3-BRIEF.md) — the consuming
+Request: [bench/docs/FSR3-BRIEF.md](../../../bench/docs/FSR3-BRIEF.md) — the consuming
 pipeline (SSGI temporal pass, an SVGF-style denoiser, any TAA-class effect)
 wants the upscaler's early data products as first-class outputs instead of
 re-deriving worse versions privately. This spec maps that request onto what
