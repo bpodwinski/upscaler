@@ -55,6 +55,9 @@ type JitterableCamera = PerspectiveCamera | OrthographicCamera;
 type UpscalerInternalOptions = {
     renderer: WebGPURenderer;
     _rcasShader?: string;
+    // Bench-only: an RCAS for the spatial path that differs from `_rcasShader`
+    // (a frozen temporal identity that still runs FSR1 on production RCAS).
+    _spatialRcasShader?: string;
 };
 
 /**
@@ -109,6 +112,7 @@ export class Upscaler {
 
     private readonly _renderer: WebGPURenderer;
     private readonly _rcasShader: string;
+    private readonly _spatialRcasShader: string | null;
     private _device!: GPUDevice;
     private _constants!: ConstantsBuffer;
     private _timer!: GpuTimer;
@@ -117,6 +121,7 @@ export class Upscaler {
     private _blitPass!: ComputePass;
     private _easuPass!: ComputePass;
     private _rcasPass!: ComputePass;
+    private _spatialRcasPass!: ComputePass;
     private _reconstructPass!: ComputePass;
     private _accumulatePass!: ComputePass;
     private _exposurePass!: ComputePass;
@@ -208,6 +213,7 @@ export class Upscaler {
         // Any override must declare RCAS's alpha-source binding (4) — every
         // shader in rcas.ts does — because _encodeRcas always binds it.
         this._rcasShader = options._rcasShader ?? RCAS_SHADER;
+        this._spatialRcasShader = options._spatialRcasShader ?? null;
     }
 
     /**
@@ -230,6 +236,10 @@ export class Upscaler {
         this._blitPass = new ComputePass(device, 'blit', BLIT_SHADER);
         this._easuPass = new ComputePass(device, 'easu', EASU_SHADER);
         this._rcasPass = new ComputePass(device, 'rcas', this._rcasShader);
+        this._spatialRcasPass =
+            this._spatialRcasShader === null
+                ? this._rcasPass
+                : new ComputePass(device, 'rcas', this._spatialRcasShader);
         this._reconstructPass = new ComputePass(device, 'reconstruct', RECONSTRUCT_SHADER);
         this._accumulatePass = new ComputePass(device, 'accumulate', ACCUMULATE_SHADER, {
             shaderKey: 'baseline:accumulate',
@@ -896,7 +906,8 @@ export class Upscaler {
         exposure: GPUTextureView,
         alpha: GPUTextureView,
     ): void {
-        const bindGroup = this._rcasPass.createBindGroup([
+        const rcasPass = this._path === 'spatial' ? this._spatialRcasPass : this._rcasPass;
+        const bindGroup = rcasPass.createBindGroup([
             { buffer: this._constants.buffer },
             input,
             exposure,
@@ -907,7 +918,7 @@ export class Upscaler {
             label: 'upscale-rcas',
             timestampWrites: this._timer.passDescriptor('rcas'),
         });
-        this._rcasPass.dispatch(pass, bindGroup, this._displayWidth, this._displayHeight);
+        rcasPass.dispatch(pass, bindGroup, this._displayWidth, this._displayHeight);
         pass.end();
     }
 
