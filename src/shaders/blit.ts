@@ -15,6 +15,14 @@ import { assembleShader } from './wgsl';
  * - 2: linear clamp sampler
  * - 3: exposure, 1×1 (rgba16float; r = pre-exposure to undo on the temporal path)
  * - 4: output storage (rgba16float, display size)
+ * - 5: alpha source (see below)
+ *
+ * Alpha is carried by a separate binding because the temporal path's input is
+ * the accumulate history, whose alpha channel is the accumulation age — the
+ * resolved alpha lives in the locks buffer's spare `.a` instead. On the
+ * bilinear and spatial paths binding 5 is simply the input texture again, so
+ * one `textureSampleLevel` covers all three without a branch. An opaque input
+ * samples a constant 1.0, so its output alpha is exactly 1.
  */
 export const BLIT_SHADER = assembleShader(
     WGSL_CONSTANTS,
@@ -24,6 +32,7 @@ export const BLIT_SHADER = assembleShader(
 @group(0) @binding(2) var linearSampler : sampler;
 @group(0) @binding(3) var exposureTex : texture_2d<f32>;
 @group(0) @binding(4) var outputColor : texture_storage_2d<rgba16float, write>;
+@group(0) @binding(5) var alphaSource : texture_2d<f32>;
 
 @compute @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) gid : vec3u) {
@@ -38,7 +47,8 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
         c = tonemapInvert(c) / exposure;
     }
 
-    textureStore(outputColor, gid.xy, vec4f(c, 1.0));
+    let a = textureSampleLevel(alphaSource, linearSampler, uv, 0.0).a;
+    textureStore(outputColor, gid.xy, vec4f(c, a));
 }
 `,
 );

@@ -205,7 +205,7 @@ export interface GuideDispatchInputs {
  * can sample instead of re-deriving privately. All fields are ordinary three
  * textures, consumable as TSL `texture()` nodes or via raw bind groups.
  *
- * Contract notes (full spec: TEMPORAL-GUIDES-SPEC.md):
+ * Contract notes (archived spec: docs/archive/temporal-guides/TEMPORAL-GUIDES-SPEC.md):
  * - Ping-ponged products resolve to the **most recently written** half, so
  *   re-read the getter each frame (or re-point a texture node's `value`).
  * - Early products (`dilatedMotion`, `dilatedDepth`, `previousDepth`,
@@ -250,8 +250,10 @@ export interface TemporalGuides {
     /**
      * Luminance-stability lock state at **display** res (rgba16float):
      * r = lock lifetime, g = locked luma (conditioned tonemap space),
-     * b = shading-change age. A previous-frame prior for render-stage
-     * consumers. `null` on the `guides` path.
+     * b = shading-change age, a = the resolved (accumulated) caller alpha,
+     * 0..1 — the value RCAS/blit write to the output's `.a`, kept here because
+     * the history's own `.a` is the accumulation age. A previous-frame prior
+     * for render-stage consumers. `null` on the `guides` path.
      */
     readonly lockStatus: Texture | null;
     /**

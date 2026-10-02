@@ -26,7 +26,9 @@ export interface UpscalePassConfig {
  * - MRT output count matched to the render-target attachment count (a `count: 2`
  *   target rendered without a velocity output yields black)
  * - render resolution taken from the upscaler, float depth + half-float color
- * - a full-screen present that uses the renderer's normal output transform
+ * - a full-screen present that uses the renderer's normal output transform,
+ *   RGBA included (so a transparent canvas — three's default `alpha: true` —
+ *   shows the page wherever the render left alpha below 1)
  *
  * Use {@link renderScene} for the common single-view case, or {@link draw} +
  * {@link outputTexture} when you want to present the result yourself (split
@@ -72,6 +74,13 @@ export class UpscalePass {
         this._quadMaterial.depthTest = false;
         this._quadMaterial.depthWrite = false;
         this._quadMaterial.fog = false;
+        // A full-screen present is an overwrite, not a composite: `NoBlending`
+        // copies the upscaled RGBA to the target verbatim. `transparent` is
+        // what makes three keep the alpha channel at all (an opaque material
+        // resolves to 1), which a transparent canvas over page content needs.
+        // With an opaque render (alpha 1 everywhere) the result is unchanged.
+        this._quadMaterial.transparent = true;
+        this._quadMaterial.blending = THREE.NoBlending;
         this._quad = new THREE.QuadMesh(this._quadMaterial);
     }
 

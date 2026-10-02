@@ -82,6 +82,14 @@ fn rcasLoad(p : vec2i) -> vec3f {
         : /* wgsl */ `
     let pix = (lobe * b + lobe * d + lobe * h + lobe * f + e) * rcpL;`;
 
+    // Alpha rides its own binding (4): on the temporal path binding 1 is the
+    // accumulate history, whose .a is the accumulation age, so the resolved
+    // alpha comes from the locks buffer's spare .a instead. On the spatial path
+    // it is the EASU output — the same texture as binding 1. RCAS never sharpens
+    // alpha (a coverage mask has no local contrast to preserve); the center tap
+    // passes through, as in FSR1Node. Every RCAS form — production, the frozen
+    // benchmark identities, the experiments — declares it, so one bind-group
+    // shape fits whichever shader `Upscaler` is handed.
     return assembleShader(
         WGSL_CONSTANTS,
         WGSL_TONEMAP,
@@ -89,6 +97,7 @@ fn rcasLoad(p : vec2i) -> vec3f {
 @group(0) @binding(1) var inputColor : texture_2d<f32>;
 @group(0) @binding(2) var exposureTex : texture_2d<f32>;
 @group(0) @binding(3) var outputColor : texture_storage_2d<rgba16float, write>;
+@group(0) @binding(4) var alphaSource : texture_2d<f32>;
 
 // Maximum sharpening lobe magnitude — set so a single tap cannot exceed the
 // local contrast ring (0.25 - 1/16 in the reference).
@@ -136,7 +145,7 @@ ${denoise}
     let rcpL = 1.0 / (4.0 * lobe + 1.0);
 ${resolve}
 
-    textureStore(outputColor, gid.xy, vec4f(pix, 1.0));
+    textureStore(outputColor, gid.xy, vec4f(pix, textureLoad(alphaSource, sp, 0).a));
 }
 `,
     );
@@ -203,7 +212,7 @@ function createRcasExperimentShader(loadStrategy: 'hoisted' | 'tonemap-space'): 
         .replace(
             `    let pix = (lobe * b + lobe * d + lobe * h + lobe * f + e) * rcpL;
 
-    textureStore(outputColor, gid.xy, vec4f(pix, 1.0));`,
+    textureStore(outputColor, gid.xy, vec4f(pix, textureLoad(alphaSource, sp, 0).a));`,
             `    var pix = (lobe * b + lobe * d + lobe * h + lobe * f + e) * rcpL;
     if (hasFlag(FLAG_INPUT_REINHARD)) {
         // Undo the conditioning once on the sharpened result instead of per tap.
@@ -211,7 +220,7 @@ function createRcasExperimentShader(loadStrategy: 'hoisted' | 'tonemap-space'): 
         pix = tonemapInvert(max(pix, vec3f(0.0))) / exposure;
     }
 
-    textureStore(outputColor, gid.xy, vec4f(pix, 1.0));`,
+    textureStore(outputColor, gid.xy, vec4f(pix, textureLoad(alphaSource, sp, 0).a));`,
         );
 }
 

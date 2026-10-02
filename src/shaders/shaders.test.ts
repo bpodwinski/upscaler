@@ -11,16 +11,21 @@ import {
     getActiveResolverCount,
 } from '../../bench/src/benchmark/variants';
 import { ComputePass } from '../internal/ComputePass';
+import * as accumulateModule from './accumulate';
 import { ACCUMULATE_SHADER } from './accumulate';
+import * as blitModule from './blit';
 import { BLIT_SHADER } from './blit';
 import { DEBUG_SHADER } from './debug';
+import * as easuModule from './easu';
 import { EASU_SHADER } from './easu';
 import { GENERATE_REACTIVE_SHADER } from './generateReactive';
 import { LUMINANCE_PYRAMID_SHADER } from './luminancePyramid';
 import { MOMENTS_SHADER } from './moments';
+import * as rcasModule from './rcas';
 import {
     RCAS_HOISTED_EXPOSURE_SHADER,
     RCAS_LEGACY_SHADER,
+    RCAS_PER_TAP_SHADER,
     RCAS_SHADER,
     RCAS_TONEMAP_SPACE_SHADER,
 } from './rcas';
@@ -42,9 +47,10 @@ const ALL_SHADERS: Record<string, string> = {
 };
 
 const BASELINE_BINDING_COUNTS: Record<string, number> = {
-    blit: 5,
+    // blit 6 / rcas 5 since 2026-08-25: the alpha-source binding (issue #15).
+    blit: 6,
     easu: 3,
-    rcas: 4,
+    rcas: 5,
     reconstruct: 7,
     shadingChange: 9,
     accumulate: 13,
@@ -57,18 +63,23 @@ const BASELINE_BINDING_COUNTS: Record<string, number> = {
 };
 
 const BASELINE_FINGERPRINTS: Record<string, string> = {
-    blit: '673108e1',
-    easu: '11632358',
-    // Updated 2026-07-21: conditioned-space sharpening adopted (NEXT-STEPS item 1).
-    rcas: '51bd6d54',
+    // Updated 2026-08-25: alpha passthrough (issue #15) — blit/rcas gained the
+    // alpha-source binding, easu carries alpha as a fourth kernel channel.
+    blit: 'ef2eec52',
+    easu: '48248d62',
+    // Updated 2026-07-21: conditioned-space sharpening adopted (NEXT-STEPS item 1);
+    // 2026-08-25: alpha passthrough.
+    rcas: 'e73374ac',
     // Updated 2026-07-22: depth-clip flicker fix — reference tap-skip semantics
     // (no all-taps veto), jitter-delta-compensated reprojection, and a
     // neighborhood-relief-widened separation tolerance (grazing-angle planes).
     reconstruct: '669ee05e',
     // Added 2026-07-21: multi-scale shading-change detector (NEXT-STEPS item 4).
     shadingChange: '41ed97fa',
-    // Updated 2026-07-21: DeltaPreExposure history correction (NEXT-STEPS item 2).
-    accumulate: '612f610d',
+    // Updated 2026-07-21: DeltaPreExposure history correction (NEXT-STEPS item 2);
+    // 2026-08-25: alpha resolved alongside color into the locks buffer's .a;
+    // 2026-10-02: the alpha clamp takes the color path's still-scene relax.
+    accumulate: 'f2accb8a',
     luminancePyramid: 'e4b7a644',
     // Updated 2026-07-22: reactive merge-not-overwrite (guides spec M3) — the
     // generator max-merges an incoming mask instead of being suppressed by it.
@@ -190,6 +201,77 @@ describe('RCAS load-strategy experiment shaders', () => {
             'pix = tonemapInvert(max(pix, vec3f(0.0))) / exposure;',
         );
         expect(RCAS_TONEMAP_SPACE_SHADER).toContain('lowerLimiterMultiplier');
+    });
+});
+
+// Alpha passthrough is unconditional (issue #15, review of PR #18): there is
+// one build of each pass, as in three's FSR1Node. With an opaque input every
+// stage reduces to alpha exactly 1, so an RGB-only variant would buy a
+// micro-optimisation at the price of a second code path and an option whose
+// renderer-derived default selected the RGBA build for nearly everyone anyway.
+describe('alpha passthrough is unconditional', () => {
+    const bindings = (source: string) =>
+        [...source.matchAll(/@group\(0\) @binding\((\d+)\)/g)].map((m) => Number(m[1]));
+
+    it('exports no RGB-only shader builds', () => {
+        for (const module of [accumulateModule, blitModule, easuModule, rcasModule]) {
+            for (const name of Object.keys(module)) expect(name).not.toMatch(/OPAQUE/);
+        }
+    });
+
+    it('declares the RCAS alpha source in every form Upscaler can be handed', () => {
+        // `_rcasShader` overrides (the bench's frozen identities and load-strategy
+        // experiments) share _encodeRcas's five-entry bind group, so each must
+        // declare binding 4 or bind-group creation fails on device.
+        for (const source of [
+            RCAS_SHADER,
+            RCAS_LEGACY_SHADER,
+            RCAS_PER_TAP_SHADER,
+            RCAS_HOISTED_EXPOSURE_SHADER,
+            RCAS_TONEMAP_SPACE_SHADER,
+        ]) {
+            expect(bindings(source)).toEqual([0, 1, 2, 3, 4]);
+            expect(source).toContain('@group(0) @binding(4) var alphaSource : texture_2d<f32>;');
+            expect(source).toContain('vec4f(pix, textureLoad(alphaSource, sp, 0).a)');
+            expect(source).not.toContain('vec4f(pix, 1.0)');
+        }
+    });
+
+    it('carries alpha through blit and EASU instead of writing 1.0', () => {
+        expect(bindings(BLIT_SHADER)).toEqual([0, 1, 2, 3, 4, 5]);
+        expect(BLIT_SHADER).toContain('textureStore(outputColor, gid.xy, vec4f(c, a));');
+        expect(BLIT_SHADER).not.toContain('vec4f(c, 1.0)');
+        // EASU filters all four channels with one kernel and one dering clamp.
+        expect(EASU_SHADER).toContain('fn easuLoad(p : vec2i) -> vec4f {');
+        expect(EASU_SHADER).toContain('var aC = vec4f(0.0);');
+        expect(EASU_SHADER).toContain('textureStore(outputColor, gid.xy, pix);');
+        expect(EASU_SHADER).not.toContain('vec4f(pix, 1.0)');
+    });
+
+    it('keeps the resolved alpha in the locks buffer, never the history age', () => {
+        // History .a is the accumulation age on its Catmull-Rom reprojection;
+        // alpha must ride the locks buffer's spare .a on both store paths.
+        expect(ACCUMULATE_SHADER).toContain(
+            'textureStore(locksOut, gid.xy, vec4f(0.0, 0.0, 0.0, currentAlpha));',
+        );
+        expect(ACCUMULATE_SHADER).toContain(
+            'textureStore(locksOut, gid.xy, vec4f(lockLife, lockedLuma, shadingChange, resultAlpha));',
+        );
+        expect(ACCUMULATE_SHADER).not.toContain('textureStore(locksOut, gid.xy, vec4f(0.0));');
+        expect(ACCUMULATE_SHADER).toContain(
+            'textureStore(historyOut, gid.xy, vec4f(result, newCount / C.maxAccumulation));',
+        );
+    });
+
+    it('relaxes the alpha clamp on the same still-scene signal as the color box', () => {
+        // Convergence rule 2 (CLAUDE.md), applied to coverage: a sub-texel
+        // feature's all-0 / all-1 jitter phases must not re-snap converged alpha
+        // on a still scene, while motion, disocclusion, shading change and
+        // reactivity (all folded into stillRelax) restore the hard clamp.
+        expect(ACCUMULATE_SHADER).toContain('let alphaRelax = stillRelax / STILL_CLAMP_RELAX;');
+        expect(ACCUMULATE_SHADER).toContain(
+            'let rectifiedAlpha = mix(clamp(lockPrev.a, alphaMin, alphaMax), lockPrev.a, alphaRelax);',
+        );
     });
 });
 

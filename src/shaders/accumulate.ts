@@ -22,6 +22,14 @@ import { assembleShader } from './wgsl';
  * Accumulation happens in invertible-tonemap space (see `WGSL_TONEMAP`) so
  * HDR fireflies cannot dominate the running average.
  *
+ * The caller's alpha is resolved alongside the color — same Lanczos taps,
+ * same blend weight — and stored in the locks buffer's spare `.a`, because
+ * the history's own `.a` is the accumulation age. The color history's age
+ * therefore keeps its exact Catmull-Rom reprojection; alpha reprojects
+ * bilinearly with the locks. An opaque input (alpha 1 everywhere) resolves
+ * to exactly 1: every tap, box bound and history value is 1, so the blend
+ * cannot move it.
+ *
  * Bindings:
  * - 1: scene color, render size (linear HDR)
  * - 2: dilated motion, render size (UV delta in .xy)
@@ -29,7 +37,8 @@ import { assembleShader } from './wgsl';
  * - 4: history in, display size (rgba16float; rgb tonemapped, a = age)
  * - 5: linear clamp sampler
  * - 6: history out (rgba16float storage, display size)
- * - 7: locks in, display size (rgba16float; r = lifetime, g = locked luma)
+ * - 7: locks in, display size (rgba16float; r = lifetime, g = locked luma,
+ *      a = resolved alpha)
  * - 8: locks out (rgba16float storage, display size)
  * - 9: exposure, 1×1 (rgba16float; r = conditioning pre-exposure for this
  *      frame, b = host pre-exposure)
@@ -179,19 +188,26 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     let maxCoord = vec2i(C.renderSize) - 1;
 
     var colorSum = vec3f(0.0);
+    var alphaSum = 0.0;
     var weightSum = 0.0;
     var m1 = vec3f(0.0); // YCoCg first moment
     var m2 = vec3f(0.0); // YCoCg second moment
     var boxMin = vec3f(1.0e5);
     var boxMax = vec3f(-1.0e5);
+    var alphaMin = 1.0e5;
+    var alphaMax = -1.0e5;
 
     for (var y = -1; y <= 1; y++) {
         for (var x = -1; x <= 1; x++) {
             let coord = clamp(baseTexel + vec2i(x, y), vec2i(0), maxCoord);
             let d = srcPos - vec2f(coord);
             let w = lanczos2(d.x) * lanczos2(d.y);
-            let c = tonemapInvertible(textureLoad(inputColor, coord, 0).rgb * exposure);
+            let src = textureLoad(inputColor, coord, 0);
+            let c = tonemapInvertible(src.rgb * exposure);
             colorSum += c * w;
+            // Alpha takes the same weights but none of the conditioning — it is
+            // already bounded, and tonemapping a coverage value is meaningless.
+            alphaSum += src.a * w;
             weightSum += w;
 
             let ycc = rgbToYCoCg(c);
@@ -199,6 +215,8 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
             m2 += ycc * ycc;
             boxMin = min(boxMin, ycc);
             boxMax = max(boxMax, ycc);
+            alphaMin = min(alphaMin, src.a);
+            alphaMax = max(alphaMax, src.a);
         }
     }
 
@@ -207,6 +225,7 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
         rgbToYCoCg(colorSum / max(weightSum, 1.0e-4)),
         boxMin, boxMax,
     ));
+    let currentAlpha = clamp(alphaSum / max(weightSum, 1.0e-4), alphaMin, alphaMax);
 
     // Confidence in the current sample: 1 when a jittered sample landed on
     // this display pixel, lower when we're interpolating between samples.
@@ -219,7 +238,7 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
 
     if (hasFlag(FLAG_RESET) || offscreen) {
         textureStore(historyOut, gid.xy, vec4f(current, 1.0 / C.maxAccumulation));
-        textureStore(locksOut, gid.xy, vec4f(0.0));
+        textureStore(locksOut, gid.xy, vec4f(0.0, 0.0, 0.0, currentAlpha));
         return;
     }
 
@@ -262,6 +281,10 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     // temporally stable, and grow a lock on it; the lock then shields the
     // feature from rectification below. Locks reproject through motion just
     // like the color history.
+    //
+    // The fetch is hoisted out of the branch because the alpha history shares
+    // it (locks .a); with locks on — the default — that costs nothing new.
+    let lockPrev = textureSampleLevel(locksIn, linearSampler, prevUV, 0.0);
     var lockLife = 0.0;
     var lockedLuma = curY;
     if (hasFlag(FLAG_LOCKS)) {
@@ -273,7 +296,6 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
             smoothstep(LOCK_PEAK_LO, LOCK_PEAK_HI, peakiness) *
             smoothstep(LOCK_CONTRAST_LO, LOCK_CONTRAST_HI, contrast);
 
-        let lockPrev = textureSampleLevel(locksIn, linearSampler, prevUV, 0.0);
         lockedLuma = select(lockPrev.g, curY, lockPrev.r < 0.05);
         // Grow the lock while a feature is present, decay it otherwise.
         lockLife = lockPrev.r + select(-LOCK_DECAY, LOCK_GROW * featureStrength, featureStrength > 0.1);
@@ -331,9 +353,26 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     alpha = mix(alpha, 1.0, REACTIVE_STRENGTH * reactivity);
     let result = mix(rectifiedHistory, current, alpha);
 
+    //* Alpha Resolve
+    // Alpha gets the color blend weight, so a coverage edge converges on the
+    // same schedule as the color it belongs to. Its rectification is the local
+    // 3x3 alpha range rather than a variance AABB: at a coverage edge the
+    // jittered taps span the whole 0..1 range, so history passes untouched and
+    // accumulates; on a flat region the range collapses and stale alpha cannot
+    // ghost.
+    // Still-scene relax, as for color: a feature thinner than a render texel
+    // leaves some jitter phases with an all-0 (or all-1) 3x3, which would
+    // re-snap the converged coverage every cycle. Where the color box is
+    // widened because rectification has nothing legitimate to catch (still,
+    // converged, no disocclusion / shading change / reactivity), the alpha
+    // history passes unclamped; any of those signals restores the clamp.
+    let alphaRelax = stillRelax / STILL_CLAMP_RELAX;
+    let rectifiedAlpha = mix(clamp(lockPrev.a, alphaMin, alphaMax), lockPrev.a, alphaRelax);
+    let resultAlpha = clamp(mix(rectifiedAlpha, currentAlpha, alpha), 0.0, 1.0);
+
     textureStore(historyOut, gid.xy, vec4f(result, newCount / C.maxAccumulation));
-    // b = shading-change factor (for the debug view); a unused.
-    textureStore(locksOut, gid.xy, vec4f(lockLife, lockedLuma, shadingChange, 0.0));
+    // b = shading-change factor (for the debug view); a = resolved alpha.
+    textureStore(locksOut, gid.xy, vec4f(lockLife, lockedLuma, shadingChange, resultAlpha));
 }
 `,
 );

@@ -48,6 +48,8 @@ export default defineConfig(({ mode }) => {
                           nodereactive: resolve(root, '11-node-reactive/index.html'),
                           temporalguides: resolve(root, '12-temporal-guides/index.html'),
                           guidesnode: resolve(root, '13-guides-node/index.html'),
+                          pathtraceralpha: resolve(root, '14-pathtracer-alpha/index.html'),
+                          transparentcanvas: resolve(root, '15-transparent-canvas/index.html'),
                       },
             },
         },
