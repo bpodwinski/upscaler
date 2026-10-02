@@ -70,7 +70,7 @@ const BASELINE_FINGERPRINTS: Record<string, string> = {
     // Updated 2026-07-21: conditioned-space sharpening adopted (NEXT-STEPS item 1);
     // 2026-08-25: alpha passthrough; 2026-10-02: the spatial path conditions its
     // linear/HDR taps the same way (anchored, gain-capped inversion).
-    rcas: '5990efb3',
+    rcas: '981ab4cb',
     // Updated 2026-07-22: depth-clip flicker fix — reference tap-skip semantics
     // (no all-taps veto), jitter-delta-compensated reprojection, and a
     // neighborhood-relief-widened separation tolerance (grazing-angle planes).
@@ -179,11 +179,11 @@ describe('RCAS on the spatial path', () => {
     // so production RCAS conditions the spatial path's taps like the temporal
     // path's history (GPU probes, 2026-10-02).
     it('conditions linear taps only when the input is not accumulate history', () => {
-        expect(RCAS_SHADER).toContain('let conditionTaps = !hasFlag(FLAG_INPUT_REINHARD);');
+        const conditioned = RCAS_SHADER.split('if (!hasFlag(FLAG_INPUT_REINHARD)) {')[1] ?? '';
+        expect(conditioned).not.toBe('');
         for (const tap of ['b', 'd', 'e', 'f', 'h']) {
-            expect(RCAS_SHADER).toContain(
-                `let ${tap} = select(${tap}In, tonemapInvertible(${tap}In), conditionTaps);`,
-            );
+            expect(RCAS_SHADER).toContain(`var ${tap} = ${tap}In;`);
+            expect(conditioned).toContain(`${tap} = tonemapInvertible(${tap}In);`);
         }
     });
 
@@ -204,7 +204,7 @@ describe('RCAS on the spatial path', () => {
             RCAS_HOISTED_EXPOSURE_SHADER,
             RCAS_TONEMAP_SPACE_SHADER,
         ]) {
-            expect(source).not.toContain('conditionTaps');
+            expect(source).not.toContain('tonemapInvertible(eIn)');
             expect(source).toContain('let e = rcasLoad(sp');
         }
     });

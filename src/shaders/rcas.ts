@@ -113,13 +113,20 @@ fn rcasLoad(p : vec2i) -> vec3f {
     let hIn = rcasLoad(sp + vec2i(0, 1));
     // The limiter below assumes [0,1]. Accumulate history already arrives
     // conditioned; the spatial path's linear/HDR taps get the same invertible
-    // tonemap here, so both paths sharpen in one bounded space.
-    let conditionTaps = !hasFlag(FLAG_INPUT_REINHARD);
-    let b = select(bIn, tonemapInvertible(bIn), conditionTaps);
-    let d = select(dIn, tonemapInvertible(dIn), conditionTaps);
-    let e = select(eIn, tonemapInvertible(eIn), conditionTaps);
-    let f = select(fIn, tonemapInvertible(fIn), conditionTaps);
-    let h = select(hIn, tonemapInvertible(hIn), conditionTaps);`
+    // tonemap here, so both paths sharpen in one bounded space. A uniform
+    // branch, not select(), so the temporal path pays nothing for it.
+    var b = bIn;
+    var d = dIn;
+    var e = eIn;
+    var f = fIn;
+    var h = hIn;
+    if (!hasFlag(FLAG_INPUT_REINHARD)) {
+        b = tonemapInvertible(bIn);
+        d = tonemapInvertible(dIn);
+        e = tonemapInvertible(eIn);
+        f = tonemapInvertible(fIn);
+        h = tonemapInvertible(hIn);
+    }`
         : /* wgsl */ `    let b = rcasLoad(sp + vec2i(0, -1));
     let d = rcasLoad(sp + vec2i(-1, 0));
     let e = rcasLoad(sp);
