@@ -34,7 +34,9 @@ before its first dispatch: render to it once, or pass it through
 - **Domain: linear, scene-referred, HDR is fine.** Feed the scene *before* tone
   mapping and output encoding. The temporal path accumulates in an invertible tonemap
   space (`c / (1 + max(c))`, FSR2's firefly guard) and inverts that before output, so
-  HDR values survive. The output is the same domain as the input.
+  HDR values survive. The spatial path's RCAS sharpens in that same tonemap space and
+  inverts on output, so highlights above 1.0 are sharpened like any other edge. The
+  output is the same domain as the input.
 - **Filterable format.** The temporal path's exposure meter and the bilinear path
   sample `color` through a filtering sampler. `rgba16float` (`HalfFloatType`) always
   qualifies; `rgba32float` only does on devices exposing `float32-filterable` (three

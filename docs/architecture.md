@@ -76,6 +76,12 @@ veloc ─┘  (dilate +      dilatedDepth   │        Lanczos2 upsample        
    `sharpness = 0`, **blit** (`blit.ts`) does the same resolve without sharpening.
 
 The spatial path is EASU (`easu.ts`) then RCAS/blit; the bilinear path is blit alone.
+On the spatial path RCAS conditions EASU's linear/HDR taps with the same invertible
+tonemap before sharpening, because FSR1's limiter assumes [0,1] and otherwise switches
+sharpening off on every edge that crosses 1.0. It then inverts once, anchored on the
+linear center and capped at linear RCAS's own maximum gain. That input has no
+pre-exposure bounding it, so a plain inversion would clip near 1000 and turn isolated
+peaks into fireflies.
 The divergences from FSR 3.1.5's own pass graph (the fused reconstruct, the fused
 shading detector, conditioned-space RCAS) were measured, not assumed; see
 [PARITY.md](research/PARITY.md).
@@ -84,8 +90,9 @@ shading detector, conditioned-space RCAS) were measured, not assumed; see
 
 The input is multiplied by the conditioning exposure, then compressed with
 `c / (1 + max(c))` (FSR2's invertible tonemap and firefly guard) before
-accumulation. RCAS/blit invert both before writing. The output is therefore in the
-caller's domain. Host pre-exposure is a separate factor that stays in that domain,
+accumulation. RCAS/blit invert both before writing. The spatial path sharpens in the
+same tonemap space without the exposure factor (see above) and inverts before writing.
+The output is therefore in the caller's domain. Host pre-exposure is a separate factor that stays in that domain,
 with history corrected across its changes. Nothing in the library applies ACES, sRGB
 encoding or any other presentation transform.
 

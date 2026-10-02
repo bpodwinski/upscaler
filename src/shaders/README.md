@@ -35,7 +35,8 @@ FSR's RGB luma. That is the convention three's own `FSR1Node` uses. With an opaq
 The WebGPU port uses native WGSL division and `inverseSqrt`, plus per-tap `textureLoad`
 calls, instead of AMD's approximation helpers and packed gathers. Those are implementation
 and profiling differences, not known algorithm gaps. The local path also assumes an
-exact-sized input resource and leaves the input color domain unchanged. **Next action —
+exact-sized input resource and leaves the input color domain unchanged (the RCAS that
+follows it conditions its taps — see *RCAS load domain (spatial path)*). **Next action —
 Keep / Benchmark:** keep EASU as the documented FSR1 fallback;
 benchmark the math/load variants before changing them, and generalize viewport or output
 handling only when an integration requires it.
@@ -183,13 +184,42 @@ coverage only if RCAS performance becomes material.
   overshoot. The prior per-tap shader is kept as `RCAS_PER_TAP_SHADER` for the frozen
   `rcas-fsr315-limiter` benchmark identity.
 
+#### RCAS load domain (spatial path)
+
+- **Current status:** Conditioned like the temporal path, with two guards (2026-10-02).
+- **Problem it fixes:** EASU hands RCAS the caller's unbounded linear/HDR color, and
+  FSR1's limiter assumes [0,1]. `hitMax = (1 − mx4) / (4·mn4 − 4)` turns positive
+  wherever the cross ring straddles 1.0, which switches sharpening off on every edge
+  between a highlight and its surroundings. A ring whose maximum is exactly 1.0 also
+  zeroes the lobe, and a flat 1.0 ring divides 0/0. On Metal `max()` dropped that NaN; WGSL
+  does not guarantee it. On example 02's scene with an emissive panel and an unlit white
+  sphere, 100% of the display pixels whose taps straddle or touch 1.0 came out
+  unsharpened.
+- **Local implementation:** The production shader conditions the five taps with the
+  temporal path's `tonemapInvertible` and sharpens in that bounded space. It inverts
+  once, anchored on the exact linear center (`eIn + inv(pix) − inv(e)`), and clamps to
+  `[0, max5 · 1/(1 − 4·RCAS_LIMIT·peak)]`. The anchor means a zero lobe passes the EASU
+  texel through bit-exact, and texels past `tonemapInvert`'s 0.999 clamp (linear ~1000)
+  are not flattened to ~1000. The cap stops isolated peaks that overshoot the conditioned
+  range from inverting to ~1000× (unguarded, a lone 0.5 on near-black became 1303 at
+  sharpness 1). It bounds the result at the most linear-space RCAS could ever produce
+  at that sharpness. The accumulate history needs neither guard because pre-exposure
+  bounds it.
+- **Evidence (GPU readbacks):** On synthetic HDR tiles, edges crossing 1.0 and 1.0|0.5
+  edges now sharpen, and a flat 1.0 stays exactly 1.0. On the example scene, SDR-only
+  neighborhoods moved by a mean of 0.0007 linear and 0.13/255 after ACES, because
+  conditioned space gives bright SDR edges slightly more lobe headroom. The frozen
+  per-tap/legacy forms still sharpen in linear space.
+
 #### RCAS color domain
 
 - **Current status:** Source-aligned output/color domain.
 - **Local implementation:** Writes the caller's linear/HDR domain: on the temporal path
   it sharpens conditioned texels and inverse-tonemaps + divides by the current local
-  exposure once on the result (see *RCAS load domain* above); on the spatial path the
-  input is already in that domain. It applies no presentation transform.
+  exposure once on the result (see *RCAS load domain* above); on the spatial path it
+  conditions EASU's linear taps with the same tonemap, sharpens, and inverts once
+  (anchored on the linear center, capped at linear RCAS's gain — *RCAS load domain
+  (spatial path)*). It applies no presentation transform.
 - **FSR 3.1.5 behavior:** Filters color conditioned by `Exposure()`, reverses
   `Exposure()`, and applies no presentation transform. Host `preExposure` remains, so
   linear HDR input remains linear HDR output.
