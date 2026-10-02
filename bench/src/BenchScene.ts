@@ -12,6 +12,11 @@ export interface BenchScene {
     roomScene: THREE.Scene;
     cornellScene: THREE.Scene;
     reactiveScene: THREE.Scene;
+    /**
+     * Q13 transparents the auto-generator must see: hidden while the
+     * opaque-only color (`reactiveOpaqueColor`) renders, shown in the final.
+     */
+    autoReactiveObjects: readonly THREE.Object3D[];
     /** Advances animations. @param time - Elapsed seconds @param animate - Freeze toggle */
     update(time: number, animate: boolean): void;
     /** Applies a deterministic absolute scenario frame. */
@@ -289,6 +294,78 @@ export function createBenchScene(): BenchScene {
     scene.add(particles);
     reactiveScene.add(reactiveParticles);
 
+    //* Merged Reactive-Mask Fixture (Q13) ====================================
+    // Three camera-facing panels, each owned by a different reactivity source,
+    // so generateReactive's max-merge is visible region by region:
+    // - left  "explicit-only": translucent but drawn in BOTH the opaque-only
+    //   and final passes (zero diff), flagged by the explicit mask at 1.0
+    // - centre "overlap": additive vertical ramp drawn only in the final pass
+    //   (diff ramps ~0 → past the 0.9 cap), AND flagged explicitly at 0.5 —
+    //   the merged result is a flat 0.5 floor that turns into the generated
+    //   ramp where it exceeds 0.5 (min/sum/overwrite all read differently)
+    // - right "diff-only": translucent, final pass only, no explicit coverage
+    // The explicit coverage ignores depth: the panels sit between the camera
+    // and every other object, so nothing can occlude them.
+    const mergeGroup = new THREE.Group();
+    const mergeCoverage = new THREE.Group();
+    // 45% of the way from the base camera (9, 6, 12) to its target (0, 1.6, 0).
+    mergeGroup.position.set(4.95, 4.02, 6.6);
+    mergeGroup.lookAt(9, 6, 12);
+    mergeCoverage.position.copy(mergeGroup.position);
+    mergeCoverage.quaternion.copy(mergeGroup.quaternion);
+    const mergePanelGeometry = new THREE.PlaneGeometry(2.2, 3);
+    const rampGeometry = new THREE.PlaneGeometry(2.2, 3);
+    const rampColors = new Float32Array(4 * 3);
+    const rampPositions = rampGeometry.getAttribute('position');
+    for (let i = 0; i < 4; i++) rampColors.fill(rampPositions.getY(i) > 0 ? 0.7 : 0, i * 3, i * 3 + 3);
+    rampGeometry.setAttribute('color', new THREE.BufferAttribute(rampColors, 3));
+
+    const explicitOnlyPanel = new THREE.Mesh(
+        mergePanelGeometry,
+        new THREE.MeshBasicMaterial({
+            color: new THREE.Color(0.2, 0.5, 0.9),
+            transparent: true,
+            opacity: 0.45,
+            depthWrite: false,
+        }),
+    );
+    explicitOnlyPanel.position.x = -2.8;
+    const overlapPanel = new THREE.Mesh(
+        rampGeometry,
+        new THREE.MeshBasicMaterial({
+            vertexColors: true,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        }),
+    );
+    const diffOnlyPanel = new THREE.Mesh(
+        mergePanelGeometry,
+        new THREE.MeshBasicMaterial({
+            color: new THREE.Color(1, 0.55, 0.2),
+            transparent: true,
+            opacity: 0.5,
+            depthWrite: false,
+        }),
+    );
+    diffOnlyPanel.position.x = 2.8;
+    mergeGroup.add(explicitOnlyPanel, overlapPanel, diffOnlyPanel);
+
+    const coverageMaterial = (value: number) =>
+        new THREE.MeshBasicMaterial({
+            color: new THREE.Color(value, value, value),
+            depthTest: false,
+            depthWrite: false,
+        });
+    const explicitOnlyCoverage = new THREE.Mesh(mergePanelGeometry, coverageMaterial(1));
+    explicitOnlyCoverage.position.x = explicitOnlyPanel.position.x;
+    const overlapCoverage = new THREE.Mesh(mergePanelGeometry, coverageMaterial(0.5));
+    mergeCoverage.add(explicitOnlyCoverage, overlapCoverage);
+    mergeGroup.visible = false;
+    mergeCoverage.visible = false;
+    scene.add(mergeGroup);
+    reactiveScene.add(mergeCoverage);
+
     const particleBase = new Float32Array(particleCount * 3);
     const particlePhase = new Float32Array(particleCount);
     const particleUp = new Float32Array(particleCount);
@@ -362,6 +439,8 @@ export function createBenchScene(): BenchScene {
         updateParticles(frame.time);
         particles.visible = frame.particlesVisible;
         reactiveParticles.visible = frame.particlesVisible;
+        mergeGroup.visible = frame.reactiveMerge === true;
+        mergeCoverage.visible = frame.reactiveMerge === true;
         sun.intensity = frame.directionalIntensity;
         // The Q11 host pre-exposure multiplier lives in the MRT output node,
         // which the background never passes through — scale it here so the
@@ -371,5 +450,14 @@ export function createBenchScene(): BenchScene {
             .multiplyScalar(frame.hostPreExposure ?? 1);
     }
 
-    return { scene, roomScene, cornellScene, reactiveScene, update, applyFrame, resetDeterministicState };
+    return {
+        scene,
+        roomScene,
+        cornellScene,
+        reactiveScene,
+        autoReactiveObjects: [overlapPanel, diffOnlyPanel],
+        update,
+        applyFrame,
+        resetDeterministicState,
+    };
 }

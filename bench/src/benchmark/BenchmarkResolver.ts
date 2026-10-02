@@ -116,6 +116,7 @@ class BenchmarkResolverAdapter implements BenchmarkResolver {
             depth: inputs.depth as THREE.Texture | undefined,
             velocity: inputs.velocity as THREE.Texture | undefined,
             reactive: inputs.reactive as THREE.Texture | undefined,
+            reactiveOpaqueColor: inputs.reactiveOpaqueColor as THREE.Texture | undefined,
             preExposureTexture: inputs.preExposureTexture as THREE.Texture | undefined,
             deltaTime: inputs.deltaTime,
         };

@@ -145,6 +145,8 @@ export class BenchPipeline {
     //* Scene Target
     private _renderTarget: THREE.RenderTarget | null = null;
     private _reactiveTarget: THREE.RenderTarget | null = null;
+    // Q13: opaque-only color for the reactive auto-generator.
+    private _opaqueTarget: THREE.RenderTarget | null = null;
     private _mrtNode = mrt({ output, velocity });
     // Single-output MRT for non-temporal modes — its output count matches the
     // count:1 render target so color attachment 0 is actually written.
@@ -258,13 +260,16 @@ export class BenchPipeline {
      * @param displayWidth - Physical output width
      * @param displayHeight - Physical output height
      * @param ratio - Manifest display/render ratio
-     * @param reactive - Allocate the Q5 reactive coverage target
+     * @param reactive - Allocate the Q5/Q13 explicit reactive coverage target
+     * @param reactiveOpaque - Allocate the Q13 opaque-only color target that
+     *   feeds the resolver's `reactiveOpaqueColor` auto-generator
      */
     configureBenchmark(
         displayWidth: number,
         displayHeight: number,
         ratio: number,
         reactive: boolean,
+        reactiveOpaque = false,
     ): void {
         this._configure(
             displayWidth,
@@ -273,6 +278,7 @@ export class BenchPipeline {
             QualityMode.Quality,
             ratio,
             reactive,
+            reactiveOpaque,
         );
     }
 
@@ -283,6 +289,7 @@ export class BenchPipeline {
         quality: QualityMode,
         ratio: number,
         reactive: boolean,
+        reactiveOpaque = false,
     ): void {
         this._mode = mode;
         this._quality = quality;
@@ -309,6 +316,8 @@ export class BenchPipeline {
         this._renderTarget?.dispose();
         this._reactiveTarget?.dispose();
         this._reactiveTarget = null;
+        this._opaqueTarget?.dispose();
+        this._opaqueTarget = null;
         const rw = this.resolver.renderWidth;
         const rh = this.resolver.renderHeight;
         const temporal = mode === 'upscale-temporal';
@@ -338,6 +347,14 @@ export class BenchPipeline {
                 type: THREE.HalfFloatType,
             });
             this._reactiveTarget.textures[0].name = 'output';
+        }
+        if (reactiveOpaque) {
+            // Own depth buffer: the opaque-only pass is a full scene render.
+            this._opaqueTarget = new THREE.RenderTarget(rw, rh, {
+                count: 1,
+                type: THREE.HalfFloatType,
+            });
+            this._opaqueTarget.textures[0].name = 'output';
         }
 
         // Present the (re)created output texture on the quad.
@@ -648,6 +665,7 @@ export class BenchPipeline {
         depth: THREE.Texture | undefined,
         velocityTexture: THREE.Texture | undefined,
         reactive: THREE.Texture | undefined,
+        reactiveOpaque: THREE.Texture | undefined,
     ): void {
         const width = this.resolver.renderWidth;
         const height = this.resolver.renderHeight;
@@ -663,6 +681,13 @@ export class BenchPipeline {
             });
         if (reactive)
             this._assertTexture({ name: 'dispatch.reactive', texture: reactive, width, height });
+        if (reactiveOpaque)
+            this._assertTexture({
+                name: 'dispatch.reactiveOpaqueColor',
+                texture: reactiveOpaque,
+                width,
+                height,
+            });
         this._assertTexture({
             name: 'resolver.output',
             texture: this.resolver.outputTexture as THREE.Texture,
@@ -675,12 +700,15 @@ export class BenchPipeline {
      * Renders deterministic scene inputs without dispatching or presenting.
      * @param scene - Scene to render
      * @param camera - Scene camera
-     * @param reactiveScene - Optional Q5 particle-coverage scene
+     * @param reactiveScene - Optional Q5/Q13 explicit-coverage scene
+     * @param opaqueHidden - Q13 transparents to hide for the opaque-only
+     *   color pass (requires the `reactiveOpaque` target)
      */
     renderInput(
         scene: THREE.Scene,
         camera: THREE.PerspectiveCamera,
         reactiveScene?: THREE.Scene,
+        opaqueHidden?: readonly THREE.Object3D[],
     ): void {
         const rt = this._renderTarget;
         if (!rt) return;
@@ -706,7 +734,21 @@ export class BenchPipeline {
         this._renderer.setRenderTarget(null);
         this._renderer.setMRT(null);
 
-        //* Optional Q5 Reactive Coverage
+        //* Optional Q13 Opaque-Only Color
+        // Same jittered camera as the final pass, so the generator's diff is
+        // exactly the hidden transparents' contribution (no edge misalignment).
+        if (opaqueHidden && this._opaqueTarget) {
+            const visibility = opaqueHidden.map((object) => object.visible);
+            for (const object of opaqueHidden) object.visible = false;
+            this._renderer.setMRT(this._mrtOutputOnly);
+            this._renderer.setRenderTarget(this._opaqueTarget);
+            this._renderer.render(scene, camera);
+            this._renderer.setRenderTarget(null);
+            this._renderer.setMRT(null);
+            opaqueHidden.forEach((object, index) => (object.visible = visibility[index]));
+        }
+
+        //* Optional Q5/Q13 Explicit Reactive Coverage
         if (reactiveScene && this._reactiveTarget) {
             const autoClear = this._renderer.autoClear;
             this._renderer.autoClear = false;
@@ -802,13 +844,15 @@ export class BenchPipeline {
               ? rt.textures[1]
               : undefined;
         const reactive = this._reactiveTarget?.textures[0];
-        this._assertDispatchTextures(color, depth, velocityTexture, reactive);
+        const reactiveOpaqueColor = this._opaqueTarget?.textures[0];
+        this._assertDispatchTextures(color, depth, velocityTexture, reactive, reactiveOpaqueColor);
         this.resolver.dispatch(
             {
                 color,
                 depth,
                 velocity: velocityTexture,
                 reactive,
+                reactiveOpaqueColor,
                 preExposureTexture:
                     this._hostPreExposureValue !== null
                         ? this._hostPreExposureTexture(this._hostPreExposureValue)
@@ -1063,6 +1107,7 @@ export class BenchPipeline {
         this._effectPass?.dispose();
         this._renderTarget?.dispose();
         this._reactiveTarget?.dispose();
+        this._opaqueTarget?.dispose();
         this._quadMaterial.dispose();
         this._effectMaterial.dispose();
         this._depthOnlyMaterial.dispose();

@@ -206,7 +206,10 @@ class BrowserBenchmarkApi implements UpscalerBenchmarkApi {
         pipeline.renderInput(
             this._inputScene(scenarioFrame),
             camera,
-            scenarioFrame.particlesVisible ? bench.reactiveScene : undefined,
+            scenarioFrame.particlesVisible || scenarioFrame.reactiveMerge
+                ? bench.reactiveScene
+                : undefined,
+            scenarioFrame.reactiveMerge ? bench.autoReactiveObjects : undefined,
         );
         pipeline.dispatchResolver(camera, config.timestepSeconds, frame);
         pipeline.present();

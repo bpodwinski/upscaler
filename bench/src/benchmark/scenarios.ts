@@ -115,6 +115,14 @@ function q12(frame: number): BenchmarkFrameState {
     return { ...state(frame, [0, 2.6, 8.8], [0, 2.6, 0]), scene: 'cornell' };
 }
 
+function q13(frame: number): BenchmarkFrameState {
+    // Still camera, frozen scene: the only per-frame variation is jitter. An
+    // explicit reactive mask and the reactiveOpaqueColor auto-generator run
+    // together on three panels — explicit-only, overlap, diff-only — so the
+    // reactivity view is the per-pixel max of the two (generateReactive.ts).
+    return { ...state(frame), reactiveMerge: true };
+}
+
 const SCENARIOS: Record<BenchmarkScenarioId, BenchmarkScenarioDefinition> = {
     Q0: {
         id: 'Q0',
@@ -334,6 +342,23 @@ const SCENARIOS: Record<BenchmarkScenarioId, BenchmarkScenarioDefinition> = {
         subruns: [],
         unsupported: null,
         frame: q12,
+    },
+    Q13: {
+        id: 'Q13',
+        name: 'merged-reactive-masks',
+        endFrame: 119,
+        captures: ['0', '1', '23', 'P-1', 'P', '2*P-1', '119'],
+        debugViews: ['final', 'reactivity', 'accumulation-age', 'locks'],
+        rois: {
+            full: [0, 0, 1, 1],
+            // Panel interiors (measured at 1280×720, inset from the edges).
+            explicit_only: [0.18, 0.29, 0.16, 0.42],
+            overlap: [0.42, 0.29, 0.16, 0.42],
+            diff_only: [0.66, 0.29, 0.16, 0.42],
+        },
+        subruns: [],
+        unsupported: null,
+        frame: q13,
     },
 };
 

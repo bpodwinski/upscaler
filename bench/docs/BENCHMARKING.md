@@ -45,7 +45,7 @@ reported +2.6% for a change that an interleaved run measured at +5.1%.)
 | **block / repetition** | One full A-B-B-A pattern. `--blocks 4` runs four of them. |
 | **warmup** | Frames rendered and thrown away before timing starts, so shader compilation and caches are not in the sample. |
 | **samples** | Timed frames per leg. More samples = tighter medians, longer runs. |
-| **scenario** | A scripted camera/scene animation, `Q0`–`Q12`. See the catalogue below. |
+| **scenario** | A scripted camera/scene animation, `Q0`–`Q13`. See the catalogue below. |
 | **noise floor** | How much the harness disagrees with *itself*. The bar your delta has to clear. |
 
 ---
@@ -133,7 +133,7 @@ work did not change, the rest of the frame got cheaper.
 
 ---
 
-## Scenarios (Q0–Q12)
+## Scenarios (Q0–Q13)
 
 Scripted camera and scene animations, defined in
 `bench/src/benchmark/scenarios.ts`. Performance runs use the default; capture
@@ -154,6 +154,7 @@ runs select them with `--scenarios`.
 | Q10 | `reset-cut-resize` | Hard camera cut at 60, history resets, and resizes to 1280×720 then back to 1920×1080. Lifecycle correctness. |
 | Q11 | `host-pre-exposure` | Host pre-exposure steps 2.5× at 60 and ramps back. With DeltaPreExposure correct, the shading-change view stays black throughout. |
 | Q12 | `cornell-still-convergence` | A consumer's Cornell-box repro: still camera, point-light shadow dither. The hardest convergence case we have. |
+| Q13 | `merged-reactive-masks` | Explicit reactive mask **and** the `reactiveOpaqueColor` auto-generator at once, on three still panels: explicit-only (reads 1.0), overlap (explicit 0.5 under a generated ramp, so it reads as a flat 0.5 floor rising to the 0.9 cap), diff-only. The `reactivity` capture is the per-pixel `max` from `generateReactive.ts`. A merge that overwrites, takes the min or sums the masks changes a panel. |
 
 ---
 
