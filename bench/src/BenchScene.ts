@@ -11,6 +11,8 @@ export interface BenchScene {
     scene: THREE.Scene;
     roomScene: THREE.Scene;
     cornellScene: THREE.Scene;
+    /** Q14: SSGI-lit room with 1px wireframe features (issue #17). */
+    wireRoomScene: THREE.Scene;
     reactiveScene: THREE.Scene;
     /**
      * Q13 transparents the auto-generator must see: hidden while the
@@ -206,6 +208,60 @@ export function createBenchScene(): BenchScene {
     cornellPanel.rotation.x = Math.PI / 2;
     cornellPanel.position.set(0, 5.98, 0.4);
     cornellScene.add(cornellPanel);
+
+    //* SSGI Wire Room (Q14) ==================================================
+    // Issue #17's repro: thin-feature locks under a noisy SSGI input. An open-
+    // fronted coloured box (strong diffuse bounce for SSGI) holding 1px
+    // wireframe meshes — `wireframe: true` renders line primitives, so every
+    // wire is a sub-texel, full-contrast feature against a GI-lit wall. No
+    // shadow-casting light: the only screen-anchored noise must be SSGI's, so
+    // the `off` subrun is a clean control for the same geometry.
+    const wireRoomScene = new THREE.Scene();
+    wireRoomScene.background = new THREE.Color(0x05060a);
+    const wireLight = new THREE.PointLight(0xfff4e5, 45, 0, 2);
+    wireLight.position.set(0, 5.2, 1.2);
+    wireRoomScene.add(wireLight);
+    wireRoomScene.add(new THREE.AmbientLight(0x8090b0, 0.15));
+    const wireRoomWall = (color: number, width: number, height: number) => {
+        const wall = new THREE.Mesh(
+            new THREE.PlaneGeometry(width, height),
+            new THREE.MeshStandardMaterial({ color, roughness: 0.95 }),
+        );
+        wireRoomScene.add(wall);
+        return wall;
+    };
+    wireRoomWall(0xd8d4cc, 6, 6).rotation.x = -Math.PI / 2;
+    const wireCeiling = wireRoomWall(0xd8d4cc, 6, 6);
+    wireCeiling.rotation.x = Math.PI / 2;
+    wireCeiling.position.y = 6;
+    wireRoomWall(0xd8d4cc, 6, 6).position.set(0, 3, -3);
+    const wireLeft = wireRoomWall(0xb02020, 6, 6);
+    wireLeft.rotation.y = Math.PI / 2;
+    wireLeft.position.set(-3, 3, 0);
+    const wireRight = wireRoomWall(0x1fa03a, 6, 6);
+    wireRight.rotation.y = -Math.PI / 2;
+    wireRight.position.set(3, 3, 0);
+    const wireBlock = new THREE.Mesh(
+        new THREE.BoxGeometry(1.4, 2.2, 1.4),
+        new THREE.MeshStandardMaterial({ color: 0xd0ccc2, roughness: 0.9 }),
+    );
+    wireBlock.position.set(1.6, 1.1, -1.2);
+    wireBlock.rotation.y = -0.35;
+    wireRoomScene.add(wireBlock);
+    const wireMaterial = new THREE.MeshStandardMaterial({
+        color: 0xe8edf4,
+        roughness: 0.5,
+        wireframe: true,
+    });
+    // A lattice hung in front of the back wall (lines over a flat GI-lit
+    // surface), a wire sphere over the floor/left-wall bounce, and a wire knot.
+    const wireLattice = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 2.4, 16, 12), wireMaterial);
+    wireLattice.position.set(-0.3, 3.4, -2.2);
+    const wireSphere = new THREE.Mesh(new THREE.IcosahedronGeometry(0.9, 2), wireMaterial);
+    wireSphere.position.set(-1.6, 1.0, -0.6);
+    const wireKnot = new THREE.Mesh(new THREE.TorusKnotGeometry(0.55, 0.16, 96, 10), wireMaterial);
+    wireKnot.position.set(1.6, 2.9, -1.2);
+    wireRoomScene.add(wireLattice, wireSphere, wireKnot);
 
     //* Floor
     const floor = new THREE.Mesh(
@@ -454,6 +510,7 @@ export function createBenchScene(): BenchScene {
         scene,
         roomScene,
         cornellScene,
+        wireRoomScene,
         reactiveScene,
         autoReactiveObjects: [overlapPanel, diffOnlyPanel],
         update,

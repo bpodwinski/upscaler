@@ -114,7 +114,10 @@ clears it.
   sampling pattern per frame expecting a TRAA behind it defeats the variance clip at
   silhouettes and ghost-streaks off moving edges. Three's `SSGINode` does this by
   default (`useTemporalFiltering = true`). Set it to `false` when the upscaler is the
-  temporal resolver, as examples 06, 09 and 10 do.
+  temporal resolver, as examples 06, 09 and 10 do. The same holds for a denoiser that
+  re-rolls its kernel every frame: `recurrentDenoise({ accumulate: false })` keeps no
+  history but still feeds fresh noise each frame, which thin features show as boiling
+  (issue #17). `DenoiseNode` on the static pattern converges.
 
 ## Reactive masks
 

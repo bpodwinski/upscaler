@@ -123,6 +123,13 @@ function q13(frame: number): BenchmarkFrameState {
     return { ...state(frame), reactiveMerge: true };
 }
 
+function q14(frame: number): BenchmarkFrameState {
+    // Issue #17's still-camera pose into the SSGI wire room: the only per-frame
+    // variation is the upscaler's jitter (and, in the `rotating` subrun, SSGI's
+    // own 6-frame sampling rotation).
+    return state(frame, [0, 2.8, 8.8], [0, 2.6, 0]);
+}
+
 const SCENARIOS: Record<BenchmarkScenarioId, BenchmarkScenarioDefinition> = {
     Q0: {
         id: 'Q0',
@@ -359,6 +366,34 @@ const SCENARIOS: Record<BenchmarkScenarioId, BenchmarkScenarioDefinition> = {
         subruns: [],
         unsupported: null,
         frame: q13,
+    },
+    Q14: {
+        id: 'Q14',
+        name: 'ssgi-thin-feature-locks',
+        // Subruns: `off` = same room without SSGI (clean control); `static` =
+        // SSGI static pattern + spatial-only recurrentDenoise (accumulate:
+        // false) — the issue's configuration; `rotating` = the same with SSGI's
+        // default 6-frame rotating pattern; `builtin` = static pattern +
+        // DenoiseNode (the 06/09 recipe). Capture-only: measure with
+        // measure-convergence.mjs (not part of the run-benchmark manifest).
+        endFrame: 479,
+        captures: ['0', '1', '23', 'P-1', 'P', '2*P-1', '119', '239', '479'],
+        debugViews: [
+            'final',
+            'motion-vectors',
+            'disocclusion',
+            'accumulation-age',
+            'locks',
+            'shading-change',
+        ],
+        rois: {
+            full: [0, 0, 1, 1],
+            wire_lattice: [0.3, 0.1, 0.4, 0.4],
+            wire_sphere: [0.2, 0.5, 0.25, 0.35],
+        },
+        subruns: ['off', 'static', 'rotating', 'builtin'],
+        unsupported: null,
+        frame: q14,
     },
 };
 
