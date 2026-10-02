@@ -302,7 +302,9 @@ orbit, so all of the churn is the per-phase pattern. Reading it:
   behavior under motion is unchanged. An opaque input still resolves to alpha
   exactly 1 (every term of the mix is 1). Color is untouched: Q1 2x 0.112 and Q12 2x
   0.026 consecutive (recorded 0.112 / 0.024), `measure-convergence.mjs` after the
-  change.
+  change. Re-measured after rebasing onto three r186.1: Q1 0.114, Q12 0.026, and the
+  adopted rows above reproduce within 0.001 (ratio 2: 2.760 / 2.985; ratio 3: 4.854 /
+  6.934).
 
 Reproduce: `node scripts/measure-alpha-convergence.mjs --ratio 3 [--settings
 '{"detectShadingChanges":false}']`; artifacts (summary JSON, alpha-mean and
