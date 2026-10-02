@@ -11,8 +11,14 @@ import { assembleShader } from './wgsl';
  * [0,1) texels directly — the range the limiter math assumes — and inverts
  * the conditioning once on the result. Measured ~35% cheaper on GPU with
  * visually equivalent output (Q0/Q1/Q3/Q9 captures, 2026-07-21); this is the
- * production form. The spatial (EASU) path is identical in both: without
- * `FLAG_INPUT_REINHARD` no conditioning exists to undo.
+ * production form.
+ *
+ * The production form also conditions the spatial (EASU) path, which hands
+ * RCAS the caller's unbounded linear/HDR color: FSR1's limiter assumes [0,1],
+ * so in linear HDR `hitMax` switches sharpening off wherever the cross ring
+ * straddles 1.0 (every edge between a highlight and its surroundings) and
+ * divides 0/0 on a ring of exactly 1.0. The frozen per-tap forms
+ * (`conditionedInput = false`) keep sharpening that path in linear space.
  */
 function createRcasShader(fsr315NumericParity: boolean, conditionedInput = false): string {
     const luma = fsr315NumericParity
@@ -53,7 +59,8 @@ function createRcasShader(fsr315NumericParity: boolean, conditionedInput = false
     const load = conditionedInput
         ? /* wgsl */ `
 // Loads a display-resolution texel as-is: conditioned tonemap-space history on
-// the temporal path, the caller's linear domain on the spatial path.
+// the temporal path, the caller's linear domain on the spatial path (main
+// conditions those taps itself).
 fn rcasLoad(p : vec2i) -> vec3f {
     let clamped = clamp(p, vec2i(0), vec2i(C.displaySize) - 1);
     return textureLoad(inputColor, clamped, 0).rgb;
@@ -78,9 +85,46 @@ fn rcasLoad(p : vec2i) -> vec3f {
         // the tonemap, then divide out the baked-in pre-exposure.
         let exposure = max(textureLoad(exposureTex, vec2i(0), 0).r, 1.0e-4);
         pix = tonemapInvert(max(pix, vec3f(0.0))) / exposure;
+    } else {
+        // Spatial: invert the tap conditioning once. Unlike accumulate history,
+        // this input has no pre-exposure bounding it, so two guards:
+        // - anchor on the exact linear center — an unsharpened pixel passes
+        //   through bit-exact, and values beyond tonemapInvert's clamp
+        //   (linear ~1000) are not flattened to it;
+        // - cap at linear RCAS's own maximum gain for this sharpness. An
+        //   isolated peak overshoots the conditioned range, and inverting that
+        //   multiplies it up to ~1000x (a lone 0.5 on near-black became 1303
+        //   at sharpness 1 in GPU probes).
+        let maxIn = max(max(max(bIn, dIn), max(fIn, hIn)), max(eIn, vec3f(0.0)));
+        let maxGain = 1.0 / (1.0 - 4.0 * RCAS_LIMIT * peak);
+        pix = clamp(
+            eIn + tonemapInvert(max(pix, vec3f(0.0))) - tonemapInvert(e),
+            vec3f(0.0),
+            maxIn * maxGain
+        );
     }`
         : /* wgsl */ `
     let pix = (lobe * b + lobe * d + lobe * h + lobe * f + e) * rcpL;`;
+    const taps = conditionedInput
+        ? /* wgsl */ `    let bIn = rcasLoad(sp + vec2i(0, -1));
+    let dIn = rcasLoad(sp + vec2i(-1, 0));
+    let eIn = rcasLoad(sp);
+    let fIn = rcasLoad(sp + vec2i(1, 0));
+    let hIn = rcasLoad(sp + vec2i(0, 1));
+    // The limiter below assumes [0,1]. Accumulate history already arrives
+    // conditioned; the spatial path's linear/HDR taps get the same invertible
+    // tonemap here, so both paths sharpen in one bounded space.
+    let conditionTaps = !hasFlag(FLAG_INPUT_REINHARD);
+    let b = select(bIn, tonemapInvertible(bIn), conditionTaps);
+    let d = select(dIn, tonemapInvertible(dIn), conditionTaps);
+    let e = select(eIn, tonemapInvertible(eIn), conditionTaps);
+    let f = select(fIn, tonemapInvertible(fIn), conditionTaps);
+    let h = select(hIn, tonemapInvertible(hIn), conditionTaps);`
+        : /* wgsl */ `    let b = rcasLoad(sp + vec2i(0, -1));
+    let d = rcasLoad(sp + vec2i(-1, 0));
+    let e = rcasLoad(sp);
+    let f = rcasLoad(sp + vec2i(1, 0));
+    let h = rcasLoad(sp + vec2i(0, 1));`;
 
     // Alpha rides its own binding (4): on the temporal path binding 1 is the
     // accumulate history, whose .a is the accumulation age, so the resolved
@@ -113,11 +157,7 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     //   b
     // d e f
     //   h
-    let b = rcasLoad(sp + vec2i(0, -1));
-    let d = rcasLoad(sp + vec2i(-1, 0));
-    let e = rcasLoad(sp);
-    let f = rcasLoad(sp + vec2i(1, 0));
-    let h = rcasLoad(sp + vec2i(0, 1));
+${taps}
 ${luma}
 
     //* Sharpening Lobe

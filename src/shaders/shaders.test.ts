@@ -68,8 +68,9 @@ const BASELINE_FINGERPRINTS: Record<string, string> = {
     blit: 'ef2eec52',
     easu: '48248d62',
     // Updated 2026-07-21: conditioned-space sharpening adopted (NEXT-STEPS item 1);
-    // 2026-08-25: alpha passthrough.
-    rcas: 'e73374ac',
+    // 2026-08-25: alpha passthrough; 2026-10-02: the spatial path conditions its
+    // linear/HDR taps the same way (anchored, gain-capped inversion).
+    rcas: '5990efb3',
     // Updated 2026-07-22: depth-clip flicker fix — reference tap-skip semantics
     // (no all-taps veto), jitter-delta-compensated reprojection, and a
     // neighborhood-relief-widened separation tolerance (grazing-angle planes).
@@ -169,6 +170,43 @@ describe('FSR 3.1.5 RCAS numeric parity', () => {
             'let hitMin = mn4 / (4.0 * mx4) * lowerLimiterMultiplier;',
         );
         expect(RCAS_LEGACY_SHADER).not.toContain('lowerLimiterMultiplier');
+    });
+});
+
+describe('RCAS on the spatial path', () => {
+    // FSR1's limiter assumes [0,1]. On linear HDR, hitMax switches sharpening
+    // off wherever the ring straddles 1.0 and divides 0/0 on a flat 1.0 ring,
+    // so production RCAS conditions the spatial path's taps like the temporal
+    // path's history (GPU probes, 2026-10-02).
+    it('conditions linear taps only when the input is not accumulate history', () => {
+        expect(RCAS_SHADER).toContain('let conditionTaps = !hasFlag(FLAG_INPUT_REINHARD);');
+        for (const tap of ['b', 'd', 'e', 'f', 'h']) {
+            expect(RCAS_SHADER).toContain(
+                `let ${tap} = select(${tap}In, tonemapInvertible(${tap}In), conditionTaps);`,
+            );
+        }
+    });
+
+    it('inverts once, anchored on the linear center and capped at linear RCAS gain', () => {
+        expect(RCAS_SHADER).toContain(
+            'eIn + tonemapInvert(max(pix, vec3f(0.0))) - tonemapInvert(e),',
+        );
+        expect(RCAS_SHADER).toContain('let maxGain = 1.0 / (1.0 - 4.0 * RCAS_LIMIT * peak);');
+        expect(RCAS_SHADER).toContain('maxIn * maxGain');
+        // The temporal branch still undoes conditioning + pre-exposure once.
+        expect(RCAS_SHADER).toContain('pix = tonemapInvert(max(pix, vec3f(0.0))) / exposure;');
+    });
+
+    it('leaves the frozen benchmark forms sharpening in linear space', () => {
+        for (const source of [
+            RCAS_LEGACY_SHADER,
+            RCAS_PER_TAP_SHADER,
+            RCAS_HOISTED_EXPOSURE_SHADER,
+            RCAS_TONEMAP_SPACE_SHADER,
+        ]) {
+            expect(source).not.toContain('conditionTaps');
+            expect(source).toContain('let e = rcasLoad(sp');
+        }
     });
 });
 
