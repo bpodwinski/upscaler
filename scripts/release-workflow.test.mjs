@@ -1,3 +1,7 @@
+// Drives publish.yml's shell steps end to end against throwaway Git
+// repositories (a bare "origin" plus a checkout), with fake `npm` and `gh` on
+// PATH. Each step's `if:` and `env:` are read from the YAML and evaluated the
+// way Actions would, so these tests break when the workflow drifts. GPU-free.
 import {
     copyFileSync,
     mkdirSync,
@@ -16,38 +20,85 @@ const workflow = readFileSync(
     new URL('../.github/workflows/publish.yml', import.meta.url),
     'utf8',
 );
+const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
 
-function stepBody(name) {
-    const marker = `      - name: ${name}`;
-    const start = workflow.indexOf(marker);
-    if (start === -1) throw new Error(`Missing workflow step: ${name}`);
+//* Workflow Parsing ===
 
-    const next = workflow.indexOf('\n      - ', start + marker.length);
-    return workflow.slice(start, next === -1 ? workflow.length : next);
-}
-
-function stepScript(name) {
-    const step = stepBody(name);
-    const marker = '        run: |\n';
-    const start = step.indexOf(marker);
-    if (start === -1) throw new Error(`Missing run script: ${name}`);
-
-    return step
-        .slice(start + marker.length)
-        .split('\n')
-        .map((line) => (line.startsWith('          ') ? line.slice(10) : line))
-        .join('\n');
-}
-
-function run(command, args, options = {}) {
-    const result = spawnSync(command, args, {
-        encoding: 'utf8',
-        ...options,
+/**
+ * Splits the single job's steps into { name, id, if, env, run } records.
+ * Only the YAML shapes publish.yml uses are understood; anything else throws.
+ */
+function parseSteps(text) {
+    const body = text.slice(text.indexOf('\n    steps:\n') + '\n    steps:\n'.length);
+    const chunks = body.split(/\n(?= {6}- )/);
+    return chunks.map((chunk) => {
+        const lines = chunk.split('\n');
+        const step = { env: {} };
+        for (let index = 0; index < lines.length; index++) {
+            const line = lines[index].replace(/^ {6}- /, '        ');
+            let match;
+            if ((match = line.match(/^ {8}name: (.+)$/))) step.name = match[1];
+            else if ((match = line.match(/^ {8}id: (.+)$/))) step.id = match[1];
+            else if ((match = line.match(/^ {8}if: (.+)$/))) step.if = match[1];
+            else if ((match = line.match(/^ {8}uses: (.+)$/))) step.uses = match[1];
+            else if ((match = line.match(/^ {8}run: (?!\|)(.+)$/))) step.run = match[1];
+            else if (/^ {8}run: \|$/.test(line)) {
+                const script = [];
+                while (index + 1 < lines.length && (lines[index + 1] === '' || /^ {10}/.test(lines[index + 1])))
+                    script.push(lines[++index].slice(10));
+                step.run = script.join('\n');
+            } else if (/^ {8}env:$/.test(line)) {
+                while (index + 1 < lines.length && /^ {10}\S/.test(lines[index + 1])) {
+                    const [, key, value] = lines[++index].match(/^ {10}([A-Z_]+): (.+)$/);
+                    step.env[key] = value;
+                }
+            }
+        }
+        return step;
     });
-    if (result.status !== 0)
-        throw new Error(
-            `${command} ${args.join(' ')} failed:\n${result.stdout}${result.stderr}`,
-        );
+}
+
+const steps = parseSteps(workflow);
+
+function step(name) {
+    const found = steps.find((candidate) => candidate.name === name);
+    if (!found) throw new Error(`Missing workflow step: ${name}`);
+    return found;
+}
+
+/** Evaluates the handful of `${{ }}` expressions the workflow uses. */
+function evaluate(expression, context) {
+    const trimmed = expression.trim();
+    let match;
+    if ((match = trimmed.match(/^steps\.([\w-]+)\.outputs\.([\w-]+)$/)))
+        return context.outputs[match[1]]?.[match[2]] ?? '';
+    const values = {
+        'github.event_name': context.event,
+        'github.ref': context.ref,
+        'inputs.tag': context.inputTag ?? '',
+        'github.token': 'test-token',
+        'github.repository': 'pmndrs/upscaler',
+    };
+    if (trimmed in values) return values[trimmed];
+    throw new Error(`Unsupported workflow expression: ${trimmed}`);
+}
+
+function interpolate(value, context) {
+    return value.replace(/\$\{\{(.+?)\}\}/g, (_, expression) => evaluate(expression, context));
+}
+
+function condition(expression, context) {
+    if (!expression) return true;
+    const match = expression.match(/^steps\.([\w-]+)\.outputs\.([\w-]+) == '([^']*)'$/);
+    if (!match) throw new Error(`Unsupported workflow condition: ${expression}`);
+    return (context.outputs[match[1]]?.[match[2]] ?? '') === match[3];
+}
+
+//* Fixtures ===
+
+function git(cwd, args, input) {
+    const result = spawnSync('git', args, { cwd, encoding: 'utf8', input });
+    if (result.status !== 0) throw new Error(`git ${args.join(' ')} failed:\n${result.stdout}${result.stderr}`);
     return result.stdout.trim();
 }
 
@@ -58,219 +109,99 @@ function writePackage(directory, version) {
     );
 }
 
-function createFixture({
-    child = false,
-    childSubject = 'release: v0.3.0 [skip ci]',
-    currentTag = false,
-    grandchild = false,
-    unrelated = false,
-} = {}) {
-    const directory = mkdtempSync(join(tmpdir(), 'release-workflow-'));
-    const binDirectory = join(directory, 'bin');
-    const scriptsDirectory = join(directory, 'scripts');
-    mkdirSync(binDirectory);
-    mkdirSync(scriptsDirectory);
-    copyFileSync(
-        new URL('./release-notes.mjs', import.meta.url),
-        join(scriptsDirectory, 'release-notes.mjs'),
-    );
+function commit(directory, message) {
+    git(directory, ['add', '-A']);
+    git(directory, ['commit', '-q', '--allow-empty', '-m', message]);
+    return git(directory, ['rev-parse', 'HEAD']);
+}
 
-    writePackage(directory, '0.2.0');
-    run('git', ['init', '-q'], { cwd: directory });
-    run('git', ['config', 'user.name', 'Workflow Test'], { cwd: directory });
-    run('git', ['config', 'user.email', 'workflow@example.test'], {
-        cwd: directory,
-    });
-    run('git', ['add', 'package.json'], { cwd: directory });
-    run('git', ['commit', '-q', '-m', 'feat: trigger release'], { cwd: directory });
-    const triggerCommit = run('git', ['rev-parse', 'HEAD'], { cwd: directory });
-    if (currentTag) run('git', ['tag', 'v0.2.0'], { cwd: directory });
-
-    if (child || grandchild) {
-        if (grandchild) {
-            writeFileSync(join(directory, 'intermediate.txt'), 'intermediate\n');
-            run('git', ['add', 'intermediate.txt'], { cwd: directory });
-            run('git', ['commit', '-q', '-m', 'chore: intermediate commit'], {
-                cwd: directory,
-            });
-        }
-
-        writePackage(directory, '0.3.0');
-        run('git', ['add', 'package.json'], { cwd: directory });
-        run('git', ['commit', '-q', '-m', childSubject], { cwd: directory });
-        run('git', ['tag', 'v0.3.0'], { cwd: directory });
-        run('git', ['checkout', '-q', '--detach', triggerCommit], { cwd: directory });
-    }
-
-    if (unrelated) {
-        const packageJson = `${JSON.stringify(
-            { name: '@pmndrs/upscaler', version: '0.3.0' },
-            null,
-            4,
-        )}\n`;
-        const blob = run('git', ['hash-object', '-w', '--stdin'], {
-            cwd: directory,
-            input: packageJson,
-        });
-        const tree = run('git', ['mktree'], {
-            cwd: directory,
-            input: `100644 blob ${blob}\tpackage.json\n`,
-        });
-        const commit = run('git', ['commit-tree', tree], {
-            cwd: directory,
-            input: `${childSubject}\n`,
-        });
-        run('git', ['tag', 'v0.3.0', commit], { cwd: directory });
-    }
-
-    const npmPath = join(binDirectory, 'npm');
-    writeFileSync(
-        npmPath,
-        `#!/usr/bin/env bash
+const FAKE_NPM = `#!/usr/bin/env bash
 set -euo pipefail
-version="\${2##*@}"
-
-case "$NPM_MODE" in
-    published)
-        printf '%s\\n' "$version"
-        ;;
-    absent)
-        printf 'npm error code E404\\n' >&2
-        exit 1
-        ;;
-    auth)
-        printf 'npm error code E401\\n' >&2
-        exit 1
-        ;;
-    network)
-        printf 'npm error code ECONNRESET\\n' >&2
-        exit 1
-        ;;
-    server)
-        printf 'npm error code E500\\n' >&2
-        exit 1
-        ;;
-    indeterminate)
-        printf 'unexpected registry response\\n' >&2
-        exit 1
-        ;;
-    *)
-        printf 'unexpected NPM_MODE: %s\\n' "$NPM_MODE" >&2
-        exit 2
-        ;;
-esac
-`,
-        { mode: 0o755 },
-    );
-
-    const gitPath = join(binDirectory, 'git');
-    writeFileSync(
-        gitPath,
-        `#!/usr/bin/env bash
-set -euo pipefail
-
-if [[ "$1" == "push" && "$GIT_PUSH_MODE" == "fail" ]]; then
-    printf 'remote tag push rejected\\n' >&2
-    exit 1
-fi
-exec "$REAL_GIT" "$@"
-`,
-        { mode: 0o755 },
-    );
-
-    const ghPath = join(binDirectory, 'gh');
-    writeFileSync(
-        ghPath,
-        `#!/usr/bin/env bash
-set -euo pipefail
-
-if [[ "$1" == "release" && "$2" == "create" ]]; then
-    printf 'create\\n' >> "$GH_LOG"
-    exit 0
-fi
-
-case "$GH_MODE" in
-    missing)
-        printf 'HTTP/2.0 404 Not Found\\r\\n'
-        exit 1
-        ;;
-    existing)
-        printf 'HTTP/2.0 200 OK\\r\\n'
+printf '%s\\n' "$*" >> "$NPM_LOG"
+case "$1" in
+    install|ci) exit 0 ;;
+    publish)
+        [[ "$NPM_PUBLISH_MODE" == "fail" ]] && { printf 'npm error code E403\\n' >&2; exit 1; }
         exit 0
         ;;
-    forbidden)
-        printf 'HTTP/2.0 403 Forbidden\\r\\n' >&2
-        exit 1
+    view)
+        version="\${2##*@}"
+        case "$NPM_MODE" in
+            published) printf '%s\\n' "$version" ;;
+            absent) printf 'npm error code E404\\n' >&2; exit 1 ;;
+            auth) printf 'npm error code E401\\n' >&2; exit 1 ;;
+            network) printf 'npm error code ECONNRESET\\n' >&2; exit 1 ;;
+            server) printf 'npm error code E500\\n' >&2; exit 1 ;;
+            indeterminate) printf 'unexpected registry response\\n' >&2; exit 1 ;;
+            *) printf 'unexpected NPM_MODE: %s\\n' "$NPM_MODE" >&2; exit 2 ;;
+        esac
         ;;
-    network)
-        printf 'dial tcp: network unreachable\\n' >&2
-        exit 1
-        ;;
-    *)
-        printf 'unexpected GH_MODE: %s\\n' "$GH_MODE" >&2
-        exit 2
-        ;;
+    *) printf 'unexpected npm command: %s\\n' "$*" >&2; exit 2 ;;
 esac
-`,
-        { mode: 0o755 },
-    );
+`;
 
-    return {
-        directory,
-        outputPath: join(directory, 'github-output'),
-        ghLogPath: join(directory, 'gh.log'),
-        env: {
-            ...process.env,
-            PATH: `${binDirectory}:${process.env.PATH}`,
-            GH_TOKEN: 'test-token',
-            REPOSITORY: 'pmndrs/upscaler',
-            GITHUB_OUTPUT: join(directory, 'github-output'),
-            GH_LOG: join(directory, 'gh.log'),
-            REAL_GIT: run('sh', ['-c', 'command -v git']),
-        },
-    };
-}
+const FAKE_GH = `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1" == "release" && "$2" == "create" ]]; then
+    printf '%s\\n' "$*" >> "$GH_LOG"
+    exit 0
+fi
+case "$GH_MODE" in
+    missing) printf 'HTTP/2.0 404 Not Found\\r\\n'; exit 1 ;;
+    existing) printf 'HTTP/2.0 200 OK\\r\\n'; exit 0 ;;
+    forbidden) printf 'HTTP/2.0 403 Forbidden\\r\\n' >&2; exit 1 ;;
+    network) printf 'dial tcp: network unreachable\\n' >&2; exit 1 ;;
+    *) printf 'unexpected GH_MODE: %s\\n' "$GH_MODE" >&2; exit 2 ;;
+esac
+`;
 
-function executeScript(script, fixture, environment = {}) {
-    return spawnSync(
-        'bash',
-        ['-e', '-o', 'pipefail', '-c', script],
-        {
-            cwd: fixture.directory,
-            env: {
-                ...fixture.env,
-                RUNNER_TEMP: fixture.directory,
-                PATH_A_VERSION: '',
-                PATH_B_VERSION: '',
-                GH_MODE: 'missing',
-                NPM_MODE: 'published',
-                GIT_PUSH_MODE: 'success',
-                ...environment,
-            },
-            encoding: 'utf8',
-        },
-    );
-}
+/**
+ * Builds origin + a checkout. History on main:
+ *   v0.2.0 (no release scripts — a legacy tag) → "ci: add release tooling"
+ *   → "feat: a feature" → "release: v<version>" tagged v<version>.
+ *
+ * @param {{
+ *   version?: string;        // version in the release commit's package.json
+ *   tag?: string;            // tag name put on the release commit
+ *   offMain?: boolean;       // release commit lives on a side branch, not main
+ * }} options
+ */
+function createFixture({ version = '0.3.0', tag = `v${version}`, offMain = false } = {}) {
+    const root = mkdtempSync(join(tmpdir(), 'release-workflow-'));
+    const origin = join(root, 'origin.git');
+    const seed = join(root, 'seed');
+    const work = join(root, 'work');
+    const bin = join(root, 'bin');
+    const temp = join(root, 'runner-temp');
+    for (const directory of [seed, bin, temp]) mkdirSync(directory);
+    git(root, ['init', '-q', '--bare', '-b', 'main', origin]);
 
-function executeStep(name, fixture, environment = {}) {
-    return executeScript(stepScript(name), fixture, environment);
-}
+    git(seed, ['init', '-q', '-b', 'main']);
+    git(seed, ['config', 'user.name', 'Workflow Test']);
+    git(seed, ['config', 'user.email', 'workflow@example.test']);
+    writePackage(seed, '0.2.0');
+    commit(seed, 'release: v0.2.0 [skip ci]');
+    git(seed, ['tag', '-a', 'v0.2.0', '-m', 'v0.2.0']);
 
-function readOutputs(fixture) {
-    try {
-        return Object.fromEntries(
-            readFileSync(fixture.outputPath, 'utf8')
-                .trim()
-                .split('\n')
-                .filter(Boolean)
-                .map((line) => {
-                    const separator = line.indexOf('=');
-                    return [line.slice(0, separator), line.slice(separator + 1)];
-                }),
-        );
-    } catch {
-        return {};
-    }
+    mkdirSync(join(seed, 'scripts'));
+    for (const script of ['release-notes.mjs', 'release-version.mjs'])
+        copyFileSync(new URL(`./${script}`, import.meta.url), join(seed, 'scripts', script));
+    commit(seed, 'ci: add release tooling');
+    commit(seed, 'feat: a feature');
+
+    if (offMain) git(seed, ['checkout', '-q', '-b', 'side']);
+    writePackage(seed, version);
+    commit(seed, `release: v${version}`);
+    git(seed, ['tag', '-a', tag, '-m', tag]);
+    if (offMain) git(seed, ['checkout', '-q', 'main']);
+
+    git(seed, ['remote', 'add', 'origin', origin]);
+    git(seed, ['push', '-q', 'origin', 'main', '--tags']);
+    git(root, ['clone', '-q', origin, work]);
+
+    writeFileSync(join(bin, 'npm'), FAKE_NPM, { mode: 0o755 });
+    writeFileSync(join(bin, 'gh'), FAKE_GH, { mode: 0o755 });
+    return { root, work, bin, temp, tag };
 }
 
 function withFixture(options, callback) {
@@ -278,359 +209,309 @@ function withFixture(options, callback) {
     try {
         return callback(fixture);
     } finally {
-        rmSync(fixture.directory, { recursive: true, force: true });
+        rmSync(fixture.root, { recursive: true, force: true });
     }
 }
 
-describe('release resolver behavior', () => {
-    test.each([
-        ['an unrelated tagged commit', { unrelated: true }],
-        ['a tagged grandchild', { grandchild: true }],
-        ['an ordinary tagless push', {}],
-    ])('does not resolve %s without a publish output', (_scenario, options) =>
-        withFixture(options, (fixture) => {
-            const result = executeStep('Resolve GitHub Release target', fixture, {
-                GH_MODE: 'missing',
-            });
+function readLog(path) {
+    try {
+        return readFileSync(path, 'utf8').split('\n').filter(Boolean);
+    } catch {
+        return [];
+    }
+}
 
-            expect(result.status, result.stderr).toBe(0);
-            expect(result.stdout).toContain('No GitHub Release is due.');
-            expect(readOutputs(fixture)).toEqual({});
-            expect(() => readFileSync(fixture.ghLogPath, 'utf8')).toThrow();
-        }));
+/**
+ * Runs the job's `run:` steps in order, as Actions would after actions/checkout.
+ *
+ * @param {ReturnType<typeof createFixture>} fixture
+ * @param {{
+ *   event?: 'push' | 'workflow_dispatch';
+ *   ref?: string;          // github.ref; defaults to refs/tags/<fixture tag> for a push
+ *   inputTag?: string;     // workflow_dispatch input
+ *   npm?: string;          // NPM_MODE for `npm view`
+ *   gh?: string;           // GH_MODE for `gh api`
+ *   publish?: string;      // NPM_PUBLISH_MODE: 'success' | 'fail'
+ * }} [scenario]
+ */
+function runJob(fixture, { event = 'push', ref, inputTag, npm = 'absent', gh = 'missing', publish = 'success' } = {}) {
+    const context = {
+        event,
+        ref: ref ?? (event === 'push' ? `refs/tags/${fixture.tag}` : 'refs/heads/main'),
+        inputTag,
+        outputs: {},
+    };
+    // actions/checkout: the pushed tag, or the dispatching branch.
+    git(fixture.work, ['checkout', '-q', '--detach', context.ref.replace(/^refs\/heads\//, 'origin/')]);
 
-    test('resolves a Path B direct-child release for the emitted version', () =>
-        withFixture({ child: true }, (fixture) => {
-            const result = executeStep('Resolve GitHub Release target', fixture, {
-                PATH_B_VERSION: '0.3.0',
-                GH_MODE: 'missing',
-            });
-
-            expect(result.status, result.stderr).toBe(0);
-            expect(readOutputs(fixture)).toMatchObject({
-                version: '0.3.0',
-                tag: 'v0.3.0',
-            });
-        }));
-
-    test('passes an existing Path B direct-child Release to the idempotent finalizer', () =>
-        withFixture({ child: true }, (fixture) => {
-            const resolver = executeStep(
-                'Resolve GitHub Release target',
-                fixture,
-                {
-                    PATH_B_VERSION: '0.3.0',
-                    GH_MODE: 'existing',
-                },
-            );
-            expect(resolver.status, resolver.stderr).toBe(0);
-
-            const release = executeStep('Create GitHub Release', fixture, {
-                VERSION: '0.3.0',
-                TAG: 'v0.3.0',
-                PRERELEASE: 'false',
-                GH_MODE: 'existing',
-            });
-            expect(release.status, release.stderr).toBe(0);
-            expect(release.stdout).toContain('already exists');
-            expect(() => readFileSync(fixture.ghLogPath, 'utf8')).toThrow();
-        }));
-
-    test('rejects a Path B output whose child identity is invalid', () =>
-        withFixture(
-            { child: true, childSubject: 'release: v0.3.0' },
-            (fixture) => {
-                const result = executeStep(
-                    'Resolve GitHub Release target',
-                    fixture,
-                    {
-                        PATH_B_VERSION: '0.3.0',
-                    },
-                );
-
-                expect(result.status).not.toBe(0);
-                expect(readOutputs(fixture)).toEqual({});
+    const npmLog = join(fixture.root, 'npm.log');
+    const ghLog = join(fixture.root, 'gh.log');
+    const executed = [];
+    let failed = null;
+    let output = '';
+    for (const [index, current] of steps.entries()) {
+        if (!current.run || !condition(current.if, context)) continue;
+        const outputPath = join(fixture.root, `output-${index}`);
+        writeFileSync(outputPath, '');
+        const env = Object.fromEntries(
+            Object.entries(current.env).map(([key, value]) => [key, interpolate(value, context)]),
+        );
+        expect(current.run, `${current.name ?? current.run} must not inline expressions`).not.toMatch(/\$\{\{/);
+        const result = spawnSync('bash', ['-e', '-o', 'pipefail', '-c', current.run], {
+            cwd: fixture.work,
+            encoding: 'utf8',
+            env: {
+                ...process.env,
+                ...env,
+                PATH: `${fixture.bin}:${process.env.PATH}`,
+                RUNNER_TEMP: fixture.temp,
+                GITHUB_OUTPUT: outputPath,
+                NPM_LOG: npmLog,
+                GH_LOG: ghLog,
+                NPM_MODE: npm,
+                GH_MODE: gh,
+                NPM_PUBLISH_MODE: publish,
             },
-        ));
+        });
+        executed.push(current.name ?? current.run);
+        output += result.stdout + result.stderr;
+        if (current.id)
+            context.outputs[current.id] = Object.fromEntries(
+                readFileSync(outputPath, 'utf8')
+                    .split('\n')
+                    .filter(Boolean)
+                    .map((line) => [line.slice(0, line.indexOf('=')), line.slice(line.indexOf('=') + 1)]),
+            );
+        if (result.status !== 0) {
+            failed = current.name ?? current.run;
+            break;
+        }
+    }
 
-    test('fails rather than guessing between current and child repair identities', () =>
-        withFixture({ child: true, currentTag: true }, (fixture) => {
-            const result = executeStep('Resolve GitHub Release target', fixture, {
-                GH_MODE: 'missing',
+    const npmCalls = readLog(npmLog);
+    return {
+        failed,
+        output,
+        executed,
+        outputs: context.outputs,
+        publishes: npmCalls.filter((line) => line.startsWith('publish')),
+        installs: npmCalls.filter((line) => line === 'ci'),
+        releases: readLog(ghLog),
+        notes: (() => {
+            try {
+                return readFileSync(join(fixture.temp, 'release-notes.md'), 'utf8');
+            } catch {
+                return null;
+            }
+        })(),
+    };
+}
+
+//* Trigger ===
+
+describe('trigger', () => {
+    const on = workflow.slice(workflow.indexOf('\non:\n'), workflow.indexOf('\npermissions:'));
+
+    test('publishes on v* tag pushes and never on branch pushes', () => {
+        expect(on).toMatch(/\n {2}push:\n {4}tags: \['v\*'\]\n/);
+        expect(on).not.toMatch(/branches/);
+        expect(on).not.toMatch(/pull_request|schedule/);
+    });
+
+    test('allows a manual re-run that names an existing tag', () => {
+        expect(on).toMatch(/workflow_dispatch:\n {4}inputs:\n {6}tag:\n/);
+        expect(on).toMatch(/required: true/);
+    });
+});
+
+//* Publishing ===
+
+describe('publishing a pushed tag', () => {
+    test('publishes a stable tag to latest and creates its Release', () =>
+        withFixture({}, (fixture) => {
+            const job = runJob(fixture);
+
+            expect(job.failed, job.output).toBeNull();
+            expect(job.outputs.release).toEqual({
+                tag: 'v0.3.0',
+                version: '0.3.0',
+                prerelease: 'false',
+                dist_tag: 'latest',
+                latest: 'true',
             });
-
-            expect(result.status).not.toBe(0);
-            expect(result.stdout + result.stderr).toMatch(/ambiguous|more than one/i);
-            expect(readOutputs(fixture)).toEqual({});
+            expect(job.installs).toHaveLength(1);
+            expect(job.publishes).toEqual(['publish --access public --tag latest']);
+            expect(job.releases).toHaveLength(1);
+            expect(job.releases[0]).toMatch(/^release create v0\.3\.0 .*--verify-tag/);
+            expect(job.releases[0]).toMatch(/ --latest$/);
+            expect(job.notes).toContain('## Features');
+            expect(job.notes).toContain('a feature');
+            expect(job.notes).toContain('compare/v0.2.0...v0.3.0');
         }));
 
-    test('resolves a confirmed npm version after an explicit GitHub 404', () =>
-        withFixture({ currentTag: true }, (fixture) => {
-            const result = executeStep('Resolve GitHub Release target', fixture, {
-                GH_MODE: 'missing',
-                NPM_MODE: 'published',
-            });
+    test.each([
+        ['0.3.0-beta.1', 'beta'],
+        ['0.3.0-rc.0', 'rc'],
+        ['0.3.0-0', 'next'],
+    ])('publishes prerelease %s to dist-tag %s as a GitHub prerelease', (version, distTag) =>
+        withFixture({ version }, (fixture) => {
+            const job = runJob(fixture);
 
-            expect(result.status, result.stderr).toBe(0);
-            expect(readOutputs(fixture).version).toBe('0.2.0');
+            expect(job.failed, job.output).toBeNull();
+            expect(job.publishes).toEqual([`publish --access public --tag ${distTag}`]);
+            expect(job.releases[0]).toMatch(/--prerelease --latest=false$/);
         }));
 
-    test('does not repair a version explicitly absent from npm', () =>
-        withFixture({ currentTag: true }, (fixture) => {
-            const result = executeStep('Resolve GitHub Release target', fixture, {
-                NPM_MODE: 'absent',
+    test('creates no Release when npm publish fails', () =>
+        withFixture({}, (fixture) => {
+            const job = runJob(fixture, { publish: 'fail' });
+
+            expect(job.failed).toBe('Publish to npm');
+            expect(job.publishes).toHaveLength(1);
+            expect(job.releases).toEqual([]);
+        }));
+});
+
+//* Guards ===
+
+describe('guards', () => {
+    test.each([
+        ['a tag that disagrees with package.json', { version: '0.3.0', tag: 'v0.3.1' }, /names version '0\.3\.1' but package\.json at \w+ has '0\.3\.0'/],
+        ['a tag on a commit that never reached main', { offMain: true }, /not on origin\/main/],
+        ['a tag that is not SemVer', { tag: 'v0.3' }, /not a v-prefixed SemVer/],
+        ['a v-prefixed tag that is not a version', { tag: 'vnext' }, /not a v-prefixed SemVer/],
+    ])('rejects %s before publishing anything', (_scenario, options, message) =>
+        withFixture(options, (fixture) => {
+            const job = runJob(fixture);
+
+            expect(job.failed).toBe('Verify release tag');
+            expect(job.output).toMatch(message);
+            expect(job.outputs.release).toEqual({});
+            expect(job.installs).toEqual([]);
+            expect(job.publishes).toEqual([]);
+            expect(job.releases).toEqual([]);
+        }));
+
+    test('rejects a dispatch for a tag that does not exist', () =>
+        withFixture({}, (fixture) => {
+            const job = runJob(fixture, { event: 'workflow_dispatch', inputTag: 'v9.9.9' });
+
+            expect(job.failed).toBe('Verify release tag');
+            expect(job.output).toMatch(/Tag v9\.9\.9 does not exist/);
+            expect(job.publishes).toEqual([]);
+        }));
+
+    test('rejects a dispatch for a tag without the v prefix', () =>
+        withFixture({ tag: '0.3.0' }, (fixture) => {
+            const job = runJob(fixture, { event: 'workflow_dispatch', inputTag: '0.3.0' });
+
+            expect(job.failed).toBe('Verify release tag');
+            expect(job.output).toMatch(/not a v-prefixed SemVer/);
+            expect(job.publishes).toEqual([]);
+        }));
+
+    test('rejects a branch push even if one were routed to it', () =>
+        withFixture({}, (fixture) => {
+            const job = runJob(fixture, { ref: 'refs/heads/main' });
+
+            expect(job.failed).toBe('Verify release tag');
+            expect(job.output).toMatch(/only for tag pushes/);
+        }));
+});
+
+//* Idempotency ===
+
+describe('re-runs', () => {
+    test('a version already on npm skips publish but still creates a missing Release', () =>
+        withFixture({}, (fixture) => {
+            const job = runJob(fixture, { npm: 'published', gh: 'missing' });
+
+            expect(job.failed, job.output).toBeNull();
+            expect(job.output).toContain('already on npm; skipping publish');
+            expect(job.installs).toEqual([]);
+            expect(job.publishes).toEqual([]);
+            expect(job.releases).toHaveLength(1);
+        }));
+
+    test('an existing Release is left unchanged', () =>
+        withFixture({}, (fixture) => {
+            const job = runJob(fixture, { npm: 'published', gh: 'existing' });
+
+            expect(job.failed, job.output).toBeNull();
+            expect(job.output).toContain('already exists; leaving it unchanged');
+            expect(job.releases).toEqual([]);
+        }));
+
+    test('a dispatch repairs a legacy tag with the dispatching branch\'s scripts, without taking "latest"', () =>
+        withFixture({}, (fixture) => {
+            // v0.2.0's tree predates scripts/; the dispatch runs from main.
+            const job = runJob(fixture, {
+                event: 'workflow_dispatch',
+                inputTag: 'v0.2.0',
+                npm: 'published',
+                gh: 'missing',
             });
 
-            expect(result.status, result.stderr).toBe(0);
-            expect(result.stdout).toContain('No GitHub Release is due.');
-            expect(readOutputs(fixture)).toEqual({});
+            expect(job.failed, job.output).toBeNull();
+            expect(git(fixture.work, ['rev-parse', 'HEAD'])).toBe(git(fixture.work, ['rev-parse', 'v0.2.0^{commit}']));
+            expect(job.outputs.release.latest).toBe('false');
+            expect(job.publishes).toEqual([]);
+            expect(job.releases).toHaveLength(1);
+            expect(job.releases[0]).toMatch(/^release create v0\.2\.0 .* --latest=false$/);
         }));
 
     test.each(['auth', 'network', 'server', 'indeterminate'])(
-        'propagates an npm %s failure while checking repair state',
+        'an npm %s failure stops the run instead of publishing',
         (mode) =>
-            withFixture({ currentTag: true }, (fixture) => {
-                const result = executeStep(
-                    'Resolve GitHub Release target',
-                    fixture,
-                    {
-                        NPM_MODE: mode,
-                    },
-                );
+            withFixture({}, (fixture) => {
+                const job = runJob(fixture, { npm: mode });
 
-                expect(result.status).not.toBe(0);
-                expect(result.stdout + result.stderr).toMatch(
-                    /unable to determine whether .* exists on npm/i,
-                );
-                expect(readOutputs(fixture)).toEqual({});
+                expect(job.failed).toBe('Check npm for this version');
+                expect(job.output).toMatch(/unable to determine whether .* exists on npm/i);
+                expect(job.publishes).toEqual([]);
+                expect(job.releases).toEqual([]);
             }),
     );
 
     test.each(['forbidden', 'network'])(
-        'propagates a GitHub %s failure while checking repair state',
+        'a GitHub %s failure creates no Release',
         (mode) =>
-            withFixture({ child: true }, (fixture) => {
-                const result = executeStep(
-                    'Resolve GitHub Release target',
-                    fixture,
-                    {
-                        GH_MODE: mode,
-                    },
-                );
+            withFixture({}, (fixture) => {
+                const job = runJob(fixture, { npm: 'published', gh: mode });
 
-                expect(result.status).not.toBe(0);
-                expect(readOutputs(fixture)).toEqual({});
-            }),
-    );
-
-    test('creates a Release only after an explicit GitHub 404', () =>
-        withFixture({ currentTag: true }, (fixture) => {
-            const result = executeStep('Create GitHub Release', fixture, {
-                VERSION: '0.2.0',
-                TAG: 'v0.2.0',
-                PRERELEASE: 'false',
-                GH_MODE: 'missing',
-            });
-
-            expect(result.status, result.stderr).toBe(0);
-            expect(readFileSync(fixture.ghLogPath, 'utf8')).toBe('create\n');
-        }));
-
-    test.each(['forbidden', 'network'])(
-        'does not create a Release after a GitHub %s failure',
-        (mode) =>
-            withFixture({ currentTag: true }, (fixture) => {
-                const result = executeStep('Create GitHub Release', fixture, {
-                    VERSION: '0.2.0',
-                    TAG: 'v0.2.0',
-                    PRERELEASE: 'false',
-                    GH_MODE: mode,
-                });
-
-                expect(result.status).not.toBe(0);
-                expect(() => readFileSync(fixture.ghLogPath, 'utf8')).toThrow();
+                expect(job.failed).toBe('Create GitHub Release');
+                expect(job.releases).toEqual([]);
             }),
     );
 });
 
-describe('publish outputs', () => {
-    test('manual publication exposes its version only after npm succeeds', () => {
-        const step = stepBody('Publish (manual version)');
+//* Structure ===
 
-        expect(step).toContain('id: publish_manual');
-        expect(step.indexOf('npm publish')).toBeLessThan(
-            step.indexOf('version=$VERSION'),
-        );
-        expect(step).toContain('>> "$GITHUB_OUTPUT"');
-    });
+describe('workflow structure', () => {
+    test('keeps one least-privilege job on OIDC, with no token secrets', () => {
+        const jobs = workflow.match(/^ {2}[A-Za-z0-9_-]+:\n {4}runs-on:/gm) ?? [];
 
-    test('automatic publication exposes its version only after tag push completes', () => {
-        const step = stepBody('Publish (auto-bump)');
-        const outputs = [...step.matchAll(/version=\$NEXT/g)].map(
-            (match) => match.index,
-        );
-
-        expect(step).toContain('id: publish_auto');
-        expect(outputs).toHaveLength(2);
-        expect(step.indexOf('git push origin "v$NEXT"')).toBeLessThan(outputs[0]);
-        expect(step).not.toContain('git push origin "v$NEXT" || true');
-        expect(step.indexOf('npm version "$NEXT"')).toBeLessThan(
-            step.indexOf('npm publish --access public'),
-        );
-        expect(step.indexOf('npm publish --access public')).toBeLessThan(
-            step.indexOf('git push origin HEAD:main --follow-tags'),
-        );
-        expect(step.indexOf('git push origin HEAD:main --follow-tags')).toBeLessThan(
-            outputs[1],
-        );
-    });
-
-    test('does not expose the recovery version when its remote tag push fails', () =>
-        withFixture({}, (fixture) => {
-            const script = stepScript('Publish (auto-bump)').replace(
-                '${{ steps.next.outputs.version }}',
-                '0.3.0',
-            );
-            const result = executeScript(script, fixture, {
-                GIT_PUSH_MODE: 'fail',
-            });
-
-            expect(result.status).not.toBe(0);
-            expect(readOutputs(fixture)).toEqual({});
-        }));
-});
-
-describe('release target resolution', () => {
-    test('runs after both publish paths and resolves manual before automatic output', () => {
-        const resolver = stepBody('Resolve GitHub Release target');
-        const resolverIndex = workflow.indexOf(
-            '      - name: Resolve GitHub Release target',
-        );
-
-        expect(resolverIndex).toBeGreaterThan(
-            workflow.indexOf('      - name: Publish (manual version)'),
-        );
-        expect(resolverIndex).toBeGreaterThan(
-            workflow.indexOf('      - name: Publish (auto-bump)'),
-        );
-        expect(resolver.indexOf('PATH_A_VERSION')).toBeLessThan(
-            resolver.indexOf('PATH_B_VERSION'),
-        );
-        expect(resolver).toContain('id: release_target');
-    });
-
-    test('verifies successful targets against the existing tag at HEAD', () => {
-        const resolver = stepBody('Resolve GitHub Release target');
-
-        expect(resolver).toContain('git rev-parse --verify');
-        expect(resolver).toContain('"$tag^{commit}"');
-        expect(resolver).toContain('git rev-parse HEAD');
-        expect(resolver).not.toMatch(/\bgit tag\s+(?!--list)/);
-        expect(resolver).not.toMatch(/\bgit push\b/);
-    });
-
-    test('requires the complete current-tag repair identity', () => {
-        const resolver = stepBody('Resolve GitHub Release target');
-
-        expect(resolver).toContain('package.json');
-        expect(resolver).toContain('npm view "$NAME@$version" version');
-        expect(resolver).toContain('gh api --include --method GET');
-        expect(resolver).toContain('"$status" == "404"');
-        expect(resolver).toContain('"$tag_commit" == "$head_commit"');
-    });
-
-    test('requires the exact single-parent automatic release child identity', () => {
-        const resolver = stepBody('Resolve GitHub Release target');
-
-        expect(resolver).toContain('release: v$version [skip ci]');
-        expect(resolver).toContain('git show -s --format=%P');
-        expect(resolver).toContain('parents');
-        expect(resolver).toContain('"${#parent_list[@]}" -eq 1');
-        expect(resolver).toContain('"${parent_list[0]}" == "$head_commit"');
-        expect(resolver).toContain('"$tagged_version" == "$version"');
-        expect(resolver).toContain('candidates');
-        expect(resolver).toMatch(/more than one|multiple/i);
-    });
-
-    test('strictly validates versions before constructing tags or npm specs', () => {
-        const resolver = stepBody('Resolve GitHub Release target');
-        const run = resolver.slice(resolver.indexOf('        run: |'));
-
-        expect(resolver).toContain('parseSemVer');
-        expect(resolver).toContain('VERSION_TO_VALIDATE');
-        expect(run).not.toMatch(/\$\{\{\s*steps\.[^}]+\}\}/);
-    });
-
-    test('classifies prereleases from parsed SemVer identifiers', () => {
-        const resolver = stepBody('Resolve GitHub Release target');
-
-        expect(resolver).toContain('.prerelease.length');
-        expect(resolver).not.toContain('[[ "$version" == *-* ]]');
-    });
-});
-
-describe('append-only GitHub Release finalizer', () => {
-    test('skips notes and release creation when no target is due', () => {
-        const notes = stepBody('Generate GitHub Release notes');
-        const release = stepBody('Create GitHub Release');
-
-        expect(notes).toContain(
-            "if: steps.release_target.outputs.version != ''",
-        );
-        expect(release).toContain(
-            "if: steps.release_target.outputs.version != ''",
-        );
-    });
-
-    test('writes notes outside the checkout', () => {
-        const notes = stepBody('Generate GitHub Release notes');
-        const release = stepBody('Create GitHub Release');
-
-        expect(notes).toContain('node scripts/release-notes.mjs --tag "$TAG"');
-        expect(notes).toContain('> "$RUNNER_TEMP/release-notes.md"');
-        expect(release).toContain('--notes-file "$RUNNER_TEMP/release-notes.md"');
-    });
-
-    test('leaves an existing release untouched', () => {
-        const release = stepBody('Create GitHub Release');
-
-        expect(release).toContain('gh api --include --method GET');
-        expect(release.indexOf('github_release_state "$TAG"')).toBeLessThan(
-            release.indexOf('gh release create "$TAG"'),
-        );
-        expect(release).toMatch(/already exists[\s\S]*exit 0/);
-    });
-
-    test('creates only verified stable or prerelease releases', () => {
-        const release = stepBody('Create GitHub Release');
-
-        expect(release).toContain('gh release create "$TAG"');
-        expect(release).toContain('--verify-tag');
-        expect(release).toContain('--latest');
-        expect(release).toContain('--prerelease');
-        expect(release).toContain('--latest=false');
-        expect(release).not.toMatch(/\bgit tag\b/);
-        expect(release).not.toMatch(/\bgit push\b/);
-    });
-
-    test('uses the workflow token and retains one least-privilege publish job', () => {
-        const resolver = stepBody('Resolve GitHub Release target');
-        const release = stepBody('Create GitHub Release');
-        const jobs =
-            workflow.match(/^ {2}[A-Za-z0-9_-]+:\n {4}runs-on:/gm) ?? [];
-
-        expect(resolver).toContain('GH_TOKEN: ${{ github.token }}');
-        expect(release).toContain('GH_TOKEN: ${{ github.token }}');
-        expect(workflow).toContain('contents: write');
-        expect(workflow).toContain('id-token: write');
-        expect(workflow).not.toMatch(/NPM_TOKEN|NODE_AUTH_TOKEN|personal.access.token/i);
         expect(jobs).toHaveLength(1);
+        expect(workflow).toMatch(/permissions:\n {2}contents: write.*\n {2}id-token: write/);
+        expect(workflow).not.toMatch(/NPM_TOKEN|NODE_AUTH_TOKEN|personal.access.token|secrets\./i);
+    });
+
+    test('never writes to the repository beyond the Release', () => {
+        for (const current of steps) {
+            expect(current.run ?? '').not.toMatch(/\bgit (push|tag|commit)\b/);
+            expect(current.run ?? '').not.toMatch(/\bnpm version\b/);
+        }
+        expect(workflow).not.toContain('[skip ci]');
+    });
+
+    test('writes release notes outside the checkout', () => {
+        expect(step('Generate GitHub Release notes').run).toContain('> "$RUNNER_TEMP/release-notes.md"');
+        expect(step('Create GitHub Release').run).toContain('--notes-file "$RUNNER_TEMP/release-notes.md"');
     });
 });
 
 describe('npm version parity', () => {
     test('CI runs the same pinned npm that publishes', () => {
-        const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
         const spec = (text) => text.match(/npm install -g (npm@\S+)/)?.[1];
 
         expect(spec(workflow)).toBeDefined();

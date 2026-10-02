@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const DEFAULT_REPOSITORY_URL = 'https://github.com/pmndrs/upscaler';
 const GIT_LOG_FORMAT = '%H%x00%s%x00%b';
@@ -348,8 +348,23 @@ function main() {
     }
 }
 
-if (
-    process.argv[1] &&
-    pathToFileURL(resolve(process.argv[1])).href === import.meta.url
-)
-    main();
+/**
+ * Whether the module at `moduleUrl` is the script node was invoked with.
+ *
+ * Compares real paths: node resolves symlinks in `import.meta.url` but not in
+ * `process.argv[1]`, so a plain comparison silently skips `main()` when the
+ * script runs from a symlinked directory (macOS's /var → /private/var).
+ *
+ * @param {string} moduleUrl - The caller's `import.meta.url`.
+ * @returns {boolean}
+ */
+export function isDirectRun(moduleUrl) {
+    if (!process.argv[1]) return false;
+    try {
+        return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(moduleUrl));
+    } catch {
+        return false;
+    }
+}
+
+if (isDirectRun(import.meta.url)) main();
