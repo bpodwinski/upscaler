@@ -199,6 +199,61 @@ local-only. To regenerate them, edit `STILL_CLAMP_RELAX` in
 - a small analytic model: box width in σ against per-frame drift in σ, giving
   the R at which the clip stops engaging.
 
+## 8. A contrast-adaptive change gate must read both frames' spread
+
+**Claim:** a temporal change detector that compares two block means
+(`1 − min/max`) and widens its noise floor by the block's coefficient of
+variation has a hidden one-sided failure if `cv` comes from the current frame
+only. Under sub-pixel jitter, a feature thinner than a texel is point-sampled
+in or out of a block per phase:
+- **The feature appears:** the current block is sparse, `cv` is high, and the
+  gate holds.
+- **The feature vanishes:** the current block has no spread (`cv = 0`), the
+  previous block had the feature, and `relative = 1`. The gate fires at full
+  strength.
+
+The detector therefore fires exactly when content *leaves* a block. Pooling the
+within-block spread of both frames over their joint mean, while keeping the
+between-frame shift out of it, closes the hole at no measurable cost to genuine
+lighting steps.
+
+The surprise was the reach. The "baseline" still-scene speckle we had accepted
+as inherent since the detector shipped (Q1 0.43 % of the frame, Q12 1.2 %) and
+most of its camera-motion false positives (Q4 0.47–0.73 %) were the same
+artefact. They fall to 0.02–0.06 %. Q9's light steps keep their response within
+2 %.
+
+Two tempting variants were worse:
+- `max(cv_cur, cv_prev)` is invariant to multiplicative lighting, yet it left
+  residue and lost 7 % on a step;
+- a bilinear-tap second moment was quieter on sparse geometry, but cost 3–4 %
+  on steps.
+
+**Methods note others would hit:** the fix moved a still-scene churn metric
+by 3–24 %, while the debug-view coverage moved 20–70×. The aging was spread
+thin. On sparse geometry, judge a detector by its own coverage, not by output
+churn alone. Also, a debug view presented untone-mapped is still sRGB-encoded:
+threshold the decoded value, not the byte.
+
+**Evidence:** [`bench/docs/NEXT-STEPS.md`](../../bench/docs/NEXT-STEPS.md) §9
+(still-scene, genuine-step, drift-lag and alpha tables, rejected variants, the
+ratio-3 alignment check); scenario **Q16** `sparse-wires-empty-background` in
+[`bench/src/benchmark/scenarios.ts`](../../bench/src/benchmark/scenarios.ts);
+[`src/shaders/shadingChange.ts`](../../src/shaders/shadingChange.ts)
+(`scaleResponse`). `bench/results/raw/convergence/*`, `drift-lag/*` and
+`alpha-convergence/*` are local-only. To regenerate them, for the code before and
+after the change, run:
+- `node scripts/measure-convergence.mjs --scenario <Q1|Q12|Q16> --ratio <2|3> --pairs <40|73> --shading-frames 32`;
+- `node scripts/measure-convergence.mjs --scenario Q9 --settle 56 --shading-frames 32 --pairs 1` (step windows);
+- `node scripts/measure-alpha-convergence.mjs --ratio <2|3>`.
+
+**Still needs:**
+- a minimal synthetic reproduction (a sub-texel line over black, jittered
+  point sampling) with the analytic cv for each case;
+- a second device;
+- a look at whether FSR 3.1.5's signed-difference pyramid has the same
+  asymmetry.
+
 ## 3. Source-faithful pass graphs measured against fused re-derivations
 
 **Claim:** porting FSR 3.1.5's pass graph faithfully to WebGPU costs

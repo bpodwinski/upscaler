@@ -296,7 +296,8 @@ orbit, so all of the churn is the per-phase pattern. Reading it:
   render-space blocks along the still wires (full-contrast sub-texel geometry over an
   empty background), ageing color and alpha history together. That is the color
   path's live "shading-change tuning" landmine on this content, not something the
-  alpha resolve can or should fix — left as a follow-up.
+  alpha resolve can or should fix — left as a follow-up. **Fixed in §9** (issue #22): a
+  one-sided contrast floor; with it, the detector-on rows equal the detector-off rows.
 - **Adopted the still-scene relax** (the color path's own rule-2 signal): it reaches
   the floor at ratio 2 and closes about a third (detector on) to half (detector off)
   of the gap at ratio 3. It cannot close all of it because `stillRelax` requires
@@ -470,7 +471,8 @@ Settings and environment:
 Relax 0 was measured with the `alphaRelax` guard that now ships. See the trap below.
 
 **The detector really is silent.** On Q15 the shading-change view sits at
-0.66 % lit before the ramp (the still-scene block speckle Q1/Q12 also show) and
+0.66 % lit before the ramp (the still-scene block speckle Q1/Q12 also show — most
+of it was §9's one-sided contrast gate, since fixed) and
 peaks at 0.97 % during both ramps. Q9's 8 → 2 ramp is *mostly* sub-detector too:
 0.68 % before, 1.42 % at its last frames. It is linear, though, so the per-frame
 relative change climbs from 1.3 % to 5 % and crosses the 4 % floor at the tail.
@@ -554,6 +556,199 @@ node scripts/measure-convergence.mjs --scenario Q1 --ratio 2 --pairs 40 --label 
 Artifacts land under `bench/results/raw/drift-lag/` and `bench/results/raw/convergence/`
 (git-ignored): per-frame rows per ROI, detector lit fractions, and PNGs at `--keep`
 frames.
+
+## 9. Shading-change false positives on sparse geometry — DONE (2026-10-03, issue #22)
+
+Report ([#22](https://github.com/pmndrs/upscaler/issues/22), found in §6's alpha
+work): on `examples/15-transparent-canvas`, `DebugView.ShadingChange` fires in
+render-space blocks along full-contrast sub-texel wires over an empty background,
+with a still camera. That ages non-locked history, so the wires never fully
+converge. Turning the detector off halved alpha churn at ratio 2.
+
+**Cause: the contrast floor was one-sided.** `scaleResponse` gates the relative
+difference of two block means (`1 − min/max`) with a floor of
+`base + SHADING_FLOOR_CV · cv`. The comparison is symmetric, but `cv` came from the
+**current frame only**. A wire thinner than a render texel is point-sampled: in a
+given jitter phase it lands in a texel or misses it. A near-vertical wire either
+crosses every row of a 4×4 block or none of them. Two cases follow:
+- **The wire appears.** The current block holds m lit texels of N, so
+  cv ≈ √(N/m − 1), about 1.7 at m = 4. The floor rises to about 0.69 and the block
+  stays quiet. The `cv` term exists for exactly this.
+- **The wire vanishes.** The current block is all black: cv = 0, so only the base
+  floor (0.08) applies. The previous frame had the wire, so `relative` = 1 and the
+  block fires at full strength.
+
+So the detector fired exactly when content left a block. It was a false positive
+every time the jitter phase missed a wire.
+
+**Fix: the floor reads both frames' spread.** The block now also sums the
+reprojected previous luma² (`tileSums` grows from `vec3f` to `vec4f`). `cv` is the
+pooled within-frame standard deviation over the joint mean:
+`sqrt((var_cur + var_prev) / 2) / ((mean_cur + mean_prev) / 2)`. The between-frame
+shift stays out of the spread, so a genuine change on a flat surface does not raise
+its own floor. Nothing else changed: the constants, the scales, disocclusion
+neutralization and accumulate's `SHADING_AGE` consumption are all as before.
+
+**Repro: new scenario Q16 `sparse-wires-empty-background`.** Three fans of bars
+over an opaque black background, still camera, plus a solid knot as a full-coverage
+control:
+- near-vertical, near-horizontal and diagonal, so both block axes are covered;
+- 0.012 / 0.018 / 0.024 units wide, which is about 0.5 / 0.8 / 1.05 render px at
+  ratio 2 and 0.35 / 0.5 / 0.7 at ratio 3 (1280×720).
+
+The fans' light steps to a quarter at frame 300. That is a genuine change on exactly
+this content, for `measure-drift-lag.mjs`.
+
+`measure-convergence.mjs` gained two outputs:
+- `--shading-frames N` replays the settle frame onward through the shading-change
+  view and reports the share of pixels whose response v > 0.1 (`firing`, which ages
+  history by ≥ 7.5 %) and v > 0.5 (`strong`).
+- A content-mask churn: consecutive and same-phase diffs over pixels brighter than
+  40/255 in the settle frame. On Q16 the full-frame mean is mostly black.
+
+Debug views have presented untone-mapped since #45, so the meter sRGB-decodes the
+red byte back to v. Lit fractions here are therefore not comparable to §8's, which
+were ACES-mapped bytes > 10.
+
+Settings and environment:
+- Apple Metal-3, headless Chrome over CDP, run from a git worktree. Nothing here
+  is timing.
+- Settle 180. Consecutive diff averaged over 40 pairs at ratio 2 and 73 at ratio 3
+  (one full jitter period: 32 and 72 phases).
+- Same-phase: one pair, one period apart.
+- `firing` / `strong`: averaged over frames 180–211.
+
+**Still scenes (pre → post):**
+
+| scenario | ratio | consecutive | content-mask consecutive | same-phase | firing (v > 0.1) | strong (v > 0.5) |
+| --- | --- | --- | --- | --- | --- | --- |
+| Q16 | 2 | 0.0254 → **0.0220** (detector off: 0.0219) | 0.490 → 0.482 | 0.0029 → 0.0029 | 2.41 % → **0.042 %** | 2.20 % → 0 |
+| Q16 | 3 | 0.0391 → **0.0345** (detector off: 0.0344) | 0.989 → 0.988 | 0.0040 → 0.0040 | 4.47 % → **0.066 %** | 3.88 % → 0.001 % |
+| Q1 | 2 | 0.1148 → 0.1109 | 0.175 → 0.172 | 0.0267 → 0.0268 | 0.43 % → 0.018 % | 0.29 % → 0 |
+| Q1 | 3 | 0.1311 → 0.1262 | 0.197 → 0.193 | 0.0608 → 0.0608 | 0.53 % → 0.019 % | 0.41 % → 0.0005 % |
+| Q12 | 2 | 0.0255 → 0.0222 | 0.044 → 0.040 | 0.0300 → 0.0301 | 1.19 % → 0 | 0.67 % → 0 |
+| Q12 | 3 | 0.0619 → **0.0470** | 0.103 → 0.084 | 0.0139 → 0.0141 | 1.82 % → 0.060 % | 1.40 % → 0 |
+
+**Genuine detections and slow ramps (ratio 2), per-frame `firing` / `strong` / mean v:**
+
+| event | pre | post |
+| --- | --- | --- |
+| Q9 f60, light step 3.2 → 8 | 64.46 % / 58.47 % / 0.582 | 64.06 % / 57.33 % / 0.572 |
+| Q9 f180, step 2 → 3.2 after the ramp | 53.25 % / 41.09 % / 0.417 | 53.62 % / 41.42 % / 0.420 |
+| Q9 ramp f121–179 (must stay quiet), max per frame | 0.83 % / 0.44 % | 0.04 % / 0 |
+| Q11 host pre-exposure f56–185 (must stay quiet), max | 0.55 % / 0.35 % | 0.06 % / 0 |
+| Q15 sub-detector ramps f116–315 (must stay quiet), max | 0.64 % / 0.44 % | 0.06 % / 0 |
+| Q4 orbit f100–139 (motion false positives), mean / max | 0.47 % / 0.67 % | 0.016 % / 0.042 % |
+| Q4 orbit f340–379, mean / max | 0.73 % / 1.03 % | 0.045 % / 0.15 % |
+| Q16 f300, the fans' light ÷ 4 | 4.12 % / 3.62 % on a 2.3–2.5 % false-positive floor | 2.37 % / 1.54 % on a ~0 % floor |
+
+The step responses are unchanged within about 2 %, and both still fire as clean
+single-frame spikes (f59 and f61 read ~0). Every "must stay quiet" window got
+quieter.
+
+**Q15 drift lag is unchanged.** `measure-drift-lag.mjs --scenario Q15 --frames
+116:379:4 --settings '{"autoExposure":false}'`, lag averaged over frames 136–188 and
+256–308:
+- pre: 10.21 / 8.81 frames, peak |Δ| 9.31 / 9.53;
+- post: 10.23 / 8.83 frames, peak 9.34 / 9.55;
+- tail |Δ| at f312 / f340 / f368 / f376 identical to 0.02.
+
+§8 recorded 10.5 / 9.1 with its own averaging window at a 2-frame step.
+
+**Example 15 alpha** (`measure-alpha-convergence.mjs`, §6's metrics on coverage
+pixels):
+
+| ratio | variant | α cons | α std | α rel | luma rel | α swing > 0.25 px |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2 | pre (§6's adopted row) | 2.761 | 2.986 | 0.032 | 0.063 | 301 |
+| 2 | **post** | **1.478** | **1.726** | **0.017** | **0.041** | **0** |
+| 2 | detector off | 1.478 | 1.725 | 0.017 | 0.041 | 0 |
+| 3 | pre | 4.857 | 6.936 | 0.099 | 0.148 | 2026 |
+| 3 | **post** | **3.483** | **5.717** | **0.084** | **0.131** | **1691** |
+| 3 | detector off | 3.481 | 5.715 | 0.084 | 0.131 | 1691 |
+
+On the issue's own repro, the detector now costs nothing. Same-phase alpha is ≤ 0.011
+in every run: the orbit stays periodic.
+
+**The one trade: the wire fans re-converge a little slower after a genuine sparse
+change.** `measure-drift-lag.mjs --scenario Q16 --frames 296:356:2` (auto-exposure
+off) sums the |Δ| against the held-light reference over f300–356, per ROI:
+
+| ratio | full | upright fan | level fan | slant fan + knot |
+| --- | --- | --- | --- | --- |
+| 2, pre → post | 18.68 → 19.37 | 27.86 → 31.34 | 34.09 → 39.94 | 53.99 → 48.70 |
+| 3, pre → post | 12.14 → 11.56 | 10.72 → 12.37 | 10.38 → 11.75 | 57.42 → 50.32 |
+
+The fans' integrated error rises 12–17 %. The knot's ROI falls 10–12 %. On the
+fans, the error at f300 is within about 0.1/255 either way, and both versions decay
+to ≤ 0.6/255 by f356.
+
+The mechanism is not lost detection. A quarter-intensity step on a block that holds
+the wire in both frames is under the `cv` floor before and after the fix (relative
+0.75 against a floor of about 0.7–0.9 at the 4×4 scale). Before the fix, the
+constant false fires kept the fans permanently part-aged. Their short effective
+history happened to answer the real step sooner too. Now they are converged like the
+rest of the frame, and they lag like §8's sub-detector case: a delayed fade
+(signed ≈ absolute), not a ghost. The always-on aging is what convergence rule 2
+forbids paying for that.
+
+**Two variants were measured and rejected:**
+- **Second moment over the bilinear taps** (`Σ wᵢ lᵢ²`, not the squared blend).
+  Interpolation halves a sub-texel feature across two texels and so understates its
+  sparsity. This silenced Q16 completely (0.000 / 0.002 %), but cost the genuine
+  steps 3–4 % of mean response (Q9 f60 0.565, f180 0.399) by inflating the spread on
+  textured content.
+- **`max(cv_cur, cv_prev)`.** Each frame's cv is invariant under a multiplicative
+  lighting change, which made this attractive. It left a residual on Q16
+  (0.16 % / 0.43 %, all v < 0.5) and lost 7 % on Q9 f180 (0.387).
+
+The shipped pooled form is the only one of the three with no measurable cost on the
+steps.
+
+**Is jitter-aligned block placement aligned at ratio 3? Yes.** The blocks are fixed
+4×4 / 8×8 render-texel tiles. Only the per-texel reprojection is jitter-aligned
+(`+ (jitter − jitterPrev) / renderSize`). The jitter is a sub-texel offset in
+render px at every ratio, so no ratio-dependent term is missing. Checked on GPU with
+the fix in, `firing` on still Q1 at ratio 2 / ratio 3, and Q16 at ratio 3:
+
+| jitter-delta term | Q1 r2 | Q1 r3 | Q16 r3 |
+| --- | --- | --- | --- |
+| as shipped | 0.018 % | 0.019 % | 0.066 % |
+| removed | 0.028 % | 0.083 % | 0.53 % |
+| sign flipped | 3.07 % | 3.37 % | 0.46 % |
+
+The term is correctly signed. It does more work at ratio 3 than at 2, because ratio
+3 has 72 phases, so consecutive deltas are larger on average.
+
+**Side finding, not addressed: disocclusion flickers on the same wires.**
+`DebugView.Disocclusion` on still Q16 shows dashes along the fans. A sub-texel wire
+missing from this phase's depth looks like an old occluder that went away, so the
+reconstruct pass's best-tap vote reads disocclusion there. This is `reconstruct.ts`
+territory (cf. §5 defect 1) and out of scope here. It is the likely reason the wire
+pixels themselves still read a low accumulation age after this fix, while the
+blocks around them no longer do.
+
+**Cost: not timed.** No ABBA run was made. The change is one extra f32 per thread in
+workgroup memory (768 → 1024 B), one multiply and one mix per texel, and a few ALU
+ops in the resolve, in a pass that measured 0.044 ms at ratio 2.
+
+Fingerprint: `shadingChange` `41ed97fa` → `061f55cd`. No other shader changed.
+
+Reproduce, with the bench on 5199 or `--url`. For the pre column, check out
+`src/shaders/shadingChange.ts` from before this change:
+
+```bash
+node scripts/measure-convergence.mjs --scenario Q16 --ratio 2 --pairs 40 --shading-frames 32 \
+  --views final,accumulation-age,shading-change,locks,disocclusion
+node scripts/measure-convergence.mjs --scenario Q16 --ratio 3 --pairs 73 --shading-frames 32
+node scripts/measure-convergence.mjs --scenario Q9 --settle 56 --shading-frames 32 --pairs 1
+node scripts/measure-drift-lag.mjs --scenario Q16 --frames 296:356:2 --settings '{"autoExposure":false}'
+node scripts/measure-alpha-convergence.mjs --ratio 2
+```
+
+The per-frame `firing` / `strong` / mean v series land in `summary.json`
+(`shadingChange.perFrame`) under `bench/results/raw/convergence/`, which is
+git-ignored.
 
 ## Explicitly not planned (measured against)
 

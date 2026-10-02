@@ -53,12 +53,13 @@ export const SHADING_CHANGE_SHADER = assembleShader(
 @group(0) @binding(8) var masks : texture_2d<f32>;
 
 // Per-thread block state: x = current-luma sum, y = reprojected previous-luma
-// sum, z = current-luma² sum (for the block's coefficient of variation).
+// sum, z = current-luma² sum, w = previous-luma² sum (each frame's own
+// within-block spread, for the block's coefficient of variation).
 // Luma is averaged BEFORE taking any ratio: per-texel relative differences are
 // asymmetric (the darker side of any jitter/alias residue always yields the
 // larger ratio), so their signed mean carries a coherent bias on
 // high-frequency content — measured as a 0.07–0.10 still-scene floor.
-var<workgroup> tileSums : array<vec3f, 64>;
+var<workgroup> tileSums : array<vec4f, 64>;
 
 // Per-scale base noise floors for the relative difference of block means.
 // Only the 4×4 and 8×8 scales contribute to the response — this is the
@@ -71,17 +72,21 @@ const SHADING_FLOOR_COARSE : f32 = 0.04; // 8×8
 // Adaptive part: jitter/alias flicker of a block mean scales with the block's
 // own luma contrast, so the floor grows with its coefficient of variation.
 // Flat regions (cv ≈ 0) stay maximally sensitive; a checkerboard block
-// (cv ≈ 1) is inherently ambiguous and defers to the variance-clip path.
+// (cv ≈ 1) is inherently ambiguous and defers to the variance-clip path. A
+// block whose luma sits in a few texels over black (sub-texel wires, issue
+// #22) reads cv ≈ √(N/m − 1) for m lit texels of N — its whole mean can come
+// and go with the jitter phase, and this term keeps it from firing.
 const SHADING_FLOOR_CV : f32 = 0.35;
 
 // Sums this texel's current luma, the previous frame's luma reprojected to the
 // same world position (jitter-delta compensated, bilinear — r32float is not
-// filterable), and current luma². Reset/offscreen texels contribute neutrally
+// filterable), and both squared. Reset/offscreen texels contribute neutrally
 // (prev = cur), and disoccluded texels are neutralized toward it — their
 // previous luma belongs to another surface, and disocclusion already discards
 // that history downstream.
-fn lumaPair(coord : vec2i, currentLuma : f32, hostRatio : f32, conditioning : f32) -> vec3f {
-    let neutral = vec3f(currentLuma, currentLuma, currentLuma * currentLuma);
+fn lumaPair(coord : vec2i, currentLuma : f32, hostRatio : f32, conditioning : f32) -> vec4f {
+    let currentSq = currentLuma * currentLuma;
+    let neutral = vec4f(currentLuma, currentLuma, currentSq, currentSq);
     if (hasFlag(FLAG_RESET)) { return neutral; }
     let uv = (vec2f(coord) + 0.5) * C.renderSizeInv;
     let motion = textureLoad(dilatedMotion, coord, 0).xy;
@@ -102,20 +107,30 @@ fn lumaPair(coord : vec2i, currentLuma : f32, hostRatio : f32, conditioning : f3
     let l01 = textureLoad(lumaHistoryIn, vec2i(p00.x, p11.y), 0).r;
     let l11 = textureLoad(lumaHistoryIn, p11, 0).r;
     let previousHostLuma = mix(mix(l00, l10, fraction.x), mix(l01, l11, fraction.x), fraction.y);
-    var previousLuma = previousHostLuma * hostRatio * conditioning;
-    let disocclusion = textureLoad(masks, coord, 0).r;
-    previousLuma = mix(previousLuma, currentLuma, clamp(disocclusion, 0.0, 1.0));
-    return vec3f(currentLuma, previousLuma, currentLuma * currentLuma);
+    let reprojected = previousHostLuma * hostRatio * conditioning;
+    let disocclusion = clamp(textureLoad(masks, coord, 0).r, 0.0, 1.0);
+    let previousLuma = mix(reprojected, currentLuma, disocclusion);
+    let previousSq = mix(reprojected * reprojected, currentSq, disocclusion);
+    return vec4f(currentLuma, previousLuma, currentSq, previousSq);
 }
 
 // Relative difference of two block means, gated by the scale's base floor
-// plus the block's own contrast-scaled flicker allowance.
-fn scaleResponse(sums : vec3f, count : f32, floorBase : f32) -> f32 {
+// plus the block's own contrast-scaled flicker allowance. The contrast is the
+// within-frame spread of BOTH frames over their joint mean. Measuring it on
+// the current frame alone made the gate one-sided: a thin bright feature that
+// this jitter phase missed leaves a block with no spread (cv = 0, base floor
+// only) against a previous frame that hit it, so the block fired at full
+// strength exactly when its content vanished (issue #22, NEXT-STEPS §9 — the
+// same artefact was most of the still-scene block speckle on Q1/Q12 and the
+// motion false positives on Q4). The between-frame shift is deliberately left
+// out of the spread, so a genuine change on a flat surface does not raise its
+// own floor.
+fn scaleResponse(sums : vec4f, count : f32, floorBase : f32) -> f32 {
     let maximum = max(sums.x, sums.y);
     if (maximum <= 1.0e-5) { return 0.0; }
-    let mean = sums.x / count;
-    let variance = max(sums.z / count - mean * mean, 0.0);
-    let cv = sqrt(variance) / max(mean, 1.0e-4);
+    let means = sums.xy / count;
+    let variances = max(sums.zw / count - means * means, vec2f(0.0));
+    let cv = sqrt(0.5 * (variances.x + variances.y)) / max(0.5 * (means.x + means.y), 1.0e-4);
     let floorValue = floorBase + SHADING_FLOOR_CV * cv;
     let relative = 1.0 - min(sums.x, sums.y) / maximum;
     return smoothstep(floorValue, floorValue * 3.0, relative);
@@ -137,7 +152,7 @@ fn main(
     //* Fine Sums + Luma History (2×2 render block per thread)
     let origin = vec2i(gid.xy) * 2;
     let maxCoord = vec2i(C.renderSize) - 1;
-    var sums0 = vec3f(0.0);
+    var sums0 = vec4f(0.0);
     for (var y = 0; y < 2; y++) {
         for (var x = 0; x < 2; x++) {
             let coord = clamp(origin + vec2i(x, y), vec2i(0), maxCoord);
@@ -159,7 +174,7 @@ fn main(
 
     //* Coarse Sums (workgroup-local: 4×4 render per mid, 8×8 per coarse)
     let base1 = (lid.xy / 2u) * 2u;
-    var sums1 = vec3f(0.0);
+    var sums1 = vec4f(0.0);
     for (var y = 0u; y < 2u; y++) {
         for (var x = 0u; x < 2u; x++) {
             sums1 += tileSums[(base1.y + y) * 8u + base1.x + x];
@@ -167,7 +182,7 @@ fn main(
     }
 
     let base2 = (lid.xy / 4u) * 4u;
-    var sums2 = vec3f(0.0);
+    var sums2 = vec4f(0.0);
     for (var y = 0u; y < 4u; y++) {
         for (var x = 0u; x < 4u; x++) {
             sums2 += tileSums[(base2.y + y) * 8u + base2.x + x];

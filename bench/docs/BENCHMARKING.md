@@ -45,7 +45,7 @@ reported +2.6% for a change that an interleaved run measured at +5.1%.)
 | **block / repetition** | One full A-B-B-A pattern. `--blocks 4` runs four of them. |
 | **warmup** | Frames rendered and thrown away before timing starts, so shader compilation and caches are not in the sample. |
 | **samples** | Timed frames per leg. More samples = tighter medians, longer runs. |
-| **scenario** | A scripted camera/scene animation, `Q0`–`Q15`. See the catalogue below. |
+| **scenario** | A scripted camera/scene animation, `Q0`–`Q16`. See the catalogue below. |
 | **noise floor** | How much the harness disagrees with *itself*. The bar your delta has to clear. |
 
 ---
@@ -161,7 +161,7 @@ work did not change, the rest of the frame got cheaper.
 
 ---
 
-## Scenarios (Q0–Q15)
+## Scenarios (Q0–Q16)
 
 Scripted camera and scene animations, defined in
 `bench/src/benchmark/scenarios.ts`. Performance runs use the default; capture
@@ -185,6 +185,7 @@ runs select them with `--scenarios`.
 | Q13 | `merged-reactive-masks` | Explicit reactive mask **and** the `reactiveOpaqueColor` auto-generator at once, on three still panels: explicit-only (reads 1.0), overlap (explicit 0.5 under a generated ramp, so it reads as a flat 0.5 floor rising to the 0.9 cap), diff-only. The `reactivity` capture is the per-pixel `max` from `generateReactive.ts`. A merge that overwrites, takes the min or sums the masks changes a panel. |
 | Q14 | `ssgi-thin-feature-locks` | Issue #17: still camera into an SSGI-lit box holding 1px wireframe meshes. Subruns `off` (no SSGI, clean control) / `static` (SSGI static pattern + spatial `recurrentDenoise`, the issue's config) / `rotating` (SSGI's default rotating pattern) / `builtin` (static pattern + `DenoiseNode`, the 06/09 recipe). Measure with `measure-convergence.mjs --scenario Q14 --subrun <s> --pairs 40`. |
 | Q15 | `sub-detector-lighting-drift` | Still camera, sun ramps 8 → 2 (120–188) and back 2 → 8 (240–308), exponentially at ~2 %/frame: half the shading detector's flattest floor, so the detector stays silent and only the variance clip limits lag. Measure with `scripts/measure-drift-lag.mjs`. |
+| Q16 | `sparse-wires-empty-background` | Issue #22: fans of sub-texel bars (about 0.5–1 render px at ratio 2, 0.35–0.7 at ratio 3) over an opaque black background, still camera, plus a solid knot as a control. The jitter phase decides whether a bar lands in a texel, so block means swing although nothing changed: the shading-change view must stay black until the fans' light drops to a quarter at frame 300. Measure with `measure-convergence.mjs --shading-frames 32` (and `measure-drift-lag.mjs --frames 296:356:2` for the step). |
 
 ---
 
@@ -210,7 +211,11 @@ node scripts/measure-convergence.mjs --scenario Q12 --ratio 2
 ```
 
 It reports consecutive-frame and same-jitter-phase differences, which is the
-measurement to run before and after touching anything in `accumulate.ts`.
+measurement to run before and after touching anything in `accumulate.ts`. It also
+reports them over a content mask (pixels brighter than 40/255), for sparse scenes
+like Q16. `--shading-frames N` replays N frames through the shading-change view and
+reports how much of the frame the detector fires on (`NEXT-STEPS.md` §9). Run it
+before and after touching `shadingChange.ts`.
 
 Its lighting-drift counterpart measures how far the output trails a slow lighting
 ramp on a still camera. It compares every sampled frame against a held-light
