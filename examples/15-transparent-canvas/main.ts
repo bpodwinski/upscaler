@@ -147,5 +147,9 @@ renderer.setAnimationLoop(() => {
         `display  ${u.displayWidth}×${u.displayHeight}  (${u.upscaleRatio.toFixed(1)}x)`;
 });
 
-// Handle for the headless CDP verification harness.
-Object.assign(window, { __transparentCanvasExample: { renderer, pass, settings, configure } });
+// Handle for the headless CDP verification harness. The scene objects are
+// exposed so scripts/measure-alpha-convergence.mjs can stop the loop, freeze
+// the animation, and step frames itself.
+Object.assign(window, {
+    __transparentCanvasExample: { renderer, pass, settings, configure, scene, camera, knot, wires },
+});

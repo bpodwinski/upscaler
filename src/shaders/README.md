@@ -673,11 +673,15 @@ default ran the RGBA builds for nearly everyone anyway, and the only thing it bo
 (production, frozen bench identities, experiments) declares the alpha-source binding,
 one bind-group shape fits any `_rcasShader` override.
 
-Rectification note: alpha's box is the *local 3×3 range*, not a variance AABB with the
-relax terms color uses. At a coverage edge the jittered taps span the full 0..1 range, so
-history passes untouched and accumulates; on a flat region the range collapses and stale
-alpha cannot ghost. The relax machinery exists for sub-texel luminance churn, which a
-coverage mask does not have.
+Rectification note: alpha's box is the *local 3×3 range*, not a variance AABB. At a
+coverage edge the jittered taps span the full 0..1 range, so history passes untouched and
+accumulates; on a flat region the range collapses and stale alpha cannot ghost. The clamp
+takes color's still-scene relax (`mix(clamp(h, min, max), h, stillRelax /
+STILL_CLAMP_RELAX)`): a feature thinner than a render texel leaves jitter phases whose 3×3
+is all-0 or all-1, which would otherwise re-snap converged coverage every cycle. Measured
+on `examples/15-transparent-canvas` with `scripts/measure-alpha-convergence.mjs`
+(`bench/docs/NEXT-STEPS.md` §6): a minority share of the sub-texel wire shimmer, most of
+which is shared with color via the shading-change detector.
 
 #### Raw WGSL and three.js integration
 

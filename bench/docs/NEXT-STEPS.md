@@ -159,12 +159,13 @@ Reproduced and fixed:
 - **Cost.** Zero extra fetch while locks are on: the lock path already samples
   `locksIn` at `prevUV`, and that fetch is now hoisted so alpha shares it. EASU's
   12 taps widen from `vec3f` to `vec4f`.
-- **Alpha rectification** is the local 3×3 alpha range, not the variance AABB with
-  `STILL_CLAMP_RELAX`/`LOCK_CLAMP_RELAX`. At a coverage edge the jittered taps span
-  0..1, so the box is wide and history accumulates; on a flat region the box
-  collapses and stale alpha cannot ghost. Item 5's relax machinery exists for
-  sub-texel luminance churn, which a coverage mask does not have — deliberately not
-  reused here.
+- **Alpha rectification** is the local 3×3 alpha range, not the variance AABB. At a
+  coverage edge the jittered taps span 0..1, so the box is wide and history
+  accumulates; on a flat region the box collapses and stale alpha cannot ghost.
+  **Amended 2026-10-02 (PR #18 review):** the clamp now takes item 5's still-scene
+  relax — `mix(clamp(h, min, max), h, stillRelax / STILL_CLAMP_RELAX)` — because a
+  feature thinner than a render texel *does* have the per-phase churn the first draft
+  said coverage lacked (see "Alpha still-scene convergence" below).
 - **Unconditional — no option (decided in the PR #18 review).** The first draft
   shipped an `alpha` constructor option defaulting to `renderer.alpha`, with
   RGB-only builds of EASU / accumulate / RCAS / blit byte-identical to the
@@ -248,6 +249,68 @@ Their A/B pairings stay valid — candidate and baseline gained the same plumbin
 the new fingerprints are recorded in the two shader tests. Removing the option did not
 change a byte of any RGBA shader (all eight exported EASU/RCAS/blit/accumulate strings
 compared identical before/after), so every production fingerprint is unchanged by it.
+
+**Alpha still-scene convergence (review nit, measured 2026-10-02).** The concern:
+the alpha history was hard-clamped to the current phase's 3×3 alpha range with no
+lock protection and no `STILL_CLAMP_RELAX`, so a feature thinner than a render texel
+gets jitter phases whose 3×3 is all-0 (or all-1) and re-snaps the converged coverage
+every cycle — convergence rule 2's failure, for alpha. New meter
+`scripts/measure-alpha-convergence.mjs` drives `examples/15-transparent-canvas`
+(sub-texel wires + knot over a zero-alpha background) with the animation frozen and
+the camera still, steps frames through three's animation loop, reads the
+rgba16float output texture back from the GPU, and reports per-pixel churn over two
+jitter cycles. Coverage pixels (temporal-mean alpha in (0.02, 0.98) or any per-frame
+swing > 0.02), 960×540, sharpness 0.8, settle 300–400; `cons` / `std` are mean
+consecutive |Δα| and per-pixel temporal std-dev on the 0–255 scale, `rel` is std/mean
+for alpha | for display-mapped luma (premultiplied by coverage here, so shared
+coverage flicker shows equally in both):
+
+| ratio | shading detector | alpha clamp | α cons | α std | α rel | luma rel | pixels with α swing > 0.25 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 2 | on (default) | hard (as reviewed) | 2.877 | 3.197 | 0.033 | 0.064 | 303 |
+| 2 | on | **still-relaxed (adopted)** | 2.761 | 2.986 | 0.032 | 0.063 | 301 |
+| 2 | on | none (floor) | 2.747 | 2.963 | 0.032 | 0.064 | 301 |
+| 3 | on | hard | 5.006 | 7.416 | 0.105 | 0.150 | 2052 |
+| 3 | on | **still-relaxed** | 4.853 | 6.933 | 0.099 | 0.148 | 2026 |
+| 3 | on | none | 4.268 | 5.706 | 0.072 | 0.148 | 1922 |
+| 2 | off | hard | 1.562 | 1.938 | 0.018 | 0.041 | 2 |
+| 2 | off | still-relaxed | 1.478 | 1.726 | 0.017 | 0.041 | 0 |
+| 3 | off | hard | 3.719 | 6.632 | 0.094 | 0.133 | 1716 |
+| 3 | off | still-relaxed | 3.479 | 5.713 | 0.084 | 0.131 | 1691 |
+| 3 | off | none | 2.979 | 4.679 | 0.058 | 0.131 | 1594 |
+
+Same-jitter-phase |Δα| was ≤ 0.003 in every run: the output is a settled periodic
+orbit, so all of the churn is the per-phase pattern. Reading it:
+
+- **The mechanism is real but a minority share.** Removing the clamp entirely (the
+  floor) cuts alpha churn 5% at ratio 2 and 15–23% at ratio 3, where the wires
+  (~0.66 render px) are genuinely sub-texel.
+- **Most of the wire shimmer is shared with color, not alpha-specific.** Color's
+  relative flicker is 1.4–2× alpha's in every configuration, and turning the
+  shading-change detector off roughly halves alpha churn at ratio 2: the
+  accumulation-age and shading-change debug views show the detector firing in
+  render-space blocks along the still wires (full-contrast sub-texel geometry over an
+  empty background), ageing color and alpha history together. That is the color
+  path's live "shading-change tuning" landmine on this content, not something the
+  alpha resolve can or should fix — left as a follow-up.
+- **Adopted the still-scene relax** (the color path's own rule-2 signal): it reaches
+  the floor at ratio 2 and closes about a third (detector on) to half (detector off)
+  of the gap at ratio 3. It cannot close all of it because `stillRelax` requires
+  converged history, which the shading detector keeps resetting on those wires.
+  Motion, disocclusion, shading change and reactivity all fold into `stillRelax`, so
+  everywhere the color box is at full rectification the alpha clamp is too —
+  behavior under motion is unchanged. An opaque input still resolves to alpha
+  exactly 1 (every term of the mix is 1). Color is untouched: Q1 2x 0.112 and Q12 2x
+  0.026 consecutive (recorded 0.112 / 0.024), `measure-convergence.mjs` after the
+  change.
+
+Reproduce: `node scripts/measure-alpha-convergence.mjs --ratio 3 [--settings
+'{"detectShadingChanges":false}']`; artifacts (summary JSON, alpha-mean and
+alpha-range PNGs, the six worst pixels traced over a cycle) land under
+`bench/results/raw/alpha-convergence/`. Footgun the meter documents: stepping frames
+in a bare `for` loop never advances three's node frame, so the velocity node keeps
+the camera's last move in every motion vector and history never settles — step
+through `renderer.setAnimationLoop` instead.
 
 **Behaviour change for consumers.** 0.2 wrote alpha 1.0 everywhere. With a default
 `WebGPURenderer` (`alpha: true`, clear alpha 0) and no `scene.background` / opaque clear

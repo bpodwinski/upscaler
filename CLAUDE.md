@@ -96,6 +96,11 @@ npm run build      # library build → dist/ (vite lib + tsc declarations)
 # same-jitter-phase frame diffs plus debug-view PNGs on a deterministic
 # scenario. Q12 = cornell + point-light shadow dither (consumer report 3 repro).
 node scripts/measure-convergence.mjs --scenario Q12 --ratio 2
+
+# The same for ALPHA: drives examples/15-transparent-canvas frozen + still and
+# reads the output texture back (exact alpha, no compositing). --settings merges
+# RuntimeSettings, e.g. '{"detectShadingChanges":false}' to isolate the detector.
+node scripts/measure-alpha-convergence.mjs --ratio 3
 ```
 
 CI (`.github/workflows/ci.yml`) runs lint → typecheck → test → build on push/PR. No GPU in CI, so tests are deliberately GPU-free (pure math + shader-string structure). **Keep it that way** — don't add tests that need a device to CI; they'll hang or fail.
@@ -244,6 +249,14 @@ upscale (matching three without the upscaler). The examples run on three's defau
 removed): **~33 µs flat** — +14.6 µs accumulate, +18.1 µs RCAS — which is +3.6% / +5.1% /
 +5.5% of compute at ratio 1 / 2 / 3 (display-res work, so it does not scale with ratio).
 Evidence + the rejected history/locks-swap alternative: `bench/docs/NEXT-STEPS.md` §6.
+**Alpha rectification** is the local 3×3 alpha range (not a variance AABB), **relaxed by
+color's own still-scene signal** — `mix(clamp(h, min, max), h, stillRelax /
+STILL_CLAMP_RELAX)` — because a sub-texel feature's all-0/all-1 jitter phases would
+otherwise re-snap converged coverage every cycle (convergence rule 2, for alpha).
+Measured with `scripts/measure-alpha-convergence.mjs` (NEXT-STEPS §6): a minority share
+of the still-scene shimmer on example 15's sub-texel wires; most of it is shared with
+color (shading-change detector firing along the wires), and color's relative flicker
+exceeds alpha's — re-measure there before touching the alpha resolve.
 GPU-verified across `UpscalePass`, the TSL nodes, and the raw `Upscaler`; the acceptance
 demos are `examples/14-pathtracer-alpha` (spatial) and `examples/15-transparent-canvas`
 (temporal). Note `UpscalePass`'s present quad is `transparent: true` + `NoBlending` — an

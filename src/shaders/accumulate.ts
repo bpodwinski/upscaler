@@ -359,9 +359,15 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     // 3x3 alpha range rather than a variance AABB: at a coverage edge the
     // jittered taps span the whole 0..1 range, so history passes untouched and
     // accumulates; on a flat region the range collapses and stale alpha cannot
-    // ghost. No relax term — that machinery exists for the sub-texel luminance
-    // churn a coverage mask does not have.
-    let rectifiedAlpha = clamp(lockPrev.a, alphaMin, alphaMax);
+    // ghost.
+    // Still-scene relax, as for color: a feature thinner than a render texel
+    // leaves some jitter phases with an all-0 (or all-1) 3x3, which would
+    // re-snap the converged coverage every cycle. Where the color box is
+    // widened because rectification has nothing legitimate to catch (still,
+    // converged, no disocclusion / shading change / reactivity), the alpha
+    // history passes unclamped; any of those signals restores the clamp.
+    let alphaRelax = stillRelax / STILL_CLAMP_RELAX;
+    let rectifiedAlpha = mix(clamp(lockPrev.a, alphaMin, alphaMax), lockPrev.a, alphaRelax);
     let resultAlpha = clamp(mix(rectifiedAlpha, currentAlpha, alpha), 0.0, 1.0);
 
     textureStore(historyOut, gid.xy, vec4f(result, newCount / C.maxAccumulation));

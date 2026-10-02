@@ -181,6 +181,14 @@ node scripts/measure-convergence.mjs --scenario Q12 --ratio 2
 It reports consecutive-frame and same-jitter-phase differences, which is the
 measurement to run before and after touching anything in `accumulate.ts`.
 
+Its alpha counterpart drives `examples/15-transparent-canvas` (sub-texel wires over a
+zero-alpha background) instead of the bench, and reads the output texture back so
+alpha is measured exactly — run it before and after touching the alpha resolve:
+
+```bash
+node scripts/measure-alpha-convergence.mjs --ratio 3
+```
+
 ---
 
 ## Benchmarking on a device
