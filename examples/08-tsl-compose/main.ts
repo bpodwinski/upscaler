@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { screenUV, smoothstep } from 'three/tsl';
+import { screenUV, smoothstep, vec3, vec4 } from 'three/tsl';
 
 import { upscaleScene, QualityMode } from '@pmndrs/upscaler';
 
@@ -36,8 +36,11 @@ const post = new THREE.PostProcessing(renderer);
 const fsrNode = upscaleScene(scene, camera, { quality: QualityMode.Performance }) as {
     mul(n: unknown): unknown;
 };
-// Darken toward the frame edges (1 at centre, ~0.35 at the corners).
-const vignette = smoothstep(0.85, 0.25, screenUV.sub(0.5).length());
+// Darken toward the frame edges (1 at centre, ~0.35 at the corners). Color
+// only: the upscale carries alpha, so multiplying the vec4 by a bare float
+// would fade the edges to *transparent* on three's default (alpha: true)
+// canvas instead of darkening them.
+const vignette = vec4(vec3(smoothstep(0.85, 0.25, screenUV.sub(0.5).length())), 1);
 post.outputNode = fsrNode.mul(vignette) as unknown as THREE.Node;
 
 const badge = document.getElementById('badge')!;

@@ -316,8 +316,12 @@ through `renderer.setAnimationLoop` instead.
 `WebGPURenderer` (`alpha: true`, clear alpha 0) and no `scene.background` / opaque clear
 color, empty regions are now transparent through `UpscalePass` and the TSL nodes —
 matching three without the upscaler. Set `scene.background` or an opaque clear color
-(or `alpha: false` on the renderer) for the old look. Flagged as a breaking change in
-the release notes (README "Alpha" carries the migration note).
+(or `alpha: false` on the renderer) for the old look. A post graph that scales the
+upscaled `vec4` by a scalar now scales alpha too — example 08's `.mul(vignette)` faded
+its frame edges to transparent over the page until the vignette became
+`vec4(vec3(v), 1)` (caught by rendering every opaque example over a magenta page).
+Flagged as a breaking change in the release notes (README "Alpha" carries the migration
+note).
 
 ## Explicitly not planned (measured against)
 

@@ -245,7 +245,9 @@ without it fails bind-group creation; `shaders.test.ts` enforces it.
 `scene.background`/opaque clear color, empty regions are now transparent through the
 upscale (matching three without the upscaler). The examples run on three's default canvas
 (`examples/shared/boot.ts` no longer forces `alpha: false`) and every opaque example paints
-`scene.background`. Measured cost (interleaved ABBA, 2026-08-25, before the option was
+`scene.background`. Post graphs that scale the upscaled `vec4` by a scalar now scale alpha
+too — example 08's vignette multiplies by `vec4(vec3(v), 1)` for that reason (a bare
+`.mul(v)` faded its edges to transparent over the page). Measured cost (interleaved ABBA, 2026-08-25, before the option was
 removed): **~33 µs flat** — +14.6 µs accumulate, +18.1 µs RCAS — which is +3.6% / +5.1% /
 +5.5% of compute at ratio 1 / 2 / 3 (display-res work, so it does not scale with ratio).
 Evidence + the rejected history/locks-swap alternative: `bench/docs/NEXT-STEPS.md` §6.
