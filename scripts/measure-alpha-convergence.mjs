@@ -26,7 +26,8 @@
  * --settings is merged into the upscaler's RuntimeSettings, so a run can
  * isolate one mechanism (e.g. the shading-change detector) from the rest.
  *
- * Starts the examples dev server on --url's port if nothing answers there.
+ * Starts the examples dev server on --url's host + port if nothing answers
+ * there. --port is Chrome's DevTools (CDP) port. Run with --help for the list.
  * Writes summary.json plus alpha-mean / alpha-range PNGs under
  * bench/results/raw/alpha-convergence/<label>-<path>-<ratio>x/.
  */
@@ -36,7 +37,17 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
+import {
+    parsePort,
+    removeTempDirectory,
+    resolveServerUrl,
+    spawnVite,
+    stopChild,
+    waitForUrl as waitForServer,
+} from './local-processes.mjs';
+
 const ROOT = resolve(import.meta.dirname, '..');
+const DEFAULT_EXAMPLES_URL = 'http://127.0.0.1:5300';
 
 //* CLI
 function parseArguments(argv) {
@@ -56,6 +67,21 @@ function parseArguments(argv) {
 }
 
 const cli = parseArguments(process.argv.slice(2));
+if (cli.help || cli.h) {
+    console.log(`Usage: node scripts/measure-alpha-convergence.mjs [options]
+  --ratio <n>            upscale ratio (default 2)
+  --settle <frames>      frames to step before measuring (default 240)
+  --width <px> --height <px>   canvas size (default 960x540)
+  --sharpness <n>        RCAS sharpness (default 0.8)
+  --path <path>          upscale path (default temporal)
+  --settings <json>      merged into the upscaler's RuntimeSettings
+  --label <name>         output folder prefix (default baseline)
+  --url <origin>         examples origin (default ${DEFAULT_EXAMPLES_URL}); if nothing answers,
+                         the examples dev server is started on that host + port (--strictPort)
+  --port <n>             Chrome DevTools (CDP) port (default 9333)
+Writes to bench/results/raw/alpha-convergence/<label>-<path>-<ratio>x/.`);
+    process.exit(0);
+}
 const ratio = Number(cli.ratio ?? 2);
 const settle = Number(cli.settle ?? 240);
 const width = Number(cli.width ?? 960);
@@ -64,8 +90,9 @@ const sharpness = Number(cli.sharpness ?? 0.8);
 const path = cli.path ?? 'temporal';
 const label = cli.label ?? 'baseline';
 const runtimeSettings = cli.settings ? JSON.parse(cli.settings) : {};
-const port = Number(cli.port ?? 9333);
-const baseUrl = cli.url ?? 'http://127.0.0.1:5300';
+const port = parsePort(cli.port, '--port') ?? 9333;
+const server = resolveServerUrl(cli.url, DEFAULT_EXAMPLES_URL);
+const baseUrl = server.origin;
 const outputDirectory = join(
     ROOT,
     'bench/results/raw/alpha-convergence',
@@ -405,7 +432,7 @@ async function main() {
     await rm(outputDirectory, { recursive: true, force: true });
     await mkdir(outputDirectory, { recursive: true });
 
-    let server = null;
+    let viteServer = null;
     let chrome = null;
     let profile = null;
     let client = null;
@@ -413,13 +440,8 @@ async function main() {
         try {
             await waitForUrl(baseUrl, 1);
         } catch {
-            const url = new URL(baseUrl);
-            server = spawn(
-                'npx',
-                ['vite', '--config', 'examples/vite.config.ts', '--host', url.hostname, '--port', url.port, '--strictPort'],
-                { cwd: ROOT, stdio: ['ignore', 'ignore', 'ignore'] },
-            );
-            await waitForUrl(baseUrl);
+            viteServer = spawnVite('examples/vite.config.ts', server);
+            await waitForServer(baseUrl, { child: viteServer });
         }
 
         profile = join(tmpdir(), `upscaler-alpha-convergence-${process.pid}-${Date.now()}`);
@@ -503,12 +525,9 @@ async function main() {
         if (logRecords.length) console.warn(`browser log records:\n${logRecords.join('\n')}`);
     } finally {
         client?.close();
-        if (chrome) {
-            chrome.kill('SIGTERM');
-            await new Promise((resolveWait) => setTimeout(resolveWait, 300));
-        }
-        if (profile) await rm(profile, { recursive: true, force: true });
-        if (server) server.kill('SIGTERM');
+        await stopChild(chrome);
+        await removeTempDirectory(profile, 'Chrome profile');
+        await stopChild(viteServer);
     }
 }
 

@@ -13,6 +13,11 @@
  *   node scripts/measure-convergence.mjs [--scenario Q1] [--ratio 2]
  *     [--settle 180] [--pairs 12] [--width 1280] [--height 720]
  *     [--views final,accumulation-age] [--label baseline] [--port 9333]
+ *     [--url http://127.0.0.1:5199]
+ *
+ * --url is the bench origin to drive; if nothing answers there, the bench dev
+ * server is started on exactly that host + port. --port is Chrome's DevTools
+ * (CDP) port. Run with --help for the full list.
  *
  * Outputs per-pair diffs + a summary JSON, plus debug-view PNGs, under
  * bench/results/raw/convergence/<label>-<scenario>-<ratio>x/.
@@ -24,8 +29,17 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { inflateSync } from 'node:zlib';
 
+import {
+    DEFAULT_BENCH_URL,
+    parsePort,
+    removeTempDirectory,
+    resolveServerUrl,
+    spawnVite,
+    stopChild,
+    waitForUrl as waitForServer,
+} from './local-processes.mjs';
+
 const ROOT = resolve(import.meta.dirname, '..');
-const DEFAULT_URL = 'http://127.0.0.1:5199';
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 //* CLI
@@ -46,6 +60,22 @@ function parseArguments(argv) {
 }
 
 const cli = parseArguments(process.argv.slice(2));
+if (cli.help || cli.h) {
+    console.log(`Usage: node scripts/measure-convergence.mjs [options]
+  --scenario <id>        bench scenario (default Q1)
+  --ratio <n>            upscale ratio (default 2)
+  --settle <frames>      frames to step before measuring (default 180)
+  --pairs <n>            consecutive frame pairs to diff (default 12)
+  --width <px> --height <px>   canvas size (default 1280x720)
+  --views <list>         debug views to capture (default final,accumulation-age)
+  --label <name>         output folder prefix (default baseline)
+  --url <origin>         bench origin (default ${DEFAULT_BENCH_URL}); if nothing answers,
+                         the bench dev server is started on that host + port (--strictPort)
+  --port <n>             Chrome DevTools (CDP) port (default 9333)
+Writes to bench/results/raw/convergence/<label>-<scenario>-<ratio>x/.`);
+    process.exit(0);
+}
+const server = resolveServerUrl(cli.url, DEFAULT_BENCH_URL);
 const scenario = cli.scenario ?? 'Q1';
 const ratio = Number(cli.ratio ?? 2);
 const settle = Number(cli.settle ?? 180);
@@ -53,7 +83,7 @@ const pairs = Number(cli.pairs ?? 12);
 const width = Number(cli.width ?? 1280);
 const height = Number(cli.height ?? 720);
 const label = cli.label ?? 'baseline';
-const port = Number(cli.port ?? 9333);
+const port = parsePort(cli.port, '--port') ?? 9333;
 const views = (cli.views ?? 'final,accumulation-age').split(',').filter(Boolean);
 const outputDirectory = join(
     ROOT,
@@ -235,19 +265,16 @@ async function main() {
     await rm(outputDirectory, { recursive: true, force: true });
     await mkdir(outputDirectory, { recursive: true });
 
-    let server = null;
+    let viteServer = null;
     let chrome = null;
     let profile = null;
     let client = null;
     try {
         try {
-            await waitForUrl(DEFAULT_URL, 1);
+            await waitForUrl(server.origin, 1);
         } catch {
-            server = spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1'], {
-                cwd: ROOT,
-                stdio: ['ignore', 'ignore', 'ignore'],
-            });
-            await waitForUrl(DEFAULT_URL);
+            viteServer = spawnVite('bench/vite.config.ts', server);
+            await waitForServer(server.origin, { child: viteServer });
         }
 
         profile = join(tmpdir(), `upscaler-convergence-${process.pid}-${Date.now()}`);
@@ -283,7 +310,7 @@ async function main() {
             client.call('Log.enable'),
         ]);
 
-        const url = new URL(DEFAULT_URL);
+        const url = new URL(server.origin);
         url.searchParams.set('benchMode', 'capture');
         url.searchParams.set('scenario', scenario);
         url.searchParams.set('ratio', String(ratio));
@@ -382,12 +409,9 @@ async function main() {
             console.warn(`browser log records:\n${logRecords.join('\n')}`);
     } finally {
         client?.close();
-        if (chrome) {
-            chrome.kill('SIGTERM');
-            await new Promise((resolveWait) => setTimeout(resolveWait, 300));
-        }
-        if (profile) await rm(profile, { recursive: true, force: true });
-        if (server) server.kill('SIGTERM');
+        await stopChild(chrome);
+        await removeTempDirectory(profile, 'Chrome profile');
+        await stopChild(viteServer);
     }
 }
 
