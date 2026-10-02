@@ -112,6 +112,7 @@ class BrowserBenchmarkApi implements UpscalerBenchmarkApi {
             lockThinFeatures: true,
             detectShadingChanges: true,
             debugView: DEBUG_VIEWS[request.debugView],
+            ...request.settings,
         });
         await this.reset();
         await this.step(request.frame);

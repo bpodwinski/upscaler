@@ -24,7 +24,8 @@ declare type BenchmarkScenarioId =
     | 'Q10'
     | 'Q11'
     | 'Q12'
-    | 'Q13';
+    | 'Q13'
+    | 'Q14';
 declare type BenchmarkDebugView =
     | 'final'
     | 'motion-vectors'
@@ -218,9 +219,19 @@ declare interface BenchmarkFrameState {
     reactiveMerge?: boolean;
 }
 
+declare interface BenchmarkCaptureSettings {
+    lockThinFeatures?: boolean;
+    detectShadingChanges?: boolean;
+    autoExposure?: boolean;
+    rcasDenoise?: boolean;
+    maxAccumulation?: number;
+}
+
 declare interface BenchmarkCaptureRequest {
     frame: number;
     debugView: BenchmarkDebugView;
+    /** Overrides of the canonical capture settings (A/B a feature toggle). */
+    settings?: BenchmarkCaptureSettings;
 }
 
 declare interface BenchmarkCaptureResult {

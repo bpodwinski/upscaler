@@ -13,14 +13,19 @@
  *   node scripts/measure-convergence.mjs [--scenario Q1] [--ratio 2]
  *     [--settle 180] [--pairs 12] [--width 1280] [--height 720]
  *     [--views final,accumulation-age] [--label baseline] [--port 9333]
- *     [--url http://127.0.0.1:5199]
+ *     [--url http://127.0.0.1:5199] [--subrun static]
+ *     [--settings '{"detectShadingChanges":false}']
  *
  * --url is the bench origin to drive; if nothing answers there, the bench dev
  * server is started on exactly that host + port. --port is Chrome's DevTools
  * (CDP) port. Run with --help for the full list.
  *
+ * --subrun selects a scenario subrun (Q14: off/static/rotating/builtin);
+ * --settings overrides the canonical capture settings (lockThinFeatures,
+ * detectShadingChanges, autoExposure, rcasDenoise, maxAccumulation) for an A/B.
+ *
  * Outputs per-pair diffs + a summary JSON, plus debug-view PNGs, under
- * bench/results/raw/convergence/<label>-<scenario>-<ratio>x/.
+ * bench/results/raw/convergence/<label>-<scenario>[-<subrun>]-<ratio>x/.
  */
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -72,7 +77,11 @@ if (cli.help || cli.h) {
   --url <origin>         bench origin (default ${DEFAULT_BENCH_URL}); if nothing answers,
                          the bench dev server is started on that host + port (--strictPort)
   --port <n>             Chrome DevTools (CDP) port (default 9333)
-Writes to bench/results/raw/convergence/<label>-<scenario>-<ratio>x/.`);
+  --subrun <name>        scenario subrun, e.g. Q14 off|static|rotating|builtin
+  --settings <json>      capture-setting overrides for an A/B, e.g.
+                         '{"lockThinFeatures":false}' (also detectShadingChanges,
+                         autoExposure, rcasDenoise, maxAccumulation)
+Writes to bench/results/raw/convergence/<label>-<scenario>[-<subrun>]-<ratio>x/.`);
     process.exit(0);
 }
 const server = resolveServerUrl(cli.url, DEFAULT_BENCH_URL);
@@ -85,10 +94,12 @@ const height = Number(cli.height ?? 720);
 const label = cli.label ?? 'baseline';
 const port = parsePort(cli.port, '--port') ?? 9333;
 const views = (cli.views ?? 'final,accumulation-age').split(',').filter(Boolean);
+const subrun = typeof cli.subrun === 'string' ? cli.subrun : null;
+const captureSettings = typeof cli.settings === 'string' ? JSON.parse(cli.settings) : {};
 const outputDirectory = join(
     ROOT,
     'bench/results/raw/convergence',
-    `${label}-${scenario}-${String(ratio).replace('.', '_')}x`,
+    `${label}-${scenario}${subrun ? `-${subrun}` : ''}-${String(ratio).replace('.', '_')}x`,
 );
 
 //* PNG decode (RGB8/RGBA8, non-interlaced) — same contract as run-benchmark.mjs
@@ -316,6 +327,7 @@ async function main() {
         url.searchParams.set('ratio', String(ratio));
         url.searchParams.set('width', String(width));
         url.searchParams.set('height', String(height));
+        if (subrun) url.searchParams.set('subrun', subrun);
         await client.call('Page.navigate', { url: url.href });
         for (let attempt = 0; ; attempt++) {
             const ready = await evaluate(client, 'window.__UPSCALER_BENCH__?.ready === true');
@@ -328,7 +340,7 @@ async function main() {
         // the settle frame (capture() also drains the GPU queue).
         const settleInfo = await evaluate(
             client,
-            `window.__UPSCALER_BENCH__.capture({ frame: ${settle}, debugView: 'final' })`,
+            `window.__UPSCALER_BENCH__.capture({ frame: ${settle}, debugView: 'final', settings: ${JSON.stringify(captureSettings)} })`,
         );
         const jitterPeriod = settleInfo.jitterPeriod;
 
@@ -374,7 +386,7 @@ async function main() {
             try {
                 await evaluate(
                     client,
-                    `window.__UPSCALER_BENCH__.capture({ frame: ${settle + pairs}, debugView: '${view}' })`,
+                    `window.__UPSCALER_BENCH__.capture({ frame: ${settle + pairs}, debugView: '${view}', settings: ${JSON.stringify(captureSettings)} })`,
                 );
                 await writeFile(join(outputDirectory, `${view}-f${settle + pairs}.png`), await captureCanvas(client));
             } catch (error) {
@@ -385,6 +397,8 @@ async function main() {
         const values = diffs.map((entry) => entry.meanAbsDiff);
         const summary = {
             scenario,
+            subrun,
+            settings: captureSettings,
             ratio,
             settle,
             pairs,

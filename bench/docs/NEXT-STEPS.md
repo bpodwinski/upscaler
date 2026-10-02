@@ -325,6 +325,108 @@ its frame edges to transparent over the page until the vignette became
 Flagged as a breaking change in the release notes (README "Alpha" carries the migration
 note).
 
+## 7. Thin-feature locks under noisy SSGI — MEASURED, configuration not core (2026-10-02, issue #17)
+
+Maintainer report ([#17](https://github.com/pmndrs/upscaler/issues/17), original repro
+lost): 1px wireframe lines over an SSGI-lit scene boil with a still camera; jitter-tied
+(`jitter: false` removes it); `DebugView.ShadingChange` and `Locks` busy along the
+lines, but toggling `lockThinFeatures` / `detectShadingChanges` changes nothing visible.
+Proposed mechanism: noise makes the lock's own break term (`lockShading`) fire every
+frame, so locks never mature. Config: `upscale()` node, ratio 2, SSGI with
+`useTemporalFiltering` on, GI denoised by `recurrentDenoise({ accumulate: false })`.
+
+**Repro: new bench scenario Q14 `ssgi-thin-feature-locks`.** An open-fronted coloured
+box (strong diffuse bounce) holding three `wireframe: true` meshes (a 16×12 lattice
+over the back wall, an icosphere, a knot), no shadow-casting light, still camera.
+Subruns: `off` (no SSGI — clean control, same geometry), `static` (SSGI static pattern
++ spatial `recurrentDenoise` — the issue's denoiser), `rotating` (same, SSGI's default
+rotating pattern — the issue's SSGI setting), `builtin` (static pattern +
+`DenoiseNode` — the 06/09 recipe). `measure-convergence.mjs` gained `--subrun` and
+`--settings` (capture-setting overrides) for the A/Bs below.
+
+**Wire-mask metrics** (ratio 2, 1280×720, settle 240, 97 frames; 0–255 scale). The
+mask is the 16 042 display pixels where the lock lifetime averages > 0.3 on the
+clean `off` control — "the thin features locks are meant for". `cons` = mean
+consecutive-frame |Δ|, `phase` = same jitter phase one period (32) apart, `std` =
+per-pixel temporal luma std-dev, `locks` / `sc` = mean `Locks` / `ShadingChange`
+debug value over 32 frames on the mask:
+
+| subrun | variant | cons | phase | std | locks | sc |
+| --- | --- | --- | --- | --- | --- | --- |
+| off | default | 0.465 | 0.041 | 0.70 | 0.71 | 0.0004 |
+| off | locks off | 0.877 | 0.002 | 1.21 | 0 | 0.0004 |
+| static | **default (issue's denoiser, static SSGI)** | 1.162 | 1.826 | 2.05 | 0.47 | 0.0040 |
+| static | locks off | 1.772 | 2.422 | 2.93 | 0 | 0.0040 |
+| static | shading change off | 1.161 | 1.822 | 2.05 | 0.47 | 0 |
+| static | lock break (`lockShading`) removed* | 1.153 | 1.796 | 2.03 | 0.48 | 0.0040 |
+| static | rectification off* | 1.160 | 1.801 | 2.03 | 0.47 | 0.0040 |
+| static | `maxAccumulation` 64 | 0.446 | 0.831 | 0.91 | 0.47 | 0.0041 |
+| static | jitter off* | 0.307 | 2.047 | 1.45 | 0.29 | 0.0004 |
+| rotating | **default (issue config)** | 1.207 | 3.513 | 3.07 | 0.53 | 0.0059 |
+| rotating | locks off | 1.931 | 5.373 | 4.55 | 0 | 0.0059 |
+| rotating | shading change off | 1.206 | 3.508 | 3.06 | 0.53 | 0 |
+| builtin | **default (06/09 recipe)** | 0.684 | 0.029 | 0.93 | 0.52 | 0.0037 |
+| builtin | locks off | 1.107 | 0.0004 | 1.46 | 0 | 0.0037 |
+
+\* Local shader / resolver edits, not committed (rectification off = clip extents
+×1000; jitter off = `jitter: false` in the bench resolver's `configure`).
+
+Full-frame `measure-convergence.mjs --pairs 40` (consecutive / phase-locked): off
+0.052/0.002, static 0.341/0.897, rotating 0.393/1.535, builtin 0.183/0.004; static
+with locks off 0.415/1.021, shading change off 0.337/0.893, `maxAccumulation` 64
+0.147/0.473. The bench edits regress nothing: Q1 0.115/0.022, Q12 0.024/0.001
+(recorded 0.112/0.018 and 0.024/0.012).
+
+Reading it, hypothesis by hypothesis:
+
+- **Locks do engage.** Mean lifetime on the wires is 0.47 (rotating: 0.53) against
+  0.71 on the clean control. Turning them off raises wire churn by about half
+  (cons 1.16 → 1.77, std 2.05 → 2.93) in every SSGI subrun. So the toggle is not a
+  no-op; it is the difference between bad and worse.
+- **The lock break is not what limits them.** Removing `lockShading` entirely moves
+  lock life 0.471 → 0.476 and churn by under 1%. Under noise the 3×3 contrast that
+  scales the break threshold grows with it. What lock life is limited by is detection:
+  some phases do not see the wire as a peak against a noisy neighbourhood, so it decays.
+- **Shading change is a non-factor here** (triage hypothesis (a)). The detector reads
+  0.004 on the wires, and turning it off changes nothing to three decimals. The 8×8 and
+  4×4 block means average the noise away. #22's false positives (sub-texel wires over an
+  *empty* background) are a different case, and do not reproduce over a lit wall.
+- **Rectification is a non-factor.** With the clip effectively disabled the numbers
+  are unchanged, so this is *not* convergence rule 2's re-snap (§5). The noisy
+  neighbourhood box is already wide enough that history passes untouched.
+- **The boil is input temporal noise at the accumulation floor.** It scales with
+  `maxAccumulation`: 64 cuts wire std by 56%. The source is the denoiser.
+  `recurrentDenoise` with `accumulate: false` keeps no history, but it re-rolls its
+  à-trous kernel rotation every frame (`_noiseIndex = frame.frameId`, an aperiodic R²
+  index into `bindAnalyticNoise`). Every frame is a new noise draw, so the output can
+  only average it down. With `DenoiseNode` (fixed index) on the static pattern, the same
+  wires converge to the clean periodic orbit (same-phase 0.029 vs the control's 0.041).
+  The per-phase churn left over is the benign jitter pattern.
+- **SSGI's rotating pattern doubles it** (triage hypothesis (b), confirmed): same-phase
+  1.83 → 3.51, std 2.05 → 3.07, on top of the denoiser's noise.
+- **"Jitter-tied" is half the story.** With jitter off, frame-to-frame boil drops 74%
+  (cons 1.16 → 0.31), which matches the report. Same-phase drift *rises*, though, to
+  2.05, and std stays at 1.45. The denoiser noise is still there. Without jitter it
+  surfaces as slow wander instead of boil. Jitter amplifies the frame-to-frame swing
+  because the screen-anchored GI pattern lands on a different scene point each phase,
+  and partial wire coverage mixes in the noisy wall behind.
+- **A reactive mask is the wrong tool** (hypothesis (c), from code, not GPU-measured).
+  Reactivity zeroes `lockLife` and drives the blend weight to ≥ 0.9, so a reactive wire
+  would show the raw per-frame noise. That is the opposite of what's wanted.
+
+**Decision: no core change.** Every core gate the issue suspected measures as a
+non-factor, and the gate that does matter (locks) already helps. The fix is in the
+input: SSGI `useTemporalFiltering = false`, and a denoiser that does not re-roll per
+frame (`DenoiseNode`, the 06/09 recipe). If an integration must keep per-frame-noisy GI,
+raising `maxAccumulation` trades responsiveness for noise. The principled end state is
+still the fused GI-history path ([#7](https://github.com/pmndrs/upscaler/issues/7)).
+Q14 is its natural acceptance scenario: `static` should approach `builtin`.
+
+Reproduce: `node scripts/measure-convergence.mjs --scenario Q14 --subrun static
+--pairs 40 [--settings '{"lockThinFeatures":false}']`. The wire-mask probe
+(mask derivation + debug-view averaging) was a scratch CDP script. Its method is
+described above, so it can be rebuilt on the bench capture API.
+
 ## Explicitly not planned (measured against)
 
 - Lanczos2/bicubic history filtering (+47% accumulate, no visible win).

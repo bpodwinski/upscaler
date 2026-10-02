@@ -49,6 +49,9 @@ import { addRenderScale, basePercent } from '../shared/ui';
 //*                edge halos + faint step-lines on flat walls, and a frame-skip
 //*                cadence from the node's own render-target update. Tuning those
 //*                means tuning a third-party node we don't own — not worth it.
+//*                It is also not temporally stable: the kernel rotation is
+//*                re-rolled every frame (noise index = frameId), so FSR3 sees
+//*                per-frame noise and thin features boil (issue #17, bench Q14).
 //* - `recurrent`— full spatiotemporal (temporalReproject + accumulate). WORST
 //*                under FSR3 jitter: its velocity-only reprojection can't see
 //*                FSR3's sub-pixel jitter, so it rejects misaligned history (GI

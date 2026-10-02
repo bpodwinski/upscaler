@@ -25,8 +25,10 @@ import { DebugView, QualityMode, getQualityModeRatio } from '@pmndrs/upscaler';
 /** Bench render modes — what fills the screen each frame. */
 export type BenchMode = 'native' | 'bilinear' | 'fsr1-spatial' | 'upscale-temporal';
 
+type EffectScenarioId = 'Q6' | 'Q7' | 'Q8' | 'Q14';
+
 type EffectScenario = {
-    id: 'Q6' | 'Q7' | 'Q8';
+    id: EffectScenarioId;
     subrun: string | null;
     scene: THREE.Scene;
     camera: THREE.PerspectiveCamera;
@@ -224,13 +226,13 @@ export class BenchPipeline {
 
     /**
      * Selects the pinned three.js effect graph built during configuration.
-     * @param id - Q6, Q7, or Q8
+     * @param id - Q6, Q7, Q8, or Q14
      * @param subrun - Manifest-selected effect subrun
      * @param scene - Fixed room fixture
      * @param camera - Scenario camera
      */
     configureEffectScenario(
-        id: 'Q6' | 'Q7' | 'Q8',
+        id: EffectScenarioId,
         subrun: string | null,
         scene: THREE.Scene,
         camera: THREE.PerspectiveCamera,
@@ -374,7 +376,10 @@ export class BenchPipeline {
         this._effectTextures = [];
 
         const combined = effect.id === 'Q7' || effect.id === 'Q8';
-        const isolated = effect.subrun;
+        // Q14 (issue #17): SSGI over 1px wires; subrun = off/static/rotating/builtin.
+        const wires = effect.id === 'Q14';
+        const isolated = wires ? null : effect.subrun;
+        const wireSsgi = wires && effect.subrun !== 'off';
         if (combined) {
             scenePass.setMRT(
                 mrt({
@@ -384,7 +389,7 @@ export class BenchPipeline {
                     diffuse: vec4(diffuseColor.rgb, metalness),
                 }),
             );
-        } else if (isolated === 'ssgi') {
+        } else if (isolated === 'ssgi' || wires) {
             scenePass.setMRT(mrt({ output, normal: normalView, velocity, diffuse: diffuseColor }));
         } else if (isolated === 'ssr') {
             scenePass.setMRT(
@@ -422,18 +427,21 @@ export class BenchPipeline {
             this._trackEffectTexture('gtao.output', target._aoRenderTarget.texture);
         }
 
-        if (combined || isolated === 'ssgi') {
+        if (combined || isolated === 'ssgi' || wireSsgi) {
             const diffuse = scenePass.getTextureNode('diffuse');
             const giPass = ssgi(beauty, depth, normal, effect.camera);
             if (effect.id === 'Q8') {
                 giPass.sliceCount.value = 2;
                 giPass.stepCount.value = 8;
             }
+            // SSGINode defaults to the rotating 6-frame pattern (needs a real
+            // TRAA); `static` is the 06/09/10 no-TRAA recipe.
+            if (wires) giPass.useTemporalFiltering = effect.subrun === 'rotating';
             const aoTexture = giPass.getAONode() as unknown as ReturnType<typeof vec4>;
             const giRaw = giPass.getGINode();
             let gi = giRaw as unknown as ReturnType<typeof vec4>;
 
-            if (effect.id === 'Q8' && effect.subrun === 'spatial') {
+            if ((effect.id === 'Q8' && effect.subrun === 'spatial') || (wires && effect.subrun !== 'builtin')) {
                 const spatial = recurrentDenoise(giRaw as never, effect.camera, {
                     depth: depth as never,
                     normal: normal as never,
@@ -962,7 +970,7 @@ export class BenchPipeline {
                 throw new Error('Pinned SSRNode._noiseIndex shape changed.');
             ssrNode._noiseIndex.value = 0;
         }
-        if (this._effectScenario.id === 'Q8')
+        if (this._effectScenario.id === 'Q8' || this._effectScenario.id === 'Q14')
             for (const sizedNode of this._effectSizedNodes) {
                 if (typeof sizedNode.setSize !== 'function')
                     throw new Error('Pinned recurrent effect setSize shape changed.');
