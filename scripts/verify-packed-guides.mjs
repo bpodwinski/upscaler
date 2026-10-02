@@ -19,6 +19,7 @@ import {
     stopChild,
     waitForUrl,
 } from './local-processes.mjs';
+import { parsePackJson } from './npm-pack-json.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 export const USAGE = `Usage: node scripts/verify-packed-guides.mjs [options]
@@ -121,8 +122,7 @@ function packLibrary(archiveDirectory) {
     if (result.status !== 0)
         throw new Error(`npm pack failed:\n${result.stderr || result.stdout}`);
 
-    const details = JSON.parse(result.stdout);
-    const filename = details[0]?.filename;
+    const filename = parsePackJson(result.stdout)[0].filename;
     if (!filename) throw new Error('npm pack did not report an artifact filename.');
     return join(archiveDirectory, filename);
 }

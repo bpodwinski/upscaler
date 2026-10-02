@@ -627,3 +627,14 @@ describe('append-only GitHub Release finalizer', () => {
         expect(jobs).toHaveLength(1);
     });
 });
+
+describe('npm version parity', () => {
+    test('CI runs the same pinned npm that publishes', () => {
+        const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+        const spec = (text) => text.match(/npm install -g (npm@\S+)/)?.[1];
+
+        expect(spec(workflow)).toBeDefined();
+        expect(spec(workflow)).not.toBe('npm@latest');
+        expect(spec(ci)).toBe(spec(workflow));
+    });
+});

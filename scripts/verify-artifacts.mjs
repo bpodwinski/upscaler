@@ -2,6 +2,8 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
+import { parsePackJson } from './npm-pack-json.mjs';
+
 const root = resolve(import.meta.dirname, '..');
 const dist = resolve(root, 'dist');
 const candidatePathPattern = /(?:^|\/)candidate[^/]*(?:\/|$)/i;
@@ -60,8 +62,8 @@ const packed = spawnSync(
 if (packed.status !== 0)
     throw new Error(`npm pack --dry-run failed:\n${packed.stderr || packed.stdout}`);
 
-const packResult = JSON.parse(packed.stdout);
-const packageFiles = packResult[0].files.map(({ path }) => resolve(root, path));
+const [packResult] = parsePackJson(packed.stdout);
+const packageFiles = packResult.files.map(({ path }) => resolve(root, path));
 assertCleanFiles(packageFiles, 'npm package');
 
 const indexPath = resolve(dist, 'index.js');

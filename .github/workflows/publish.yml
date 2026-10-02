@@ -46,7 +46,10 @@ jobs:
           cache: npm
           registry-url: https://registry.npmjs.org
       # Trusted Publishing needs npm >= 11.5.1; Node 22 bundles npm 10.x.
-      - run: npm install -g npm@latest
+      # Pinned to a major, not @latest: npm 12 changed `npm pack --json`'s shape
+      # and silently broke every release from 2026-07-29. Keep this spec
+      # identical to ci.yml's so CI exercises the npm that publishes.
+      - run: npm install -g npm@^11.5.1
       - run: npm ci
 
       - name: Is package.json's version already on npm?
