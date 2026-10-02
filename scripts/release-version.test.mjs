@@ -10,6 +10,7 @@ import {
     findLastStableTag,
     isLatestRelease,
     nextPrerelease,
+    normalizeSpec,
 } from './release-version.mjs';
 
 /** A git runner answering `describe` and `log` from a fixed history. */
@@ -133,6 +134,30 @@ describe('computeNextVersion', () => {
         expect(result).toMatchObject({ previousTag: null, version: '0.1.1' });
         expect(calls[1]).toContain('HEAD');
         expect(findLastStableTag(runGit)).toBeNull();
+    });
+
+    test('forces patch/minor/major from the last stable tag; an explicit major leaves 0.x', () => {
+        const { runGit } = fakeGit({ commits: [['docs: only docs']] });
+        const next = (spec, preid) => computeNextVersion({ runGit, packageVersion: '0.2.0', spec, preid }).version;
+
+        expect(next('auto')).toBeNull();
+        expect(next('patch')).toBe('0.2.1');
+        expect(next('minor')).toBe('0.3.0');
+        expect(next('major')).toBe('1.0.0');
+        expect(next('minor', 'rc')).toBe('0.3.0-rc.0');
+    });
+
+    test('takes an explicit version as-is, but not with a preid', () => {
+        const { runGit } = fakeGit({ commits: [['fix: a']] });
+
+        expect(computeNextVersion({ runGit, packageVersion: '0.2.0', spec: 'v0.9.0' }).version).toBe('0.9.0');
+        expect(() => computeNextVersion({ runGit, packageVersion: '0.2.0', spec: '0.9.0', preid: 'beta' })).toThrow(
+            /cannot be combined/,
+        );
+    });
+
+    test.each(['', 'huge', '0.3', 'v', 'Minor'])('rejects spec %j', (spec) => {
+        expect(() => normalizeSpec(spec)).toThrow(/expected auto, patch, minor, major or a version/i);
     });
 
     test('refuses a version that is not newer', () => {

@@ -1,9 +1,13 @@
-// Cuts a release locally: `npm run release` on an up-to-date main computes the
-// next version from Conventional Commits, runs the gate, then creates the
-// `release: vX.Y.Z` commit and annotated tag with `npm version`. Pushing the tag
-// is what publishes (.github/workflows/publish.yml); merges to main never do.
+// Optional local convenience. Releases normally need no local step: use the
+// "Run workflow" button on publish.yml, or create a vX.Y.Z tag on main
+// (docs/releasing.md). This does what the button does, from your checkout:
+// `npm run release` on an up-to-date main computes the version (the same
+// computation as the button), runs the gate, then creates the
+// `release: vX.Y.Z [skip ci]` commit and annotated tag with `npm version`.
+// Pushing the tag is what publishes; merges to main never do.
 //
 //   npm run release                  # version from commits; prints the push command
+//   npm run release -- minor         # force a bump: patch | minor | major
 //   npm run release -- 0.3.0         # explicit version
 //   npm run release -- --preid beta  # prerelease: 0.3.0-beta.0, then -beta.1, …
 //   npm run release -- --push        # also push main + the tag (publishes)
@@ -13,8 +17,8 @@
 // drive it without a repository or network.
 import { execFileSync } from 'node:child_process';
 
-import { isDirectRun, parseSemVer } from './release-notes.mjs';
-import { assertNewer, computeNextVersion, distTagFor } from './release-version.mjs';
+import { isDirectRun } from './release-notes.mjs';
+import { assertNewer, computeNextVersion, distTagFor, normalizeSpec } from './release-version.mjs';
 
 const BRANCH = 'main';
 const REMOTE = 'origin';
@@ -24,9 +28,13 @@ const GATE = [
     ['test'],
     ['run', 'build'],
 ];
-const USAGE = `Usage: npm run release -- [version] [--preid <id>] [--push] [--dry-run]
+const COMMIT_MESSAGE = 'release: v%s [skip ci]';
+const USAGE = `Usage: npm run release -- [auto|patch|minor|major|X.Y.Z] [--preid <id>] [--push] [--dry-run]
 
-  version        Release exactly this version (e.g. 0.3.0) instead of computing it.
+  auto           (default) Bump by the Conventional Commits since the last stable tag.
+  patch|minor|major
+                 Force that bump.
+  X.Y.Z          Release exactly this version.
   --preid <id>   Cut a prerelease (e.g. beta → 0.3.0-beta.0); publishes to that dist-tag.
   --push         Push ${BRANCH} and the new tag to ${REMOTE}. Pushing the tag publishes.
   --dry-run      Compute and print the version; change nothing.`;
@@ -35,10 +43,11 @@ const USAGE = `Usage: npm run release -- [version] [--preid <id>] [--push] [--dr
  * Parses the CLI arguments.
  *
  * @param {string[]} argv
- * @returns {{ version?: string; preid?: string; push: boolean; dryRun: boolean; help: boolean }}
+ * @returns {{ spec: string; preid?: string; push: boolean; dryRun: boolean; help: boolean }}
  */
 export function parseReleaseArgs(argv) {
-    const options = { push: false, dryRun: false, help: false };
+    const options = { spec: 'auto', push: false, dryRun: false, help: false };
+    let specGiven = false;
     for (let index = 0; index < argv.length; index++) {
         const arg = argv[index];
         if (arg === '--push') options.push = true;
@@ -50,14 +59,13 @@ export function parseReleaseArgs(argv) {
             options.preid = value;
         } else if (arg.startsWith('--preid=')) options.preid = arg.slice('--preid='.length);
         else if (arg.startsWith('-')) throw new Error(`Unknown option ${arg}\n\n${USAGE}`);
-        else if (options.version) throw new Error(`Only one version may be given (got ${options.version} and ${arg}).`);
+        else if (specGiven) throw new Error(`Only one version may be given (got ${options.spec} and ${arg}).`);
         else {
-            const version = arg.replace(/^v/, '');
-            parseSemVer(version);
-            options.version = version;
+            options.spec = normalizeSpec(arg);
+            specGiven = true;
         }
     }
-    if (options.version && options.preid)
+    if (options.preid && !['auto', 'patch', 'minor', 'major'].includes(options.spec))
         throw new Error('Pass either an explicit version or --preid, not both.');
     if (options.push && options.dryRun) throw new Error('--push and --dry-run are mutually exclusive.');
     return options;
@@ -123,12 +131,17 @@ export function release({ argv, run, log = console.log, warn = console.warn }) {
     //* Version ===
     const runGit = (args) => run('git', args);
     const packageJson = JSON.parse(runGit(['show', 'HEAD:package.json']));
-    const computed = computeNextVersion({ runGit, packageVersion: packageJson.version, preid: options.preid });
-    const version = options.version ?? computed.version;
+    const computed = computeNextVersion({
+        runGit,
+        packageVersion: packageJson.version,
+        spec: options.spec,
+        preid: options.preid,
+    });
+    const { version } = computed;
     if (!version)
         throw new Error(
             `No feat/fix/perf or breaking commits since ${computed.previousTag ?? 'the first commit'}; nothing to release.\n` +
-                'Pass an explicit version (npm run release -- X.Y.Z) to release anyway.',
+                'Pass patch/minor/major or an explicit version (npm run release -- X.Y.Z) to release anyway.',
         );
     assertNewer(version, packageJson.version);
     const tag = `v${version}`;
@@ -137,10 +150,11 @@ export function release({ argv, run, log = console.log, warn = console.warn }) {
     log(`${packageJson.name} ${packageJson.version} → ${version} (npm dist-tag: ${distTagFor(version)})`);
     log(`Commits since ${computed.previousTag ?? 'the first commit'} (${computed.commits.length}):`);
     for (const commit of computed.commits) log(`  ${commit.sha.slice(0, 7)} ${commit.subject}`);
+    const capped = computed.level === 'major' && packageJson.version.startsWith('0.');
     log(
-        options.version
-            ? `Version given explicitly (commits alone would give ${computed.version ?? 'no release'}).`
-            : computed.level === 'major' && packageJson.version.startsWith('0.')
+        options.spec !== 'auto'
+            ? `Requested ${options.spec}; the commits alone warrant: ${capped ? 'minor' : computed.level}.`
+            : capped
               ? 'Bump: minor (a breaking change bumps minor while 0.x)'
               : `Bump: ${computed.level}`,
     );
@@ -150,7 +164,7 @@ export function release({ argv, run, log = console.log, warn = console.warn }) {
         log('');
         log('Dry run: nothing was changed. A real run would:');
         log(`  1. run the gate: ${GATE.map((args) => `npm ${args.join(' ')}`).join(' && ')}`);
-        log(`  2. npm version ${version} -m "release: v%s"   (commit + annotated tag ${tag})`);
+        log(`  2. npm version ${version} -m "${COMMIT_MESSAGE}"   (commit + annotated tag ${tag})`);
         log(`  3. with --push: git ${pushArgs.join(' ')}   (publishes)`);
         return { version, tag, pushed: false };
     }
@@ -159,7 +173,7 @@ export function release({ argv, run, log = console.log, warn = console.warn }) {
     for (const args of GATE) run('npm', args, { inherit: true });
 
     //* Commit + Tag ===
-    run('npm', ['version', version, '-m', 'release: v%s'], { inherit: true });
+    run('npm', ['version', version, '-m', COMMIT_MESSAGE], { inherit: true });
 
     //* Push ===
     if (options.push) {

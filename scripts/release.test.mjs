@@ -66,14 +66,14 @@ const sideEffects = (calls) => calls.map((call) => call.line).filter((line) => S
 
 describe('arguments', () => {
     test('parses version, preid and flags', () => {
-        expect(parseReleaseArgs([])).toEqual({ push: false, dryRun: false, help: false });
-        expect(parseReleaseArgs(['v0.3.0', '--push'])).toMatchObject({ version: '0.3.0', push: true });
-        expect(parseReleaseArgs(['--preid', 'beta'])).toMatchObject({ preid: 'beta' });
-        expect(parseReleaseArgs(['--preid=rc', '--dry-run'])).toMatchObject({ preid: 'rc', dryRun: true });
+        expect(parseReleaseArgs([])).toEqual({ spec: 'auto', push: false, dryRun: false, help: false });
+        expect(parseReleaseArgs(['v0.3.0', '--push'])).toMatchObject({ spec: '0.3.0', push: true });
+        expect(parseReleaseArgs(['minor', '--preid', 'beta'])).toMatchObject({ spec: 'minor', preid: 'beta' });
+        expect(parseReleaseArgs(['--preid=rc', '--dry-run'])).toMatchObject({ spec: 'auto', preid: 'rc', dryRun: true });
     });
 
     test.each([
-        [['0.3'], /invalid semver/i],
+        [['0.3'], /expected auto, patch, minor, major or a version/i],
         [['0.3.0', '--preid', 'beta'], /either an explicit version or --preid/],
         [['--preid'], /needs a value/],
         [['--push', '--dry-run'], /mutually exclusive/],
@@ -129,6 +129,15 @@ describe('computing the version', () => {
         expect(release({ argv: ['--dry-run', '1.0.0'], run, ...capture() }).version).toBe('1.0.0');
     });
 
+    test.each([
+        ['patch', '0.2.1'],
+        ['minor', '0.3.0'],
+        ['major', '1.0.0'],
+    ])('forces a %s bump', (spec, version) => {
+        const { run } = fakeRunner();
+        expect(release({ argv: ['--dry-run', spec], run, ...capture() }).version).toBe(version);
+    });
+
     test('computes a prerelease', () => {
         const { run } = fakeRunner();
         const output = capture();
@@ -178,7 +187,7 @@ describe('cutting the release', () => {
             'npm run typecheck',
             'npm test',
             'npm run build',
-            'npm version 0.3.0 -m release: v%s',
+            'npm version 0.3.0 -m release: v%s [skip ci]',
         ]);
         expect(output.lines.join('\n')).toContain('git push --atomic origin main refs/tags/v0.3.0');
     });
@@ -194,7 +203,7 @@ describe('cutting the release', () => {
         const { run, calls } = fakeRunner({ failOn: 'npm test' });
 
         expect(() => release({ argv: ['--push'], run, ...capture() })).toThrow(/npm test failed/);
-        expect(sideEffects(calls)).not.toContain('npm version 0.3.0 -m release: v%s');
+        expect(sideEffects(calls).some((line) => line.startsWith('npm version'))).toBe(false);
         expect(sideEffects(calls).some((line) => line.startsWith('git push'))).toBe(false);
     });
 });

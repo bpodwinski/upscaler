@@ -1,7 +1,8 @@
 // Release-version policy: the next version from Conventional Commits, and the npm
-// dist-tag a version publishes under. `scripts/release.mjs` (npm run release)
-// uses it to pick the version it tags; publish.yml uses `--describe` to validate
-// a pushed tag and route it to a dist-tag.
+// dist-tag a version publishes under. publish.yml uses `--next` to compute the
+// version the "Run workflow" button cuts and `--describe` to validate a tag and
+// route it to a dist-tag; `scripts/release.mjs` (npm run release) shares the same
+// computation locally.
 //
 //   feat:            -> minor      fix: / perf:     -> patch
 //   <type>!: / BREAKING CHANGE:    -> major (capped to minor while 0.x, so a
@@ -12,6 +13,8 @@
 // so a commit that shows up under "Features" is exactly a commit that bumps minor.
 //
 //   node scripts/release-version.mjs                 # preview: next version, or "none"
+//   node scripts/release-version.mjs --next auto --preid beta
+//                                                    # the version to cut, or an error
 //   node scripts/release-version.mjs --describe v0.3.0-beta.1
 //       # "<version> <prerelease> <dist-tag> <latest>": "0.3.0-beta.1 true beta false"
 import { execFileSync } from 'node:child_process';
@@ -48,13 +51,15 @@ export function bumpLevel(commits) {
  *
  * @param {string} version - Base version; any prerelease/build suffix is dropped.
  * @param {'none' | 'patch' | 'minor' | 'major'} level
+ * @param {{ capZeroMajor?: boolean }} [options] - `capZeroMajor: false` lets an
+ *   explicitly requested major leave 0.x.
  * @returns {string | null} The bumped stable version, or null for `none`.
  */
-export function applyBump(version, level) {
+export function applyBump(version, level, { capZeroMajor = true } = {}) {
     if (level === 'none') return null;
     const { major, minor, patch } = parseSemVer(version);
     const [maj, min, pat] = [major, minor, patch].map(Number);
-    const effective = maj === 0 && level === 'major' ? 'minor' : level;
+    const effective = capZeroMajor && maj === 0 && level === 'major' ? 'minor' : level;
     if (effective === 'major') return `${maj + 1}.0.0`;
     if (effective === 'minor') return `${maj}.${min + 1}.0`;
     return `${maj}.${min}.${pat + 1}`;
@@ -162,15 +167,40 @@ export function findLastStableTag(runGit) {
     return tag || null;
 }
 
+const LEVELS = ['patch', 'minor', 'major'];
+
 /**
- * Computes the next release from the commits since the last stable tag.
+ * Validates a version spec: `auto`, `patch`, `minor`, `major`, or an explicit
+ * SemVer (a leading `v` is accepted and dropped).
  *
- * The base is the last stable tag's version (package.json's when there is no
- * tag), so graduating 0.3.0-beta.2 yields 0.3.0, not 0.4.0.
+ * @param {string} spec
+ * @returns {string} The normalized spec.
+ */
+export function normalizeSpec(spec) {
+    if (spec === 'auto' || LEVELS.includes(spec)) return spec;
+    const version = typeof spec === 'string' ? spec.replace(/^v/, '') : spec;
+    try {
+        parseSemVer(version);
+    } catch {
+        throw new Error(`Expected auto, patch, minor, major or a version like 0.3.0, received: ${String(spec)}`);
+    }
+    return version;
+}
+
+/**
+ * Computes the next release version.
+ *
+ * `auto` bumps by the commits since the last stable tag (0.x caps a breaking
+ * change to minor); `patch`/`minor`/`major` force that bump (uncapped: asking
+ * for major on 0.x means 1.0.0); an explicit version is taken as-is. The base
+ * is the last stable tag's version (package.json's when there is no tag), so
+ * graduating 0.3.0-beta.2 yields 0.3.0, not 0.4.0. `preid` turns the bumped
+ * version into the next prerelease of it.
  *
  * @param {{
  *   runGit: (args: string[]) => string;
  *   packageVersion: string;
+ *   spec?: string;
  *   preid?: string;
  * }} options
  * @returns {{
@@ -178,15 +208,24 @@ export function findLastStableTag(runGit) {
  *   commits: Array<{ sha: string; subject: string; body: string }>;
  *   level: 'none' | 'patch' | 'minor' | 'major';
  *   version: string | null;
- * }} `version` is null when no commit warrants a release.
+ * }} `level` is what the commits warrant; `version` is null when `auto` finds
+ *   nothing to release.
+ * @throws {Error} On an invalid spec or preid, or a preid with an explicit version.
  */
-export function computeNextVersion({ runGit, packageVersion, preid }) {
+export function computeNextVersion({ runGit, packageVersion, spec = 'auto', preid }) {
+    const normalized = normalizeSpec(spec);
+    const explicit = normalized !== 'auto' && !LEVELS.includes(normalized);
+    if (explicit && preid) throw new Error('A prerelease id cannot be combined with an explicit version.');
+
     const previousTag = findLastStableTag(runGit);
     const range = previousTag ? [`${previousTag}..HEAD`] : ['HEAD'];
     const commits = parseGitLog(runGit(['log', '-z', '--format=%H%x00%s%x00%b', ...range]));
     const level = bumpLevel(commits);
+    if (explicit) return { previousTag, commits, level, version: normalized };
+
     const base = previousTag ? previousTag.slice(1) : packageVersion;
-    const stable = applyBump(base, level);
+    const stable =
+        normalized === 'auto' ? applyBump(base, level) : applyBump(base, normalized, { capZeroMajor: false });
     const version = stable && preid ? nextPrerelease(packageVersion, stable, preid) : stable;
     return { previousTag, commits, level, version };
 }
@@ -213,9 +252,29 @@ function main() {
             process.stdout.write(`${version} ${prerelease} ${distTag} ${isLatestRelease(version, tags)}\n`);
             return;
         }
-        if (args.length !== 0)
-            throw new Error('Usage: node scripts/release-version.mjs [--describe vX.Y.Z]');
+        if (args[0] === '--compare' && args.length === 3) {
+            // SemVer precedence of A vs B: -1, 0 or 1.
+            process.stdout.write(`${compareSemVer(args[1], args[2])}\n`);
+            return;
+        }
+        const usage =
+            'Usage: node scripts/release-version.mjs [--describe vX.Y.Z | --compare A B | --next <auto|patch|minor|major|X.Y.Z> [--preid <id>]]';
         const packageVersion = JSON.parse(runGit(['show', 'HEAD:package.json'])).version;
+        if (args[0] === '--next') {
+            // The release button: print the version to cut, or fail loudly.
+            if (!(args.length === 2 || (args.length === 4 && args[2] === '--preid'))) throw new Error(usage);
+            const preid = args[3] || undefined;
+            const { version, previousTag } = computeNextVersion({ runGit, packageVersion, spec: args[1], preid });
+            if (!version)
+                throw new Error(
+                    `No feat/fix/perf or breaking commits since ${previousTag ?? 'the first commit'}; nothing to release. ` +
+                        'Choose patch/minor/major or an explicit version to release anyway.',
+                );
+            assertNewer(version, packageVersion);
+            process.stdout.write(`${version}\n`);
+            return;
+        }
+        if (args.length !== 0) throw new Error(usage);
         const { version } = computeNextVersion({ runGit, packageVersion });
         process.stdout.write(`${version ?? 'none'}\n`);
     } catch (error) {
