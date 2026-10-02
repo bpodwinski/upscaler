@@ -35,7 +35,8 @@ FSR's RGB luma. That is the convention three's own `FSR1Node` uses. With an opaq
 The WebGPU port uses native WGSL division and `inverseSqrt`, plus per-tap `textureLoad`
 calls, instead of AMD's approximation helpers and packed gathers. Those are implementation
 and profiling differences, not known algorithm gaps. The local path also assumes an
-exact-sized input resource and leaves the input color domain unchanged. **Next action —
+exact-sized input resource and leaves the input color domain unchanged (the RCAS that
+follows it conditions its taps — see *RCAS load domain (spatial path)*). **Next action —
 Keep / Benchmark:** keep EASU as the documented FSR1 fallback;
 benchmark the math/load variants before changing them, and generalize viewport or output
 handling only when an integration requires it.
@@ -215,8 +216,10 @@ coverage only if RCAS performance becomes material.
 - **Current status:** Source-aligned output/color domain.
 - **Local implementation:** Writes the caller's linear/HDR domain: on the temporal path
   it sharpens conditioned texels and inverse-tonemaps + divides by the current local
-  exposure once on the result (see *RCAS load domain* above); on the spatial path the
-  input is already in that domain. It applies no presentation transform.
+  exposure once on the result (see *RCAS load domain* above); on the spatial path it
+  conditions EASU's linear taps with the same tonemap, sharpens, and inverts once
+  (anchored on the linear center, capped at linear RCAS's gain — *RCAS load domain
+  (spatial path)*). It applies no presentation transform.
 - **FSR 3.1.5 behavior:** Filters color conditioned by `Exposure()`, reverses
   `Exposure()`, and applies no presentation transform. Host `preExposure` remains, so
   linear HDR input remains linear HDR output.
