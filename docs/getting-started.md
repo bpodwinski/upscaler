@@ -71,7 +71,7 @@ Options: `quality` (a `QualityMode`, default `Quality` = 1.5×) or `ratio` (over
 `upscale()` below.
 
 `THREE.PostProcessing` is the pre-r183 name of `RenderPipeline`. It still works, with
-a deprecation warning from three; some examples still use it. The factories return
+a deprecation warning from three; the examples all use `RenderPipeline`. The factories return
 three's `nodeObject` type, so the examples cast when assigning to `outputNode`
 (`node as unknown as THREE.Node`).
 

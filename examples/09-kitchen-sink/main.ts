@@ -94,7 +94,7 @@ camera.lookAt(0, 3, -5);
 const sw = (n: unknown) => n as ReturnType<typeof vec4>;
 const texNode = (n: unknown) => (n as { getTextureNode(): unknown }).getTextureNode();
 
-const post = new THREE.PostProcessing(renderer);
+const post = new THREE.RenderPipeline(renderer);
 
 const state = { ssgi: true, ssr: true, ratio: 2.0, rcasDenoise: true, jitter: true };
 let fsrNode: ReturnType<typeof upscale> | null = null;

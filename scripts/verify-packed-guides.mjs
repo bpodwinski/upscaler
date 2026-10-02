@@ -60,12 +60,15 @@ export function parseArguments(argv) {
     return options;
 }
 
+// Deprecations are tolerated in general, but the consumer graph is the
+// package-boundary reference: it must use RenderPipeline, not the pre-r183 name.
 export function browserLogFailures(records) {
     return records.filter(
         (record) =>
             record.channel === 'Runtime.exceptionThrown' ||
             (record.channel === 'Runtime.consoleAPICalled' && record.level === 'error') ||
-            /webgpu|wgsl|device lost|validation|invalid (compute|bind|command|shader)/i.test(record.text),
+            /webgpu|wgsl|device lost|validation|invalid (compute|bind|command|shader)/i.test(record.text) ||
+            /"PostProcessing" has been renamed/.test(record.text),
     );
 }
 

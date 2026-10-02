@@ -15,7 +15,7 @@ type GuideName = keyof TemporalGuides;
 type GuideTextureNode = ReturnType<typeof passTexture>;
 
 /**
- * The {@link TemporalGuides} bundle as a TSL node for `THREE.PostProcessing`
+ * The {@link TemporalGuides} bundle as a TSL node for `THREE.RenderPipeline`
  * graphs — the upscaler's frame-property products (dilated motion/depth,
  * disocclusion, …) consumable as ordinary texture nodes, in-graph.
  *
@@ -240,7 +240,7 @@ export class TemporalGuidesNode extends TempNode {
 
 /**
  * Creates a {@link TemporalGuidesNode} publishing the upscaler's temporal-guides
- * bundle into a `THREE.PostProcessing` graph.
+ * bundle into a `THREE.RenderPipeline` graph.
  *
  * Standalone (guides as the product, no upscale):
  * ```ts

@@ -44,7 +44,7 @@ for (let i = 0; i < 3; i++) {
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 200);
 
 //* Post graph — rebuilt on resize (the reduced-res sizes are baked in).
-const post = new THREE.PostProcessing(renderer);
+const post = new THREE.RenderPipeline(renderer);
 const RATIO = 2;
 let guidesNode: TemporalGuidesNode | null = null;
 let fsrNode: ReturnType<typeof upscale> | null = null;

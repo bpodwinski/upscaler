@@ -98,7 +98,7 @@ export interface UpscalerNodeOptions {
 }
 
 /**
- * FSR3 as a TSL node for `THREE.PostProcessing` graphs — the composable
+ * FSR3 as a TSL node for `THREE.RenderPipeline` graphs — the composable
  * drop-in. It consumes the **already reduced-resolution** color, depth, and
  * (jitter-free) velocity of your render as texture nodes, and outputs the
  * upscaled result — so it slots anywhere in a post graph, including on top of an

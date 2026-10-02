@@ -7,7 +7,7 @@ import { addStudioLighting, createGridFloor } from '../shared/props';
 
 //* FSR3 as a TSL node — the declarative drop-in.
 // Instead of driving the upscaler imperatively (UpscalePass), hand `upscaleScene(scene,
-// camera)` to a THREE.PostProcessing graph as the output node. It builds a
+// camera)` to a THREE.RenderPipeline graph as the output node. It builds a
 // reduced-res scene pass and feeds it to the composable `upscale()` node, which
 // runs the FSR compute passes and outputs the upscaled texture — so the whole
 // "render small, reconstruct big" pipeline is one line, and other TSL effects
@@ -46,7 +46,7 @@ camera.position.set(6, 4, 9);
 camera.lookAt(0, 1.6, 0);
 
 //* The whole upscaler, as one post-processing node.
-const post = new THREE.PostProcessing(renderer);
+const post = new THREE.RenderPipeline(renderer);
 const fsrNode = upscaleScene(scene, camera, { quality: QualityMode.Performance }); // 2.0x
 post.outputNode = fsrNode as unknown as THREE.Node;
 
