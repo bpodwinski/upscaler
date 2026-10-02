@@ -53,6 +53,7 @@ export default defineConfig(({ mode }) => {
                           guidesnode: resolve(root, '13-guides-node/index.html'),
                           pathtraceralpha: resolve(root, '14-pathtracer-alpha/index.html'),
                           transparentcanvas: resolve(root, '15-transparent-canvas/index.html'),
+                          spatialnode: resolve(root, '16-spatial-node/index.html'),
                       },
             },
         },

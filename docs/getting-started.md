@@ -30,7 +30,7 @@ the inputs and who applies the jitter.
 | --- | --- | --- |
 | A scene, and you render with a `RenderPipeline` (TSL post-processing) | [`upscaleScene()`](#upscalescene-the-one-line-node) | `examples/07-tsl-node`, `08-tsl-compose` |
 | A reduced-resolution effect graph (SSGI/SSR/GTAO composited at low res) in a `RenderPipeline` | [`upscale()`](#upscale-the-composable-node) | `examples/09-kitchen-sink`, `11-node-reactive` |
-| Only a color texture, no depth or motion | [`upscaleSpatial()`](#upscalespatial-color-only) | spatial path: `examples/14-pathtracer-alpha` (raw), `02-fsr1-vs-fsr3` (toggle) |
+| Only a color texture, no depth or motion | [`upscaleSpatial()`](#upscalespatial-color-only) | `examples/16-spatial-node`; spatial path: `14-pathtracer-alpha` (raw), `02-fsr1-vs-fsr3` (toggle) |
 | A plain render loop with no post-processing graph | [`UpscalePass`](#upscalepass-the-imperative-drop-in) | `examples/01-hello` … `05-transparency`, `15-transparent-canvas` |
 | Your own render-target loop, split frames, or inputs the other surfaces don't expose | [`Upscaler`](#upscaler-the-raw-api) | `examples/06-screenspace-gi`, `12-temporal-guides`, `14-pathtracer-alpha` |
 | Other temporal effects that should share the upscaler's motion/disocclusion data | [`temporalGuides()` / `upscaler.guides`](temporal-guides.md) | `examples/12-temporal-guides` (raw), `13-guides-node` (TSL) |
@@ -132,6 +132,11 @@ pipeline.outputNode = upscaleSpatial(pass(scene, camera).getTextureNode('output'
 no velocity, no camera and keeps no history, so it can't reconstruct detail beyond the
 input. It is a good edge-aware upscale of the frame you give it. If you have depth and
 jitter-free velocity, `upscale()` is strictly better.
+
+The input can also be a texture you fill outside the pipeline, such as a path tracer's
+output or your own render target, wrapped in `texture()`. The node sizes itself from
+whatever it receives. `examples/16-spatial-node` shows both inputs, with RCAS
+`sharpness` / `rcasDenoise` controls (`node.upscaler.settings`) and HDR highlights.
 
 ## `UpscalePass`: the imperative drop-in
 
