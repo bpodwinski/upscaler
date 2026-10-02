@@ -23,7 +23,8 @@ declare type BenchmarkScenarioId =
     | 'Q9'
     | 'Q10'
     | 'Q11'
-    | 'Q12';
+    | 'Q12'
+    | 'Q13';
 declare type BenchmarkDebugView =
     | 'final'
     | 'motion-vectors'
@@ -84,6 +85,7 @@ declare interface BenchmarkResolverDispatch {
     depth?: unknown;
     velocity?: unknown;
     reactive?: unknown;
+    reactiveOpaqueColor?: unknown;
     transparencyAndComposition?: unknown;
     preExposureTexture?: unknown;
     deltaTime: number;
@@ -209,6 +211,11 @@ declare interface BenchmarkFrameState {
     hostPreExposure?: number;
     /** Scene rendered as the upscaler input; defaults to the main torture scene. */
     scene?: 'main' | 'cornell';
+    /**
+     * Q13: show the merged-reactive panels, render the opaque-only color for
+     * the auto-generator, and render the explicit coverage alongside it.
+     */
+    reactiveMerge?: boolean;
 }
 
 declare interface BenchmarkCaptureRequest {

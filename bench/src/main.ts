@@ -143,7 +143,8 @@ function resizeBenchmark(dimensions: BenchmarkDimensions): void {
         dimensions.width,
         dimensions.height,
         config.ratio,
-        scenario.id === 'Q5',
+        scenario.id === 'Q5' || scenario.id === 'Q13',
+        scenario.id === 'Q13',
     );
 }
 
