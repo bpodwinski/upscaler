@@ -145,7 +145,7 @@ There is no option for it. With an opaque input (alpha 1 everywhere) every stage
 
 Live references: `examples/14-pathtracer-alpha` (`three-gpu-pathtracer` accumulating at half resolution behind a transparent canvas, spatial path) and `examples/15-transparent-canvas` (the temporal path, where jitter reconstructs coverage rather than just interpolating it).
 
-Full per-pass details and deviations from the FidelityFX reference: [`src/shaders/README.md`](./src/shaders/README.md). Historical parity research is archived in [`PARITY.md`](./docs/archive/research/PARITY.md).
+Full per-pass details and deviations from the FidelityFX reference: [`src/shaders/README.md`](./src/shaders/README.md). Where and why this diverges from FSR 3.1.5, with measurements: [`PARITY.md`](./docs/research/PARITY.md).
 
 ### Integration approach
 
@@ -169,7 +169,7 @@ Per-product contracts (format, space, resolution, latency) are documented on the
 
 ## Status
 
-The pipeline is **feature-complete and GPU-verified**: spatial (FSR1) and temporal paths, RGBA (alpha) passthrough, luminance-stability locks, auto-exposure (+ external and host pre-exposure inputs), multi-scale shading-change detection, reactive masks (explicit + auto-generated), RCAS with opt-in denoise, imperative `UpscalePass`, the composable TSL nodes (`upscale` / `upscaleScene` / `upscaleSpatial`), and the raw + linked-TSL temporal-guides surfaces. A benchmarking program A/B-compared this implementation against source-style FSR 3.1.5 pass graphs on-GPU; its measurements are retained in the [parity archive](./docs/archive/research/PARITY.md).
+The pipeline is **feature-complete and GPU-verified**: spatial (FSR1) and temporal paths, RGBA (alpha) passthrough, luminance-stability locks, auto-exposure (+ external and host pre-exposure inputs), multi-scale shading-change detection, reactive masks (explicit + auto-generated), RCAS with opt-in denoise, imperative `UpscalePass`, the composable TSL nodes (`upscale` / `upscaleScene` / `upscaleSpatial`), and the raw + linked-TSL temporal-guides surfaces. A benchmarking program A/B-compared this implementation against source-style FSR 3.1.5 pass graphs on-GPU; its measurements and design rationale are in [`PARITY.md`](./docs/research/PARITY.md).
 
 Deliberately **not** planned:
 

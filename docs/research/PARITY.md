@@ -7,9 +7,9 @@ document explains where we match upstream, where we diverge, what we changed out
 and the evidence behind each choice.
 
 Reference: FidelityFX SDK commit `60f4ea8` (FSR Upscaler 3.1.5). The full per-pass audit
-lives in [`src/shaders/README.md`](../../../src/shaders/README.md); raw benchmark evidence in
+lives in [`src/shaders/README.md`](../../src/shaders/README.md); raw benchmark evidence in
 `bench/results/`; the adoption record in
-[`bench/docs/NEXT-STEPS.md`](../../../bench/docs/NEXT-STEPS.md).
+[`bench/docs/NEXT-STEPS.md`](../../bench/docs/NEXT-STEPS.md).
 
 ## The short version
 
@@ -78,13 +78,21 @@ sampling mismatch (bilinear taps, jitter phase). On steep depth gradients — a 
 plane at grazing incidence — neighboring taps differ by tens of view units, far beyond
 the ~3-unit tolerance, and the pass shipped with a full-flicker artifact there
 (12–14% of disocclusion pixels flipping per jitter phase, found via the temporal-guides
-example). Three compensations restore stability at zero measurable cost: reference
-per-tap skip semantics (a tap at/behind the current surface contributes nothing and
-must not veto the pixel — the original port's running-AND veto was itself a
-misreading of upstream), jitter-delta-compensated reprojection, and a separation
-tolerance widened by the 3×3 ring's own depth relief (available free from the dilation
-loop). All are geometry-derived; no scene-tuned constants were added. Genuine
+example). Three compensations restore stability at zero measurable cost: a tap
+at/behind the current surface must not veto the pixel (the original port's running-AND
+veto was itself a misreading of upstream), jitter-delta-compensated reprojection, and a
+separation tolerance widened by the 3×3 ring's own depth relief (available free from the
+dilation loop). All are geometry-derived; no scene-tuned constants were added. Genuine
 disocclusion (Q3's fence trails and silhouettes) is unchanged.
+
+**Amended 2026-07-24 (still-scene convergence).** The first form of the no-veto rule
+*skipped* agreeing taps, which left a lone tap straddling the previous frame's
+texel-quantized silhouette as the only voter — so still silhouettes re-disoccluded every
+jitter phase. Production now lets every valid tap vote (a tap at/behind the surface
+votes full confidence) and takes the **best** tap (max aggregation, not a weighted
+mean): if any footprint tap recognizes the current surface, it is the same surface,
+while a genuine trail has every tap on the old occluder and still reads ~1. Evidence:
+[`bench/docs/NEXT-STEPS.md`](../../bench/docs/NEXT-STEPS.md) §5.
 
 ### 2. RCAS in conditioned tonemap space
 

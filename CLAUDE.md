@@ -30,7 +30,7 @@ live" section remains the guide for visual regressions.
 **Parity program concluded (2026-07-21):** the three source-style FSR 3.1.5 candidate
 graphs were GPU-verified and A/B-benchmarked against production — **+36% / +6.5% /
 +76% GPU compute with no visual win**; none adopted. Consumer-facing rationale in
-`docs/archive/research/PARITY.md`; evidence + decisions in `bench/docs/PARITY-DECISIONS.md` /
+`docs/research/PARITY.md`; evidence + decisions in `bench/docs/PARITY-DECISIONS.md` /
 `PARITY-CANDIDATES.md`. **Post-parity
 items 1–3 landed the same day** (see `bench/docs/NEXT-STEPS.md` for evidence):
 (1) RCAS now sharpens in conditioned tonemap space, inverting once — **−34% RCAS,
@@ -334,9 +334,9 @@ composite.
   shared chunk re-fingerprints every shader).
 - **MSAA input — rejected by design.** FSR's temporal path *is* the anti-aliaser (Native AA mode is exactly that), so the correct input is an aliased, single-sample, jittered render with MSAA **off** — MSAA is redundant with FSR's own AA, costs perf, and a multisampled texture can't even bind to the compute passes. (Stacking a *temporal* AA — TAA/`traa` — before FSR is worse still: double-jitter smear; example 06 already drops `traa` for this reason.) `Upscaler` warns once if handed a multisampled input (`_checkMsaa`).
 
-**Performance structure:** dilate + depth-clip are fused into the single `reconstruct.ts` dispatch (GPU-verified disocclusion unchanged); the shading detector is one fused workgroup-local reduction instead of the source's SPD mip chain + resolve pair. The measured story of these divergences from FSR 3.1.5 — and the four upstream behaviors adopted in re-derived form — is `docs/archive/research/PARITY.md` with evidence in `bench/docs/NEXT-STEPS.md`.
+**Performance structure:** dilate + depth-clip are fused into the single `reconstruct.ts` dispatch (GPU-verified disocclusion unchanged); the shading detector is one fused workgroup-local reduction instead of the source's SPD mip chain + resolve pair. The measured story of these divergences from FSR 3.1.5 — and the four upstream behaviors adopted in re-derived form — is `docs/research/PARITY.md` with evidence in `bench/docs/NEXT-STEPS.md`.
 
-**Paper material:** historical publication notes and their evidence pointers are retained in `docs/archive/research/PAPER-NOTES.md`. Treat them as archived research context, not maintained project documentation.
+**Paper material:** findings that clear the "surprised us + measured + others would hit it" bar are tracked in `docs/research/PAPER-NOTES.md` — claim, evidence pointers, and what a publication-grade version still needs (open gaps: issue #10). Add new entries there as they land, or amend an existing entry when a finding generalizes it; don't let them live only in commit messages. Evidence under `bench/results/raw/` is gitignored, so pair every raw-output pointer with the command that regenerates it.
 
 ## Deferred / out of scope
 
