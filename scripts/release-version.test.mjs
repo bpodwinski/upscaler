@@ -9,6 +9,7 @@ import {
     distTagFor,
     findLastStableTag,
     isLatestRelease,
+    lineDistTag,
     nextPrerelease,
     normalizeSpec,
 } from './release-version.mjs';
@@ -66,23 +67,42 @@ describe('prereleases', () => {
     });
 
     test.each([
-        ['0.3.0', 'latest'],
-        ['0.3.0-beta.1', 'beta'],
-        ['1.0.0-rc.0', 'rc'],
-        ['0.3.0-0', 'next'],
-    ])('%s publishes to dist-tag %s', (version, distTag) => {
-        expect(distTagFor(version)).toBe(distTag);
+        ['0.3.0', null, 'latest'],
+        ['0.3.0', '', 'latest'],
+        ['0.3.0', '0.2.9', 'latest'],
+        ['0.3.0', '0.3.0', 'latest'],
+        ['0.3.0', '0.3.0-beta.4', 'latest'],
+        ['0.2.1', '0.3.0', 'v0.2-latest'],
+        ['1.4.2', '2.0.0', 'v1.4-latest'],
+        ['0.3.0-beta.1', null, 'beta'],
+        ['0.3.0-beta.1', '0.2.0', 'beta'],
+        ['0.2.1-beta.1', '0.3.0', 'beta'],
+        ['1.0.0-rc.0', '0.3.0', 'rc'],
+        ['0.3.0-0', '0.4.0', 'next'],
+    ])('%s with npm latest %j publishes to dist-tag %s', (version, npmLatest, distTag) => {
+        expect(distTagFor(version, npmLatest)).toBe(distTag);
+    });
+
+    test('rejects an npm latest that is not SemVer', () => {
+        expect(() => distTagFor('0.3.0', 'garbage')).toThrow(/not a SemVer version/);
+    });
+
+    test.each([
+        ['0.2.1', 'v0.2-latest'],
+        ['1.4.2', 'v1.4-latest'],
+        ['10.12.0', 'v10.12-latest'],
+    ])('the line tag for %s is %s', (version, tag) => {
+        // npm refuses a dist-tag that parses as a SemVer range (`--tag 0.2`);
+        // node-semver only allows a prerelease after a full X.Y.Z, so a
+        // two-part version with a `-latest` suffix never parses as one.
+        expect(lineDistTag(version)).toBe(tag);
     });
 });
 
 describe('release tags', () => {
     test('describes a valid tag', () => {
-        expect(describeReleaseTag('v0.3.0')).toEqual({ version: '0.3.0', prerelease: false, distTag: 'latest' });
-        expect(describeReleaseTag('v0.3.0-beta.1')).toEqual({
-            version: '0.3.0-beta.1',
-            prerelease: true,
-            distTag: 'beta',
-        });
+        expect(describeReleaseTag('v0.3.0')).toEqual({ version: '0.3.0', prerelease: false });
+        expect(describeReleaseTag('v0.3.0-beta.1')).toEqual({ version: '0.3.0-beta.1', prerelease: true });
     });
 
     test.each(['0.3.0', 'v0.3', 'vnext', 'v01.2.3', 'release-0.3.0', undefined])('rejects %j', (tag) => {

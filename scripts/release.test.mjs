@@ -18,6 +18,7 @@ function fakeRunner({
     lastStableTag = 'v0.2.0',
     commits = [['feat!: carry alpha unconditionally'], ['fix: relax the alpha clamp'], ['docs: words']],
     existingTags = [],
+    npmLatest = '',
     failOn,
 } = {}) {
     const calls = [];
@@ -48,6 +49,11 @@ function fakeRunner({
                 case 'push':
                     return '';
             }
+        }
+        if (command === 'npm' && args[0] === 'view') {
+            // A string is npm's latest; { stderr } is a failed lookup.
+            if (typeof npmLatest === 'string') return npmLatest ? `${npmLatest}\n` : '';
+            throw Object.assign(new Error(`Command failed: ${line}`), npmLatest);
         }
         if (command === 'npm') return '';
         throw new Error(`unexpected ${line}`);
@@ -118,7 +124,7 @@ describe('computing the version', () => {
 
         expect(result).toEqual({ version: '0.3.0', tag: 'v0.3.0', pushed: false });
         const text = output.lines.join('\n');
-        expect(text).toContain('@pmndrs/upscaler 0.2.0 → 0.3.0 (npm dist-tag: latest)');
+        expect(text).toContain('@pmndrs/upscaler 0.2.0 → 0.3.0 (npm dist-tag: latest; npm has no latest yet)');
         expect(text).toContain('Commits since v0.2.0 (3):');
         expect(text).toContain('feat!: carry alpha unconditionally');
         expect(text).toContain('Bump: minor (a breaking change bumps minor while 0.x)');
@@ -146,6 +152,45 @@ describe('computing the version', () => {
     });
 
     test.each([
+        ['a newer stable version takes latest', [], '0.2.0', "0.3.0 (npm dist-tag: latest; npm's latest is 0.2.0)"],
+        [
+            'an older stable version takes its line tag',
+            ['0.3.1'],
+            '0.4.0',
+            "0.3.1 (npm dist-tag: v0.3-latest; npm's latest stays 0.4.0)",
+        ],
+        [
+            'a first publish (404) takes latest',
+            [],
+            { stderr: 'npm error code E404\n' },
+            '0.3.0 (npm dist-tag: latest; npm has no latest yet)',
+        ],
+        ['a prerelease ignores npm latest', ['--preid', 'beta'], '0.4.0', '0.3.0-beta.0 (npm dist-tag: beta)'],
+    ])('prints the dist-tag publish.yml will use: %s', (_scenario, argv, npmLatest, expected) => {
+        const { run, calls } = fakeRunner({ npmLatest });
+        const output = capture();
+
+        release({ argv: ['--dry-run', ...argv], run, ...output });
+
+        expect(output.lines.join('\n')).toContain(`→ ${expected}`);
+        expect(output.warnings).toEqual([]);
+        const views = calls.map((call) => call.line).filter((line) => line.startsWith('npm view'));
+        expect(views).toEqual(argv.includes('--preid') ? [] : ['npm view @pmndrs/upscaler dist-tags.latest']);
+    });
+
+    test('warns and defers to publish.yml when npm latest cannot be read', () => {
+        const { run } = fakeRunner({ npmLatest: { stderr: 'npm error code E401\n' } });
+        const output = capture();
+
+        release({ argv: ['--dry-run'], run, ...output });
+
+        expect(output.lines.join('\n')).toContain(
+            "(npm dist-tag: latest if not older than npm's latest, else v0.3-latest; publish.yml decides)",
+        );
+        expect(output.warnings.join('\n')).toMatch(/could not read npm's latest dist-tag/);
+    });
+
+    test.each([
         ['nothing warrants a release', { commits: [['docs: words']] }, [], /nothing to release/],
         ['the version is not newer', {}, ['0.2.0'], /not newer/],
         ['the tag already exists', { existingTags: ['v0.3.0'] }, [], /already exists/],
@@ -162,7 +207,12 @@ describe('--dry-run', () => {
         release({ argv: ['--dry-run'], run, ...capture() });
 
         expect(sideEffects(calls)).toEqual([]);
-        expect(calls.every((call) => call.line.startsWith('git '))).toBe(true);
+        // Only read-only queries: git, plus npm's latest dist-tag for the summary.
+        expect(
+            calls.every(
+                (call) => call.line.startsWith('git ') || call.line === 'npm view @pmndrs/upscaler dist-tags.latest',
+            ),
+        ).toBe(true);
     });
 
     test('reports, rather than stops at, what a real run would refuse', () => {

@@ -1,8 +1,8 @@
 // Release-version policy: the next version from Conventional Commits, and the npm
 // dist-tag a version publishes under. publish.yml uses `--next` to compute the
-// version the "Run workflow" button cuts and `--describe` to validate a tag and
-// route it to a dist-tag; `scripts/release.mjs` (npm run release) shares the same
-// computation locally.
+// version the "Run workflow" button cuts, `--describe` to validate a tag, and
+// `--dist-tag` to route a version to a dist-tag given npm's current `latest`;
+// `scripts/release.mjs` (npm run release) shares the same computation locally.
 //
 //   feat:            -> minor      fix: / perf:     -> patch
 //   <type>!: / BREAKING CHANGE:    -> major (capped to minor while 0.x, so a
@@ -16,7 +16,9 @@
 //   node scripts/release-version.mjs --next auto --preid beta
 //                                                    # the version to cut, or an error
 //   node scripts/release-version.mjs --describe v0.3.0-beta.1
-//       # "<version> <prerelease> <dist-tag> <latest>": "0.3.0-beta.1 true beta false"
+//       # "<version> <prerelease> <latest>": "0.3.0-beta.1 true false"
+//   node scripts/release-version.mjs --dist-tag 0.2.1 0.3.0
+//       # the dist-tag to publish under, given npm's latest ("" if none): "v0.2-latest"
 import { execFileSync } from 'node:child_process';
 
 import { compareSemVer, isDirectRun, parseConventionalCommit, parseGitLog, parseSemVer } from './release-notes.mjs';
@@ -88,26 +90,52 @@ export function nextPrerelease(current, stable, preid) {
 }
 
 /**
- * The npm dist-tag a version publishes under.
- *
- * Stable → `latest`. Prereleases use their first identifier (0.3.0-beta.1 →
- * `beta`), and numeric-only prereleases (0.3.0-0) use `next`, so a prerelease
- * never moves `latest`.
+ * The npm dist-tag that keeps installing a stable version's release line:
+ * `v<major>.<minor>-latest` (0.2.1 → `v0.2-latest`). Never a valid SemVer range,
+ * which npm refuses as a dist-tag.
  *
  * @param {string} version
  * @returns {string}
  */
-export function distTagFor(version) {
+export function lineDistTag(version) {
+    const { major, minor } = parseSemVer(version);
+    return `v${major}.${minor}-latest`;
+}
+
+/**
+ * The npm dist-tag a version publishes under.
+ *
+ * Prereleases use their first identifier (0.3.0-beta.1 → `beta`), and
+ * numeric-only prereleases (0.3.0-0) use `next`, so a prerelease never moves
+ * `latest`. A stable version takes `latest` only when it is at or above npm's
+ * current `latest` (or npm has none yet), the same rule as the GitHub Release;
+ * an older one, such as a maintenance release on a previous line, publishes
+ * under its line tag (`v0.2-latest`) so `latest` never moves backwards.
+ *
+ * @param {string} version
+ * @param {string | null} npmLatest - npm's current `latest` version; null or
+ *   empty when the package (or its `latest` tag) doesn't exist yet.
+ * @returns {string}
+ * @throws {Error} When either version isn't SemVer.
+ */
+export function distTagFor(version, npmLatest) {
     const { prerelease } = parseSemVer(version);
-    if (prerelease.length === 0) return 'latest';
-    return /^\d+$/.test(prerelease[0]) ? 'next' : prerelease[0];
+    if (prerelease.length > 0) return /^\d+$/.test(prerelease[0]) ? 'next' : prerelease[0];
+    if (!npmLatest) return 'latest';
+    let current;
+    try {
+        current = parseSemVer(npmLatest);
+    } catch {
+        throw new Error(`npm's latest dist-tag is not a SemVer version: ${JSON.stringify(npmLatest)}`);
+    }
+    return compareSemVer(version, current) >= 0 ? 'latest' : lineDistTag(version);
 }
 
 /**
  * Validates a release tag and describes how it publishes.
  *
  * @param {unknown} tag - Must be `v` + SemVer, e.g. `v0.3.0`.
- * @returns {{ version: string; prerelease: boolean; distTag: string }}
+ * @returns {{ version: string; prerelease: boolean }}
  * @throws {Error} When the tag isn't a v-prefixed SemVer.
  */
 export function describeReleaseTag(tag) {
@@ -119,11 +147,7 @@ export function describeReleaseTag(tag) {
     } catch {
         throw new Error(`Release tags must be "v" + SemVer (e.g. v0.3.0), received: ${tag}`);
     }
-    return {
-        version,
-        prerelease: parseSemVer(version).prerelease.length > 0,
-        distTag: distTagFor(version),
-    };
+    return { version, prerelease: parseSemVer(version).prerelease.length > 0 };
 }
 
 /**
@@ -247,9 +271,14 @@ function main() {
         execFileSync('git', gitArgs, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
     try {
         if (args[0] === '--describe' && args.length === 2) {
-            const { version, prerelease, distTag } = describeReleaseTag(args[1]);
+            const { version, prerelease } = describeReleaseTag(args[1]);
             const tags = runGit(['tag', '--list', 'v*']).split(/\r?\n/).filter(Boolean);
-            process.stdout.write(`${version} ${prerelease} ${distTag} ${isLatestRelease(version, tags)}\n`);
+            process.stdout.write(`${version} ${prerelease} ${isLatestRelease(version, tags)}\n`);
+            return;
+        }
+        if (args[0] === '--dist-tag' && (args.length === 2 || args.length === 3)) {
+            // The dist-tag for a version, given npm's current latest ("" or absent: none).
+            process.stdout.write(`${distTagFor(args[1], args[2] || null)}\n`);
             return;
         }
         if (args[0] === '--compare' && args.length === 3) {
@@ -258,7 +287,7 @@ function main() {
             return;
         }
         const usage =
-            'Usage: node scripts/release-version.mjs [--describe vX.Y.Z | --compare A B | --next <auto|patch|minor|major|X.Y.Z> [--preid <id>]]';
+            'Usage: node scripts/release-version.mjs [--describe vX.Y.Z | --dist-tag X.Y.Z [<npm latest>] | --compare A B | --next <auto|patch|minor|major|X.Y.Z> [--preid <id>]]';
         const packageVersion = JSON.parse(runGit(['show', 'HEAD:package.json'])).version;
         if (args[0] === '--next') {
             // The release button: print the version to cut, or fail loudly.
