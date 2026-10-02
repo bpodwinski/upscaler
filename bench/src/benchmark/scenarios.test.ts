@@ -55,3 +55,26 @@ describe('Q13 merged-reactive-masks', () => {
         }
     });
 });
+
+describe('Q16 sparse-wires-empty-background', () => {
+    const q16 = getBenchmarkScenario('Q16');
+
+    it('holds a still camera on the sparse-wire scene, light steady until the step', () => {
+        const first = q16.frame(0);
+        expect(first.scene).toBe('sparse-wires');
+        for (const frame of [1, 180, 211, 299, 300, q16.endFrame]) {
+            const state = q16.frame(frame);
+            expect(state.scene).toBe('sparse-wires');
+            expect(state.animateScene).toBe(false);
+            expect(state.cameraPosition).toEqual(first.cameraPosition);
+            expect(state.cameraTarget).toEqual(first.cameraTarget);
+        }
+        // Anything the shading-change view shows before 300 is a false positive.
+        expect(q16.frame(299).directionalIntensity).toBe(first.directionalIntensity);
+        expect(q16.frame(300).directionalIntensity).toBeCloseTo(first.directionalIntensity / 4);
+    });
+
+    it('captures the shading-change and disocclusion views', () => {
+        expect(q16.debugViews).toEqual(expect.arrayContaining(['shading-change', 'disocclusion']));
+    });
+});

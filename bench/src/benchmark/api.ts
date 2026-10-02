@@ -217,9 +217,11 @@ class BrowserBenchmarkApi implements UpscalerBenchmarkApi {
         this._clock.seek(frame + 1);
     }
 
-    /** Scene rendered as upscaler input for a frame (Q12 swaps in cornell). */
+    /** Scene rendered as upscaler input for a frame (Q12 cornell, Q16 sparse wires). */
     private _inputScene(frame: BenchmarkFrameState): THREE.Scene {
-        return frame.scene === 'cornell' ? this._context.bench.cornellScene : this._context.bench.scene;
+        if (frame.scene === 'cornell') return this._context.bench.cornellScene;
+        if (frame.scene === 'sparse-wires') return this._context.bench.sparseWireScene;
+        return this._context.bench.scene;
     }
 
     private _applyFrameState(frame: BenchmarkFrameState): void {
@@ -233,6 +235,7 @@ class BrowserBenchmarkApi implements UpscalerBenchmarkApi {
         bench.scene.updateMatrixWorld(true);
         bench.roomScene.updateMatrixWorld(true);
         bench.reactiveScene.updateMatrixWorld(true);
+        bench.sparseWireScene.updateMatrixWorld(true);
     }
 }
 
