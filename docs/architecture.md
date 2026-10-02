@@ -74,7 +74,9 @@ veloc ─┘  (dilate +      dilatedDepth   │        Lanczos2 upsample        
    reactive and shading-change aging, and the alpha resolve. Blending runs in
    invertible-tonemap space with a per-pixel age stored in history `.a`.
 6. **RCAS** (`rcas.ts`) sharpens the conditioned history and inverts the tonemap and
-   exposure once, writing caller-domain linear/HDR to the output. With
+   exposure once, writing caller-domain linear/HDR to the output. The inversion is
+   capped at linear RCAS's own maximum gain, so an isolated peak cannot become a
+   ~1000× firefly. With
    `sharpness = 0`, **blit** (`blit.ts`) does the same resolve without sharpening.
 
 The spatial path is EASU (`easu.ts`) then RCAS/blit; the bilinear path is blit alone.

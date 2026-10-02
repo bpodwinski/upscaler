@@ -80,23 +80,33 @@ fn rcasLoad(p : vec2i) -> vec3f {
     const resolve = conditionedInput
         ? /* wgsl */ `
     var pix = (lobe * b + lobe * d + lobe * h + lobe * f + e) * rcpL;
+    // Both paths cap the inverted result at linear RCAS's own maximum gain for
+    // this sharpness (lobe >= -RCAS_LIMIT * peak, non-negative taps). In
+    // conditioned space the lobe can push an isolated peak to (or past) 1,
+    // and the inversion turns that into a ~1000x firefly.
+    let maxGain = 1.0 / (1.0 - 4.0 * RCAS_LIMIT * peak);
     if (hasFlag(FLAG_INPUT_REINHARD)) {
         // Undo the accumulate conditioning once on the sharpened result: invert
-        // the tonemap, then divide out the baked-in pre-exposure.
+        // the tonemap, then divide out the baked-in pre-exposure. Pre-exposure
+        // does not bound a fresh, peaky history (first frame, reset,
+        // disocclusion, a sub-pixel emitter popping in): unguarded, a lone
+        // sub-pixel 16 on black became 1754 at sharpness 1 and 1379 at 0.8 in
+        // GPU probes (issue #32). The tap maximum is inverted once: the
+        // inversion is monotone, so the per-channel max of the conditioned taps
+        // bounds every inverted tap.
         let exposure = max(textureLoad(exposureTex, vec2i(0), 0).r, 1.0e-4);
-        pix = tonemapInvert(max(pix, vec3f(0.0))) / exposure;
+        let maxIn = tonemapInvert(max(max(mx4, e), vec3f(0.0))) / exposure;
+        pix = min(tonemapInvert(max(pix, vec3f(0.0))) / exposure, maxIn * maxGain);
     } else {
         // Spatial: invert the tap conditioning once. Unlike accumulate history,
         // this input has no pre-exposure bounding it, so two guards:
         // - anchor on the exact linear center — an unsharpened pixel passes
         //   through bit-exact, and values beyond tonemapInvert's clamp
         //   (linear ~1000) are not flattened to it;
-        // - cap at linear RCAS's own maximum gain for this sharpness. An
-        //   isolated peak overshoots the conditioned range, and inverting that
-        //   multiplies it up to ~1000x (a lone 0.5 on near-black became 1303
-        //   at sharpness 1 in GPU probes).
+        // - the gain cap above. An isolated peak overshoots the conditioned
+        //   range, and inverting that multiplies it up to ~1000x (a lone 0.5
+        //   on near-black became 1303 at sharpness 1 in GPU probes).
         let maxIn = max(max(max(bIn, dIn), max(fIn, hIn)), max(eIn, vec3f(0.0)));
-        let maxGain = 1.0 / (1.0 - 4.0 * RCAS_LIMIT * peak);
         pix = clamp(
             eIn + tonemapInvert(max(pix, vec3f(0.0))) - tonemapInvert(e),
             vec3f(0.0),
