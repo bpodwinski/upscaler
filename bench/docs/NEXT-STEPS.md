@@ -87,6 +87,10 @@ Cost: **0.044 ms** at ratio 2 (the candidate's two-pass form measured 0.231 ms;
 5× cheaper), zero when `settings.detectShadingChanges` is off. Slow ramps
 deliberately do not fire (the 1-frame comparison sees only the per-frame delta;
 blend + variance clip track ramps — verified no lag/ghosting on Q9 ramp finals).
+§8 later measured the lag against a held-light reference: the output does trail a
+sub-detector ramp, by about 5 frames with the still relax off and about 10 at the
+shipped ×8. That is a delayed fade, not a spatial ghost, which is why the finals
+looked clean.
 
 ## 5. Still-scene convergence defect — DONE (2026-07-24, consumer report 3)
 
@@ -426,6 +430,128 @@ Reproduce: `node scripts/measure-convergence.mjs --scenario Q14 --subrun static
 --pairs 40 [--settings '{"lockThinFeatures":false}']`. The wire-mask probe
 (mask derivation + debug-view averaging) was a scratch CDP script. Its method is
 described above, so it can be rebuilt on the bench capture API.
+
+## 8. `STILL_CLAMP_RELAX` under sub-detector lighting drift — MEASURED, constant kept (2026-10-02, issue #5)
+
+Item 5's still-scene relax widens the variance box ×(1 + `STILL_CLAMP_RELAX`) on
+pixels that are still, converged and signal-free. Every signal we have (motion,
+disocclusion, shading change, reactivity) restores full rectification at once, so
+the exposure is narrow: **a lighting change too slow for the shading detector,
+on a still camera, on converged history.** Nothing measured that gap before:
+Q9's step fires the detector, and Q3/Q4 move.
+
+**Method.** New scenario **Q15 `sub-detector-lighting-drift`**. The camera is still
+at the base pose. The sun ramps 8 → 2 over 120–188, holds, ramps 2 → 8 over
+240–308, then holds. The ramps are exponential at a constant ~2.03 %/frame
+change of the sun term. That is half the detector's flattest floor
+(`SHADING_FLOOR_COARSE = 0.04`, before the contrast term). There is no step, so
+history is still-converged when each ramp starts. New meter
+`scripts/measure-drift-lag.mjs` plays the ramp and, at the same frames and jitter
+phases, compares against a **held-light reference**: the same scenario with the
+sun frozen at that frame's intensity for every frame 0..f. That reference is the
+image an accumulator with no lag would show. Before a ramp starts the two runs
+are byte-identical, so the error there is exactly 0. Metrics are on the
+presented canvas (0–255):
+- mean |Δ| RGB;
+- signed Δluma (positive means stale brightness);
+- the share of pixels more than 4/255 off;
+- **lag in frames**: how many frames earlier the reference had the ramp's
+  brightness, averaged over the middle of each ramp.
+
+A third pass replays the ramp through `DebugView.ShadingChange` to confirm the
+detector stayed silent. The relax is a WGSL constant, so each value is a
+separate run with the source edited.
+
+Settings and environment:
+- ratio 2, 1280×720, frames sampled every 2;
+- Apple Metal-3, headless Chrome over CDP;
+- run from a git worktree, which is fine because nothing here is timing.
+
+For relax 0, `alphaRelax` was guarded locally. See the trap below.
+
+**The detector really is silent.** On Q15 the shading-change view sits at
+0.66 % lit before the ramp (the still-scene block speckle Q1/Q12 also show) and
+peaks at 0.97 % during both ramps. Q9's 8 → 2 ramp is *mostly* sub-detector too:
+0.68 % before, 1.42 % at its last frames. It is linear, though, so the per-frame
+relative change climbs from 1.3 % to 5 % and crosses the 4 % floor at the tail.
+It is also bracketed by steps (60, and 2 → 3.2 at 180) that fire at 72 % / 65 %
+of pixels, which is why Q15 exists rather than reusing Q9.
+
+**Auto-exposure confounds the measurement, so the clip is isolated with it off.**
+The adapting exposure re-decodes history that was conditioned under the
+previous exposure. There is no conditioning-exposure history correction (see
+"not planned" below). On a down-ramp, the exposure rising decodes the stale-bright
+history darker, which partly cancels the lag. With auto-exposure on, Q15 lag reads
+30–45 % lower, and Q9 shows a slow signed drift after its steps that has nothing
+to do with the clip. The meter takes `--settings '{"autoExposure":false}'` for this
+reason. Both are recorded below. Convergence is measured with the canonical capture
+settings (auto-exposure on), as in item 5.
+
+| `STILL_CLAMP_RELAX` | Q15 lag, frames, down / up (AE off) | Q15 peak \|Δ\| down / up (AE off) | Q15 lag, frames (AE on) | Q9 ramp lag / peak (AE off) | Q1 consecutive / phase-locked | Q12 consecutive / phase-locked |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 (off) | 5.3 / 4.8 | 5.1 / 5.4 | 3.8 / 4.4 | 4.3 / 6.2 | 0.197 / 0.178 | 0.039 / 0.050 |
+| 4 | 9.6 / 8.6 | 8.4 / 8.9 | 5.5 / 6.9 | 7.1 / 10.8 | 0.122 / 0.044 | 0.026 / 0.030 |
+| **8 (shipped)** | **10.5 / 9.1** | **9.3 / 9.5** | **5.9 / 7.3** | **7.7 / 12.4** | **0.115 / 0.027** | **0.026 / 0.030** |
+| 16 | 11.1 / 9.3 | 9.9 / 9.8 | 6.3 / 7.6 | 8.1 / 13.5 | 0.111 / 0.016 | 0.025 / 0.030 |
+
+Convergence columns come from `measure-convergence.mjs --pairs 40`: settle 180,
+then the mean of 40 consecutive pairs, plus one same-phase pair 32 frames apart.
+The phase-locked figure is a single pair. At ×8 it reads 0.027 here against the
+0.018 recorded in item 5. Relax 0 reproduces item 5's pre-relax 0.18.
+
+Reading it:
+
+- **The drift cost is a step, not a slope.** Turning the relax on (0 → 4) nearly
+  doubles the lag: +80 % lag frames, +65 % peak error. After that the curve is
+  flat: 4 → 8 adds +10 % and 8 → 16 adds +5 %. The cause is the size of the
+  per-frame drift. On every pixel with real 3×3 variance (texture, edges,
+  specular), a ×5 box is already wide enough that the clip stops catching it,
+  so further widening has little left to release. On flat surfaces σ ≈ 0 keeps
+  even the ×17 box tight. That is why the error concentrates in the lit-knots ROI
+  (14/255 at ×8) and the grid floor (8/255), not everywhere.
+- **The convergence benefit keeps paying past ×4.** On Q1, phase-locked churn falls
+  roughly 40 % per doubling: 0.044 → 0.027 → 0.016. Consecutive churn and Q12
+  flatten after ×4.
+- **The lag is a delayed fade, not a ghost.** The signed error is about equal to
+  the absolute error, so the whole frame is uniformly a little too bright on the
+  way down and too dark on the way up. There is no spatial trail. At ×8, 2 %/frame
+  and 60 fps the output trails the lighting by about 10 frames (≈ 175 ms).
+  Relax 0 still trails by about 5 frames: that part is the EMA itself, which the
+  ×1 clip only partly catches. After the ramp stops, ×8 needs about 60 frames to
+  get back to 1/255 (relax 0: 0.8 at +60).
+- **Recommendation: keep 8.** There is no knee in 4–16 to retune to. Dropping to 4
+  buys back about 10 % of the lag and gives up about 40 % of Q1's phase-locked
+  convergence. Dropping to 0 reintroduces item 5's defect. The lag that matters
+  arrives with *any* useful relax, so the fix, if one is ever needed, is the
+  issue's second option: **gate the relax on a slow-drift term.** For example, a
+  persistent per-block luma reference that is refreshed only when history
+  converges, compared against the current block mean. That catches the
+  *cumulative* change the 1-frame detector cannot see, and its floor can be set
+  in total change rather than per-frame change. Not built. A ~175 ms fade lag on
+  a deliberately slow ramp is not visible as ghosting, and it is a new detector
+  with its own tuning.
+
+**Trap found on the way: `STILL_CLAMP_RELAX = 0` divides by zero.** The alpha
+resolve computes `alphaRelax = stillRelax / STILL_CLAMP_RELAX` (item 6). At 0 that is
+0/0 = NaN in the alpha clamp. On Metal the canvas still composited opaque, but
+WGSL leaves the result undefined. Anyone who sets the constant to 0 to disable the
+relax should guard that line, for example by keeping the unscaled weight in its own
+`let`. This was measured with a local `select` guard. The shipped shader is unchanged,
+because `STILL_CLAMP_RELAX` is 8 and its fingerprint is pinned.
+
+Reproduce, with the bench on 5199 or `--url`; edit `STILL_CLAMP_RELAX` per run:
+
+```bash
+node scripts/measure-drift-lag.mjs --scenario Q15 --frames 116:379:2 --label relax8-noae \
+  --settings '{"autoExposure":false}'
+node scripts/measure-drift-lag.mjs --scenario Q9 --frames 56:239:2 --label relax8-noae \
+  --settings '{"autoExposure":false}'
+node scripts/measure-convergence.mjs --scenario Q1 --ratio 2 --pairs 40 --label relax8
+```
+
+Artifacts land under `bench/results/raw/drift-lag/` and `bench/results/raw/convergence/`
+(git-ignored): per-frame rows per ROI, detector lit fractions, and PNGs at `--keep`
+frames.
 
 ## Explicitly not planned (measured against)
 

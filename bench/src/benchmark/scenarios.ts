@@ -130,6 +130,27 @@ function q14(frame: number): BenchmarkFrameState {
     return state(frame, [0, 2.8, 8.8], [0, 2.6, 0]);
 }
 
+/** Per-frame factor of Q15's ramps: ×4 over 69 frames ≈ 2.03 %/frame. */
+const Q15_RAMP_FRAMES = 69;
+
+function q15(frame: number): BenchmarkFrameState {
+    // Sub-detector lighting drift on a still camera (issue #5). The sun ramps
+    // down 8 → 2 (120–188), holds, ramps back up 2 → 8 (240–308) and holds.
+    // Exponential, so every frame changes the sun term by the same ~2 % — half
+    // the shading detector's flattest floor (SHADING_FLOOR_COARSE = 0.04), so
+    // the detector stays silent for the whole traverse and only the variance
+    // clip (and STILL_CLAMP_RELAX's widening of it) governs the lag. Unlike
+    // Q9 there is no step, so the history is still-converged when each ramp
+    // begins.
+    let directionalIntensity = 8;
+    if (frame >= 120 && frame < 120 + Q15_RAMP_FRAMES)
+        directionalIntensity = 8 * 0.25 ** ((frame - 120) / Q15_RAMP_FRAMES);
+    else if (frame >= 120 + Q15_RAMP_FRAMES && frame < 240) directionalIntensity = 2;
+    else if (frame >= 240 && frame < 240 + Q15_RAMP_FRAMES)
+        directionalIntensity = 2 * 4 ** ((frame - 240) / Q15_RAMP_FRAMES);
+    return { ...state(frame), directionalIntensity };
+}
+
 const SCENARIOS: Record<BenchmarkScenarioId, BenchmarkScenarioDefinition> = {
     Q0: {
         id: 'Q0',
@@ -394,6 +415,24 @@ const SCENARIOS: Record<BenchmarkScenarioId, BenchmarkScenarioDefinition> = {
         subruns: ['off', 'static', 'rotating', 'builtin'],
         unsupported: null,
         frame: q14,
+    },
+    Q15: {
+        id: 'Q15',
+        name: 'sub-detector-lighting-drift',
+        endFrame: 379,
+        captures: [
+            '0', 'P-1', 'P', '119', '120', '121', '137', '154', '171', '188', '189', '190',
+            '206', '239', '240', '241', '257', '274', '291', '308', '309', '310', '326', '379',
+        ],
+        debugViews: ['final', 'accumulation-age', 'locks', 'exposure', 'shading-change'],
+        rois: {
+            full: [0, 0, 1, 1],
+            lit_knots: [0.18, 0.16, 0.64, 0.38],
+            grid_floor: [0, 0.62, 1, 0.38],
+        },
+        subruns: [],
+        unsupported: null,
+        frame: q15,
     },
 };
 
