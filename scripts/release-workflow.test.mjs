@@ -17,9 +17,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test } from 'vitest';
 
 const SLOW = 60_000;
+
+// Every job runs on spawnSync, and vitest only yields microtasks between tests,
+// so the worker can't read its RPC replies until the file ends; past ~60s that
+// surfaces as an unhandled 'Timeout calling "onTaskUpdate"'. A macrotask turn
+// between tests lets them through.
+afterEach(() => new Promise((resolve) => setImmediate(resolve)));
 const workflow = readFileSync(
     new URL('../.github/workflows/publish.yml', import.meta.url),
     'utf8',
