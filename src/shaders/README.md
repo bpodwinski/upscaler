@@ -183,6 +183,39 @@ coverage only if RCAS performance becomes material.
   full-frame and ≤ 9/255 max on the brightest content — visually indistinguishable, no
   overshoot. The prior per-tap shader is kept as `RCAS_PER_TAP_SHADER` for the frozen
   `rcas-fsr315-limiter` benchmark identity.
+- **Gain cap (2026-10-02, issue #32):** Those 8-bit captures could not show HDR
+  fireflies, because everything above ~4 saturates white after ACES. Pre-exposure keeps
+  most history well inside [0,1), but it does not bound a peaky history: the first
+  frame, a reset, disocclusion, or a sub-pixel emitter that only rasterizes on some
+  jitter phases. The lobe pushes such a peak to ~1 in conditioned space, and the
+  single inversion turns it into a ~1000× firefly. The inversion is now capped at
+  `inv(max5) / exposure · 1/(1 − 4·RCAS_LIMIT·peak)`, linear RCAS's own maximum gain,
+  the same bound as the spatial path. `max5` is the per-channel max of the five
+  conditioned taps, inverted once. The inversion is monotone, so it bounds every
+  inverted tap. No anchor is needed: on this path it is algebraically the plain
+  inversion. The uncapped expression is unchanged, so pixels under the cap stay
+  bit-exact.
+- **Evidence (GPU readbacks, rgba16float):**
+  - **Synthetic, first frame, exposure 1:** a lone sub-pixel 4 / 16 / 64 on black
+    became 1506 / 1754 / 1737 at sharpness 1 and 1154 / 1352 / 1379 at 0.8, against
+    3.7 / 12.2 / 29.6 for linear-space RCAS on the same history. Capped, they are
+    14.7 / 48.8 / 118 and 8.5 / 28.3 / 68.5.
+  - **Synthetic, auto-exposure (pinned at 80 on black):** every emitter became ~21.9,
+    whatever its value. Capped, the maximum is 2.7.
+  - **Synthetic, external exposure 1000:** every emitter became 1.73. Capped, 0.22.
+  - **Bench, converged (ordinary scene content, sharpness 0.8, auto-exposure):** in Q1
+    at f239 a specular pixel read **316** while its four neighbours read ~4–5; capped,
+    it reads 20. In Q2 at f239 a pixel read **423** next to ~11; capped, 64.
+  - **Bench, everything else:** in Q0/Q1/Q2/Q12 captures at f0/f1/f23–f479, at most 23
+    pixels per frame change, and every other pixel is bit-exact. Q12 f119 and f479 are
+    fully bit-exact. The 8-bit PNGs move by at most 20/255 on 1–3 pixels.
+  - **No NaN, Inf or negative output** in any probe.
+  - **Cost:** about +4 µs RCAS at 1920×1080 ratio 2 (+4–5%, interleaved ABBA, against
+    a ~1% A-vs-A floor).
+  - **Not changed:** converged HDR plateaus still overshoot up to ~2× at their edges
+    (a 64 plateau reads 127; linear RCAS reads 64). That stays inside the linear gain
+    bound, so the cap leaves it alone. It is a property of conditioned-space
+    sharpening.
 
 #### RCAS load domain (spatial path)
 
@@ -203,8 +236,8 @@ coverage only if RCAS performance becomes material.
   are not flattened to ~1000. The cap stops isolated peaks that overshoot the conditioned
   range from inverting to ~1000× (unguarded, a lone 0.5 on near-black became 1303 at
   sharpness 1). It bounds the result at the most linear-space RCAS could ever produce
-  at that sharpness. The accumulate history needs neither guard because pre-exposure
-  bounds it.
+  at that sharpness. The temporal path shares the cap (see *Gain cap* above). It needs
+  no anchor, because there the anchor reduces to the plain inversion.
 - **Evidence (GPU readbacks):** On synthetic HDR tiles, edges crossing 1.0 and 1.0|0.5
   edges now sharpen, and a flat 1.0 stays exactly 1.0. On the example scene, SDR-only
   neighborhoods moved by a mean of 0.0007 linear and 0.13/255 after ACES, because
@@ -216,7 +249,8 @@ coverage only if RCAS performance becomes material.
 - **Current status:** Source-aligned output/color domain.
 - **Local implementation:** Writes the caller's linear/HDR domain: on the temporal path
   it sharpens conditioned texels and inverse-tonemaps + divides by the current local
-  exposure once on the result (see *RCAS load domain* above); on the spatial path it
+  exposure once on the result, capped at linear RCAS's gain (see *RCAS load domain*
+  above); on the spatial path it
   conditions EASU's linear taps with the same tonemap, sharpens, and inverts once
   (anchored on the linear center, capped at linear RCAS's gain — *RCAS load domain
   (spatial path)*). It applies no presentation transform.

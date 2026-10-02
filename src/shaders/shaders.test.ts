@@ -69,8 +69,9 @@ const BASELINE_FINGERPRINTS: Record<string, string> = {
     easu: '48248d62',
     // Updated 2026-07-21: conditioned-space sharpening adopted (NEXT-STEPS item 1);
     // 2026-08-25: alpha passthrough; 2026-10-02: the spatial path conditions its
-    // linear/HDR taps the same way (anchored, gain-capped inversion).
-    rcas: '981ab4cb',
+    // linear/HDR taps the same way (anchored, gain-capped inversion);
+    // 2026-10-02: the temporal inversion is gain-capped too (issue #32).
+    rcas: '0addd34e',
     // Updated 2026-07-22: depth-clip flicker fix — reference tap-skip semantics
     // (no all-taps veto), jitter-delta-compensated reprojection, and a
     // neighborhood-relief-widened separation tolerance (grazing-angle planes).
@@ -195,8 +196,6 @@ describe('RCAS on the spatial path', () => {
         );
         expect(RCAS_SHADER).toContain('let maxGain = 1.0 / (1.0 - 4.0 * RCAS_LIMIT * peak);');
         expect(RCAS_SHADER).toContain('maxIn * maxGain');
-        // The temporal branch still undoes conditioning + pre-exposure once.
-        expect(RCAS_SHADER).toContain('pix = tonemapInvert(max(pix, vec3f(0.0))) / exposure;');
     });
 
     it('leaves the frozen benchmark forms sharpening in linear space', () => {
@@ -208,6 +207,42 @@ describe('RCAS on the spatial path', () => {
         ]) {
             expect(source).not.toContain('tonemapInvertible(eIn)');
             expect(source).toContain('let e = rcasLoad(sp');
+        }
+    });
+});
+
+describe('RCAS on the temporal path', () => {
+    // Sharpening conditioned history and inverting once can push an isolated
+    // peak to ~1 in conditioned space, which inverts to a ~1000x firefly
+    // (issue #32: a lone sub-pixel 16 on black became 1754; converged Q1/Q2
+    // highlights reached 316/423 next to ~17/~65 neighbours).
+    it('caps the single inversion at linear RCAS gain over the inverted tap maximum', () => {
+        const temporal = RCAS_SHADER.split('if (hasFlag(FLAG_INPUT_REINHARD)) {')[1]?.split('} else {')[0] ?? '';
+        expect(temporal).not.toBe('');
+        expect(temporal).toContain(
+            'let maxIn = tonemapInvert(max(max(mx4, e), vec3f(0.0))) / exposure;',
+        );
+        // The uncapped expression is main's, so uncapped pixels stay bit-exact.
+        expect(temporal).toContain(
+            'pix = min(tonemapInvert(max(pix, vec3f(0.0))) / exposure, maxIn * maxGain);',
+        );
+        // One shared cap definition, ahead of the uniform branch.
+        const resolve = RCAS_SHADER.split('//* Resolve')[1] ?? '';
+        expect(resolve.indexOf('let maxGain')).toBeGreaterThan(-1);
+        expect(resolve.indexOf('let maxGain')).toBeLessThan(
+            resolve.indexOf('if (hasFlag(FLAG_INPUT_REINHARD))'),
+        );
+        expect(RCAS_SHADER.match(/let maxGain/g)).toHaveLength(1);
+    });
+
+    it('leaves the frozen benchmark forms uncapped', () => {
+        for (const source of [
+            RCAS_LEGACY_SHADER,
+            RCAS_PER_TAP_SHADER,
+            RCAS_HOISTED_EXPOSURE_SHADER,
+            RCAS_TONEMAP_SPACE_SHADER,
+        ]) {
+            expect(source).not.toContain('maxGain');
         }
     });
 });
