@@ -84,6 +84,34 @@ Three edits, all small:
 production pipeline differing by one constructor flag, which is the shape you
 want for a clean single-variable comparison.
 
+### Which RCAS each mode runs
+
+RCAS is the one shader the identities swap, and the swap can differ between the
+temporal path and the FSR1 spatial path. Shader names refer to
+`src/shaders/rcas.ts`.
+
+| identity | temporal mode | FSR1 spatial mode |
+| --- | --- | --- |
+| `baseline`: the page default, so the interactive bench, `measure-convergence.mjs` and `measure-drift-lag.mjs` | `RCAS_LEGACY_SHADER` | **`RCAS_SHADER` (production)** |
+| `local-baseline-5d6a65e`, `local-baseline-through-e00-harness`: the frozen E00 pair that `run-benchmark.mjs` maps `baseline` to | `RCAS_LEGACY_SHADER` | `RCAS_LEGACY_SHADER` |
+| `rcas-fsr315-limiter`, `rcas-fsr315-numeric` | `RCAS_PER_TAP_SHADER` | `RCAS_PER_TAP_SHADER` |
+| `rcas-hoisted-exposure-v1` / `rcas-tonemap-space-v1` | the experiment shader of the same name | the same shader |
+| `source-*-bundle-v1` (frozen candidates) | `RCAS_PER_TAP_SHADER` | `RCAS_PER_TAP_SHADER` |
+
+Native and bilinear modes run no RCAS; they use the blit pass. FSR1 with
+`sharpness` 0 blits too.
+
+The temporal column is frozen on purpose. The legacy shader is the E00
+`local-baseline-5d6a65e` shader identity, and every temporal capture and
+convergence record so far was taken through it. Switching `baseline`'s temporal
+RCAS would silently break comparisons against those records. The spatial column
+is not frozen, because automated runs never use the spatial path
+(`configureBenchmark` always selects the temporal path). So `baseline` runs
+production RCAS there, and spatial-path changes such as the conditioned-space
+RCAS from #30 show up in the interactive bench. For the old FSR1 behaviour in an
+A/B, open the bench with `?variant=local-baseline-5d6a65e`. The split is wired
+through the bench-only `_spatialRcasShader` constructor option on `Upscaler`.
+
 ---
 
 ## Reading the results

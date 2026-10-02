@@ -6,6 +6,7 @@ import {
     RCAS_HOISTED_EXPOSURE_SHADER,
     RCAS_LEGACY_SHADER,
     RCAS_PER_TAP_SHADER,
+    RCAS_SHADER,
     RCAS_TONEMAP_SPACE_SHADER,
 } from '../../../src/shaders/rcas';
 
@@ -171,8 +172,9 @@ class BenchmarkResolverAdapter implements BenchmarkResolver {
 function createProductionUpscaler(
     renderer: THREE.WebGPURenderer,
     rcasShader?: string,
+    spatialRcasShader?: string,
 ): Upscaler {
-    const options = { renderer, _rcasShader: rcasShader };
+    const options = { renderer, _rcasShader: rcasShader, _spatialRcasShader: spatialRcasShader };
     return new Upscaler(options);
 }
 
@@ -198,8 +200,9 @@ export class BaselineBenchmarkResolver extends BenchmarkResolverAdapter {
         renderer: THREE.WebGPURenderer,
         metadata: BenchmarkVariantMetadata,
         rcasShader?: string,
+        spatialRcasShader?: string,
     ) {
-        super(createProductionUpscaler(renderer, rcasShader), metadata);
+        super(createProductionUpscaler(renderer, rcasShader, spatialRcasShader), metadata);
     }
 }
 
@@ -216,7 +219,16 @@ export class CandidateBenchmarkResolver extends BenchmarkResolverAdapter {
 }
 
 /**
- * Creates the unchanged local baseline resolver.
+ * Creates the local baseline resolver. Its temporal path runs the frozen
+ * `RCAS_LEGACY_SHADER` (the E00 `local-baseline-5d6a65e` shader identity), so
+ * temporal captures and convergence records stay comparable across history.
+ *
+ * The spatial (FSR1) path differs by identity: `baseline` — the interactive
+ * bench default — sharpens with production `RCAS_SHADER`, so spatial-path
+ * changes show up in the bench. The two frozen E00 identities keep the legacy
+ * shader on every path; `local-baseline-5d6a65e` is the explicit legacy FSR1
+ * variant for A/B. No automated run uses the spatial path, so this changes no
+ * recorded benchmark.
  * @param renderer - Initialized three WebGPU renderer
  * @param metadata - Registry metadata for the selected identity
  * @returns One baseline resolver instance
@@ -229,6 +241,7 @@ export function createBaselineResolver(
         renderer as THREE.WebGPURenderer,
         metadata,
         RCAS_LEGACY_SHADER,
+        metadata.id === 'baseline' ? RCAS_SHADER : undefined,
     );
 }
 
