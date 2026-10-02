@@ -1,10 +1,11 @@
 import { Vector2, type Texture } from 'three';
-import { NodeUpdateType, TempNode, type WebGPURenderer } from 'three/webgpu';
+import { NodeUpdateType, TSL, TempNode, type WebGPURenderer } from 'three/webgpu';
 import { convertToTexture, mrt, nodeObject, output, pass, passTexture, velocity } from 'three/tsl';
 
 import { Upscaler } from './Upscaler';
 import type { TemporalGuidesNode } from './TemporalGuidesNode';
 import { getGPUTexture } from './internal/threeWebGPU';
+import { getPipelineEvents, installRenderPipelineHooks } from './internal/renderPipelineHooks';
 import { getQualityModeRatio } from './math/resolution';
 import { QualityMode, type UpscalePath } from './types';
 
@@ -16,6 +17,16 @@ type CameraLike = { isCamera?: boolean };
 // A TSL node whose backing texture we can reach (a pass/texture node).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TextureNodeLike = any;
+
+// r186+ render-pipeline events, feature-detected once (null on r184/r185 — see
+// internal/renderPipelineHooks.ts for why this reads three's runtime TSL object).
+const PIPELINE_EVENTS = getPipelineEvents(TSL as unknown as Record<string, unknown>);
+
+// Process-wide one-shot warnings: they describe the three version / graph shape,
+// not a particular node, so once per page is enough.
+let warnedLegacyPipeline = false;
+let warnedViewOffsetConflict = false;
+let warnedNoPipeline = false;
 
 /** Options for {@link upscale} / {@link upscaleScene}. */
 export interface UpscalerNodeOptions {
@@ -115,7 +126,9 @@ export interface UpscalerNodeOptions {
  *    construction.
  * 2. Sub-pixel jitter is applied via the render-pipeline hook (like `TAAUNode`)
  *    *before the pipeline renders*, and because the inputs render in-pipeline the
- *    jitter lands on them — no manual jitter plumbing. (An imperative pipeline
+ *    jitter lands on them — no manual jitter plumbing. Like three's TRAA/TAAU it
+ *    claims the pipeline's camera view offset: if another temporal AA node already
+ *    owns it, this node warns once and runs unjittered. (An imperative pipeline
  *    that composites into a low-res target *outside* the post render still wants
  *    the raw {@link Upscaler}; see `examples/06-screenspace-gi`.)
  *
@@ -144,9 +157,20 @@ export class UpscalerNode extends TempNode {
     // is free. Opt out for externally-rendered / noisy inputs (see
     // UpscalerNodeOptions.jitter).
     private readonly _jitter: boolean;
+    // Whether this node actually owns the jitter in the current pipeline build:
+    // `_jitter` minus the cases where another node (TRAA/TAAU) claimed the
+    // camera view offset first, or no pipeline hook could be installed.
+    // Drives the upscaler's jitter config.
+    private _jitterActive: boolean;
     // One-shot guard so a jittering temporal node that never receives depth +
     // velocity fails loudly instead of silently emitting nothing.
     private _warnedMissingInputs = false;
+    // True between a beginFrame and its endFrame. Guards the pipeline hooks so
+    // a duplicated registration can't advance jitter twice per frame, and the
+    // first frame after a pipeline rebuild (three runs the before-callbacks
+    // before building the material that registers them) can't end a frame it
+    // never began.
+    private _frameOpen = false;
 
     private readonly _output = new Vector2();
     private readonly _input = new Vector2();
@@ -175,6 +199,7 @@ export class UpscalerNode extends TempNode {
         this._camera = camera;
         this._options = options;
         this._jitter = options.jitter ?? true;
+        this._jitterActive = this._jitter;
     }
 
     /** The underlying upscaler — inspect `.settings`, `.gpuTimings`, etc. */
@@ -225,18 +250,11 @@ export class UpscalerNode extends TempNode {
         if (this._reactiveOpaqueColor) props.reactiveOpaqueColorNode = this._reactiveOpaqueColor;
         if (this._exposureTexture) props.exposureNode = this._exposureTexture;
 
-        // Apply the sub-pixel jitter before the input passes render — same hook
-        // three's TAAUNode uses. Only installed when jittering: the hook is
-        // pointless (and the camera offset undesirable) otherwise.
-        const renderPipeline = builder.context?.renderPipeline;
-        if (this._jitter && renderPipeline) {
-            renderPipeline.context.onBeforeRenderPipeline = () => {
-                if (this._configured) this._upscaler!.beginFrame(this._camera as never);
-            };
-            renderPipeline.context.onAfterRenderPipeline = () => {
-                if (this._configured) this._upscaler!.endFrame(this._camera as never);
-            };
-        }
+        // Apply the sub-pixel jitter before the input passes render — the same
+        // pipeline hooks (and view-offset claim) three's TRAANode/TAAUNode use.
+        // Only installed when jittering: the camera offset is undesirable
+        // otherwise. Must stay inside setup(): r186's events are stack nodes.
+        if (this._jitter) this._installJitterHooks(builder.context);
 
         // Seed a configuration so outputTexture exists for passTexture; the real
         // input size is picked up in updateBefore once the passes have rendered.
@@ -253,6 +271,74 @@ export class UpscalerNode extends TempNode {
         return this._textureNode;
     }
 
+    private _installJitterHooks(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        context: any,
+    ): void {
+        const result = installRenderPipelineHooks(context, this, this._pipelineHooks, PIPELINE_EVENTS);
+        // No hooks ⇒ no per-frame beginFrame: run as a non-jittered temporal
+        // upscale rather than reconstruct against a jitter that never lands.
+        this._setJitterActive(result !== 'conflict' && result !== 'none');
+
+        if (!PIPELINE_EVENTS && !warnedLegacyPipeline) {
+            warnedLegacyPipeline = true;
+            console.warn(
+                '@pmndrs/upscaler: this three.js version predates the r186 render-pipeline events ' +
+                    '(OnBeforeRenderPipeline/OnAfterRenderPipeline). Support for three r184/r185 is ' +
+                    'deprecated and will be removed — please upgrade to three r186+.',
+            );
+        }
+        if (result === 'none' && !warnedNoPipeline) {
+            warnedNoPipeline = true;
+            console.warn(
+                '@pmndrs/upscaler: upscale() was built outside a RenderPipeline output graph (or inside ' +
+                    "another node's private material), so it cannot jitter the camera — running without " +
+                    'jitter (no reconstruction beyond render resolution). Make it part of ' +
+                    'RenderPipeline.outputNode, or pass { jitter: false } to silence this.',
+            );
+        } else if (result === 'conflict' && !warnedViewOffsetConflict) {
+            warnedViewOffsetConflict = true;
+            console.warn(
+                '@pmndrs/upscaler: another node in this RenderPipeline (e.g. traa()/taau()) already ' +
+                    'jitters the camera, so upscale() will NOT apply its own jitter (no reconstruction ' +
+                    'beyond render resolution). Stacking a temporal AA with the upscaler is unsupported — ' +
+                    'double jitter/double history smears — and the upscaler already anti-aliases: ' +
+                    'remove the other temporal AA node.',
+            );
+        }
+    }
+
+    /**
+     * Degrades to (or recovers from) a non-jittered temporal upscale when the
+     * pipeline's view offset belongs to another node (or no hook could be
+     * installed). Without this the
+     * upscaler would feed its own never-applied jitter into reconstruction and
+     * pin the velocity node to a projection snapshot that never refreshes.
+     */
+    private _setJitterActive(active: boolean): void {
+        if (active === this._jitterActive) return;
+        this._jitterActive = active;
+        // The view-offset owner manages the shared velocity projection itself
+        // (TRAA/TAAU set and clear it per frame); only pin it while we own jitter.
+        velocity.setProjectionMatrix(active ? this._upscaler!.unjitteredProjectionMatrix : null);
+        if (this._configured) this._configureUpscaler();
+    }
+
+    // Stable instances: the hook installer recognises its own registration by
+    // identity on a re-setup, so these must not be re-created per call.
+    private readonly _pipelineHooks = {
+        before: (): void => {
+            if (this._frameOpen || !this._configured) return;
+            this._frameOpen = true;
+            this._upscaler!.beginFrame(this._camera as never);
+        },
+        after: (): void => {
+            if (!this._frameOpen) return;
+            this._frameOpen = false;
+            this._upscaler!.endFrame(this._camera as never);
+        },
+    };
+
     private _configureUpscaler(): void {
         this._upscaler!.configure({
             displayWidth: Math.max(1, Math.round(this._output.x)),
@@ -260,7 +346,7 @@ export class UpscalerNode extends TempNode {
             renderWidth: Math.max(1, Math.round(this._input.x)),
             renderHeight: Math.max(1, Math.round(this._input.y)),
             path: this._options.path,
-            jitter: this._jitter,
+            jitter: this._jitterActive,
         });
         this._configured = true;
         if (this._textureNode) {
