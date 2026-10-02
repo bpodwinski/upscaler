@@ -142,40 +142,14 @@ see [Debugging](./docs/debugging.md#verifying-on-a-real-gpu). The code layout is
 
 ## Releasing
 
-Publishing is automated — **just push to `main`**. A GitHub Action reads your [Conventional Commit](https://www.conventionalcommits.org/) messages since the last release and, if any warrant one, bumps the version, publishes to npm, pushes the release commit + tag back, and creates a GitHub Release. [GitHub Releases](https://github.com/pmndrs/upscaler/releases) are the project's changelog, with grouped Conventional Commit notes and links to the included commits and full comparison. Auth is OIDC **Trusted Publishing** (no tokens, provenance attached); `npm publish` runs the full lint/typecheck/test/build gate first.
-
-| Commit type on `main`                     | Bump              | Example         |
-| ----------------------------------------- | ----------------- | --------------- |
-| `feat: …`                                 | minor             | 0.1.0 → 0.2.0   |
-| `fix: …` / `perf: …`                       | patch             | 0.1.0 → 0.1.1   |
-| `feat!: …` / `BREAKING CHANGE:`            | major\*           | 0.1.0 → 0.2.0\* |
-| `docs:` / `chore:` / `ci:` / `refactor:` …| _no release_      | —               |
-
-\* While in `0.x`, a breaking change bumps **minor** (not `1.0.0`) so a stray break can't cut a major. Edit [`scripts/release-version.mjs`](./scripts/release-version.mjs) to change the policy.
-
-**Manual / prerelease override.** Set an explicit version yourself and the Action publishes exactly that instead of auto-bumping. `npm version` creates the required `v<version>` tag; push it with the existing `--follow-tags` command because the release finalizer verifies that tag at the triggering commit and never creates or moves it:
+Merging to `main` never publishes. A release is cut by pushing a version tag: run `npm run release` on an up-to-date `main` to compute the next version from [Conventional Commits](https://www.conventionalcommits.org/), run the gate, and create the `release: vX.Y.Z` commit and tag, then push them. The tag push runs the publish workflow, which checks that the tag matches `package.json` and is on `main`, publishes to npm with OIDC **Trusted Publishing** (no tokens, provenance attached), and creates the GitHub Release. [GitHub Releases](https://github.com/pmndrs/upscaler/releases) are the changelog.
 
 ```bash
-npm version prerelease --preid next   # 0.2.0-next.0
-git push origin main --follow-tags    # → publishes to the `next` tag
+npm run release -- --dry-run   # preview the version and the commits it includes
+npm run release -- --push      # gate, commit + tag, push: publishes
 ```
 
-Stable versions publish to npm's `latest` dist-tag and become the latest GitHub Release. Prereleases publish to the dist-tag named by their first prerelease identifier; numeric-only prereleases use `next`. They are marked as GitHub prereleases and never become latest. Stable release notes compare against the previous stable tag; prerelease notes are incremental from the previous SemVer tag.
-
-| You set                       | Publishes to | Install                        |
-| ----------------------------- | ------------ | ------------------------------ |
-| `0.2.0` (stable)              | `latest`     | `npm i @pmndrs/upscaler`       |
-| `0.2.0-next.0`                | `next`       | `npm i @pmndrs/upscaler@next`  |
-| `0.2.0-beta.0`                | `beta`       | `npm i @pmndrs/upscaler@beta`  |
-| `1.0.0-rc.0`                  | `rc`         | `npm i @pmndrs/upscaler@rc`    |
-
-Preview the generated notes from local Git history without changing Git, npm, or GitHub:
-
-```bash
-node scripts/release-notes.mjs --tag v0.2.0
-```
-
-If npm publication and the tag succeed but release-note generation or GitHub Release creation fails, rerunning the workflow can create only the missing Release when it proves either the tag at the checked-out commit or the exact automatic-release child commit. Existing Releases are left unchanged; the repair does not infer releases from unrelated tags or npm versions, and it does not repair or rewrite tags.
+Prereleases (`--preid beta`), re-running a release and the one-time npm setup are covered in [Releasing](./docs/releasing.md).
 
 ## References
 

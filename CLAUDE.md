@@ -89,6 +89,15 @@ npm run typecheck  # tsc --noEmit
 npm run lint       # eslint
 npm run build      # library build → dist/ (vite lib + tsc declarations)
 
+# Releasing (docs/releasing.md). Merges to main NEVER publish; pushing a v* tag
+# does (.github/workflows/publish.yml). On a clean, up-to-date main:
+npm run release -- --dry-run   # next version from Conventional Commits + included commits
+npm run release                # gate → `npm version` commit + annotated tag (local only)
+npm run release -- --push      # …and push main + tag atomically (publishes)
+# Prerelease: --preid beta. Explicit: npm run release -- 0.4.0. Re-run/repair a
+# tag: Actions → Publish to npm → Run workflow (input `tag`). Agents: never push a
+# v* tag or pass --push unless the maintainer explicitly asks.
+
 # How to run/read a benchmark, the Q0-Q12 scenario catalogue, and the device
 # setup: bench/docs/BENCHMARKING.md
 
