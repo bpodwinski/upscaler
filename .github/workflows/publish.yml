@@ -1,32 +1,64 @@
 name: Publish to npm
 
-# Publishes @pmndrs/upscaler on push to main. Two paths:
+# Publishes @pmndrs/upscaler. Merges to main never publish. Two entry points,
+# both entirely in CI, share every step after "Resolve release":
 #
-#   A. Manual / prerelease — if package.json already names a version npm doesn't
-#      have (you ran `npm version …` yourself), publish that as-is. Prereleases
-#      (0.2.0-beta.1) route to their own dist-tag so they never touch `latest`.
+#   1. Push a vX.Y.Z tag — including one created in the GitHub UI (Releases →
+#      Draft a new release → new tag on main → Publish release). The tag IS the
+#      version: package.json is stamped to it in this checkout for publishing,
+#      and afterwards a `release: vX.Y.Z [skip ci]` commit brings main's
+#      package.json up to the tag (only if main is behind it; never rewritten,
+#      never tagged again).
 #
-#   B. Auto-bump — otherwise, derive the next version from Conventional Commit
-#      messages since the last tag (feat→minor, fix/perf→patch, breaking→major
-#      capped to minor while 0.x; docs/chore/ci/etc → no release), then bump,
-#      publish, and push the release commit + tag back with [skip ci].
+#   2. Actions → Publish to npm → Run workflow (from main). Input `version`:
+#        auto (default)       bump by Conventional Commits since the last stable
+#                             tag (feat → minor, fix/perf → patch, breaking →
+#                             minor while 0.x)
+#        patch | minor | major  force that bump
+#        X.Y.Z                exactly this version
+#      plus optional `preid` (e.g. beta) to cut X.Y.Z-beta.N instead.
+#      The run commits `release: vX.Y.Z [skip ci]` to main with an annotated
+#      tag, pushes both atomically, and publishes in this same run. Pushes made
+#      with GITHUB_TOKEN never trigger workflows, so that tag push doesn't start
+#      a second publish (and [skip ci] keeps CI off the bump commit).
+#      If tag vX.Y.Z already exists, `version: X.Y.Z` re-runs/repairs that tag
+#      instead: nothing is created, the rest of the pipeline runs as for 1.
 #
-# So: just push. feat/fix commits ship a release; everything else is a no-op.
+# Guards (fail the run before anything is published): the tag is "v" + SemVer,
+# and the tagged commit is on origin/main.
+#
+# Idempotent: a version already on npm is not republished, and a GitHub Release
+# is created only when the tag has none — an existing one (published with your
+# own notes, or a draft) is never edited.
+#
+# Stable versions publish to the `latest` dist-tag; prereleases to their first
+# identifier (0.3.0-beta.1 → beta), numeric-only ones (0.3.0-0) to `next`.
 # `npm publish` runs the package's prepublishOnly gate (lint/typecheck/test/
 # build) first, so a broken tree can't ship.
 #
-# Auth is npm Trusted Publishing (OIDC) — no token/secret; provenance is
-# attached automatically. One-time npm setup: publish once so the package
-# exists, then register the trusted publisher (org pmndrs, repo upscaler,
-# workflow publish.yml).
+# Auth is npm Trusted Publishing (OIDC): no token or secret, and provenance is
+# attached automatically. The trusted publisher registered on npmjs.com names
+# this file (org pmndrs, repo upscaler, workflow publish.yml), so keep the
+# filename. Full guide: docs/releasing.md.
 
 on:
   push:
-    branches: [main]
+    tags: ['v*']
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'auto, patch, minor, major, or X.Y.Z. If tag vX.Y.Z already exists, that tag is re-published/repaired and nothing is created.'
+        required: true
+        default: auto
+        type: string
+      preid:
+        description: 'Optional prerelease id (e.g. beta, rc). With auto/patch/minor/major, cuts X.Y.Z-<preid>.N.'
+        required: false
+        default: ''
+        type: string
 
 permissions:
-  contents: write # push the auto-bump release commit + tag
+  contents: write # release commit + tag, package.json catch-up commit, gh release create
   id-token: write # OIDC trusted publishing + provenance
 
 concurrency:
@@ -39,344 +71,233 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # full history + tags, for the version computation
+          fetch-depth: 0 # all tags + history, for the version, the guards and the notes
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           registry-url: https://registry.npmjs.org
       # Trusted Publishing needs npm >= 11.5.1; Node 22 bundles npm 10.x.
-      - run: npm install -g npm@latest
-      - run: npm ci
+      # Pinned to a major, not @latest: npm 12 changed `npm pack --json`'s shape
+      # and silently broke every release from 2026-07-29. Keep this spec
+      # identical to ci.yml's so CI exercises the npm that publishes.
+      - run: npm install -g npm@^11.5.1
 
-      - name: Is package.json's version already on npm?
-        id: check
+      # The checkout is the workflow's own commit: the tag on a push, main on a
+      # dispatch. Copy its release scripts aside before switching to the tag, so
+      # a repair can run on a tag whose tree predates them.
+      - name: Stage release tooling
         run: |
-          NAME=$(node -p "require('./package.json').name")
-          VERSION=$(node -p "require('./package.json').version")
-          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
-            echo "on_npm=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "on_npm=false" >> "$GITHUB_OUTPUT"
-          fi
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release-tools"
+          cp scripts/release-notes.mjs scripts/release-version.mjs "$RUNNER_TEMP/release-tools/"
 
-      # --- Path A: manual / prerelease version already set ---------------------
-      - name: Publish (manual version)
-        if: steps.check.outputs.on_npm == 'false'
-        id: publish_manual
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          if [[ "$VERSION" == *-* ]]; then
-            TAG="${VERSION#*-}"; TAG="${TAG%%.*}"          # 0.2.0-beta.1 → beta
-            [[ "$TAG" =~ ^[0-9]+$ ]] && TAG="next"         # 0.2.0-0 (no preid) → next
-          else
-            TAG="latest"
-          fi
-          echo "Publishing $VERSION under dist-tag '$TAG'"
-          npm publish --access public --tag "$TAG"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-      # --- Path B: auto-bump from Conventional Commits -------------------------
-      - name: Compute next version
-        if: steps.check.outputs.on_npm == 'true'
-        id: next
-        run: echo "version=$(node scripts/release-version.mjs)" >> "$GITHUB_OUTPUT"
-
-      - name: Publish (auto-bump)
-        if: steps.check.outputs.on_npm == 'true' && steps.next.outputs.version != 'none'
-        id: publish_auto
-        run: |
-          NEXT="${{ steps.next.outputs.version }}"
-          NAME=$(node -p "require('./package.json').name")
-          # Guard: if a prior run published this but failed to push its tag, just
-          # (re)create + push the tag instead of a doomed republish.
-          if npm view "$NAME@$NEXT" version >/dev/null 2>&1; then
-            echo "$NAME@$NEXT already on npm — tagging only."
-            git tag "v$NEXT" || true
-            git push origin "v$NEXT"
-            echo "version=$NEXT" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          echo "Auto-releasing v$NEXT"
-          npm version "$NEXT" -m "release: v%s [skip ci]"
-          npm publish --access public
-          git push origin HEAD:main --follow-tags
-          echo "version=$NEXT" >> "$GITHUB_OUTPUT"
-
-      # --- Append-only GitHub Release finalizer --------------------------------
-      - name: Resolve GitHub Release target
-        id: release_target
+      - name: Resolve release
+        id: resolve
         env:
-          PATH_A_VERSION: ${{ steps.publish_manual.outputs.version }}
-          PATH_B_VERSION: ${{ steps.publish_auto.outputs.version }}
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          PUSHED_REF: ${{ github.ref }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_PREID: ${{ inputs.preid }}
         run: |
           set -euo pipefail
 
-          validate_version() {
-            VERSION_TO_VALIDATE="$1" node --input-type=module <<'NODE'
-          import { parseSemVer } from './scripts/release-notes.mjs';
-
-          const version = process.env.VERSION_TO_VALIDATE;
-          if (!version || version.startsWith('v'))
-              throw new Error(`Expected an unprefixed SemVer version, received: ${String(version)}`);
-          parseSemVer(version);
-          NODE
-          }
-
-          classify_prerelease() {
-            VERSION_TO_VALIDATE="$1" node --input-type=module <<'NODE'
-          import { parseSemVer } from './scripts/release-notes.mjs';
-
-          const parsed = parseSemVer(process.env.VERSION_TO_VALIDATE);
-          process.stdout.write(parsed.prerelease.length > 0 ? 'true' : 'false');
-          NODE
-          }
-
-          emit_target() {
-            local version="$1"
-            local tag="v$version"
-            local prerelease
-            prerelease=$(classify_prerelease "$version")
-            {
-              echo "version=$version"
-              echo "tag=$tag"
-              echo "prerelease=$prerelease"
-            } >> "$GITHUB_OUTPUT"
-          }
-
-          current_tag_identity() {
-            local version="$1"
-            local tag="v$version"
-            local tag_commit
-            local head_commit
-            tag_commit=$(git rev-parse --verify "$tag^{commit}" 2>/dev/null) || return 1
-            head_commit=$(git rev-parse HEAD)
-            [[ "$tag_commit" == "$head_commit" ]]
-          }
-
-          npm_package_state() {
-            local version="$1"
-            local published_version
-            local error_file
-            local npm_error
-            local npm_code
-            local result
-
-            error_file=$(mktemp "$RUNNER_TEMP/npm-view.XXXXXX") || {
-              echo "::error::Unable to create npm status error file." >&2
-              return 1
-            }
-            set +e
-            published_version=$(npm view "$NAME@$version" version 2>"$error_file")
-            result=$?
-            set -e
-            npm_error=$(<"$error_file")
-            rm -f "$error_file"
-
-            if [[ "$result" -eq 0 ]]; then
-              if [[ "$published_version" == "$version" ]]; then
-                echo "published"
-                return 0
-              fi
-              echo "::error::npm returned an indeterminate version for $NAME@$version." >&2
-              return 1
-            fi
-
-            npm_code=$(
-              printf '%s\n' "$npm_error" |
-                awk '$1 == "npm" && ($2 == "error" || $2 == "ERR!") && $3 == "code" { gsub("\r", "", $4); print $4; exit }'
-            )
-            if [[ "$npm_code" == "E404" ]]; then
-              echo "absent"
-              return 0
-            fi
-
-            echo "::error::Unable to determine whether $NAME@$version exists on npm." >&2
-            printf '%s\n' "$npm_error" >&2
-            return 1
-          }
-
-          automatic_child_identity() {
-            local version="$1"
-            local tag="v$version"
-            local tag_commit
-            local tagged_version
-            local head_commit
-            local parents
-            local -a parent_list
-
-            tag_commit=$(git rev-parse --verify "$tag^{commit}" 2>/dev/null) || return 1
-            head_commit=$(git rev-parse HEAD)
-            parents=$(git show -s --format=%P "$tag_commit") || return 1
-            read -r -a parent_list <<< "$parents"
-            [[ "${#parent_list[@]}" -eq 1 ]] || return 1
-            [[ "${parent_list[0]}" == "$head_commit" ]] || return 1
-            [[ "$(git show -s --format=%s "$tag_commit")" == "release: v$version [skip ci]" ]] ||
-              return 1
-
-            tagged_version=$(
-              git show "${tag_commit}:package.json" |
-                node -e 'let data = ""; process.stdin.setEncoding("utf8"); process.stdin.on("data", (chunk) => data += chunk); process.stdin.on("end", () => process.stdout.write(JSON.parse(data).version));'
-            ) || return 1
-            [[ "$tagged_version" == "$version" ]] || return 1
-            return 0
-          }
-
-          github_release_state() {
-            local tag="$1"
-            local response
-            local result
-            local status
-
-            set +e
-            response=$(
-              gh api --include --method GET \
-                "repos/$REPOSITORY/releases/tags/$tag" 2>&1
-            )
-            result=$?
-            set -e
-            status=$(
-              printf '%s\n' "$response" |
-                awk '/^HTTP\/[^ ]+ [0-9][0-9][0-9]/ { status=$2 } END { print status }'
-            )
-
-            if [[ "$result" -eq 0 && "$status" =~ ^2[0-9][0-9]$ ]]; then
-              echo "existing"
-              return 0
-            fi
-            if [[ "$result" -ne 0 && "$status" == "404" ]]; then
-              echo "missing"
-              return 0
-            fi
-
-            echo "::error::Unable to determine whether GitHub Release $tag exists." >&2
-            printf '%s\n' "$response" >&2
-            return 1
-          }
-
-          if [[ ! "$REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
-            echo "::error::Invalid GitHub repository identity."
-            exit 1
-          fi
-
-          NAME=$(node -p "require('./package.json').name")
-          if [[ ! "$NAME" =~ ^(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*$ ]]; then
-            echo "::error::Invalid npm package name."
-            exit 1
-          fi
-
-          # Manual releases always require the operator-provided tag at this commit.
-          if [[ -n "$PATH_A_VERSION" ]]; then
-            validate_version "$PATH_A_VERSION"
-            if ! current_tag_identity "$PATH_A_VERSION"; then
-              echo "::error::Required release tag v$PATH_A_VERSION does not point at the checked-out commit."
-              exit 1
-            fi
-            emit_target "$PATH_A_VERSION"
-            exit 0
-          fi
-
-          # Automatic reruns check out the trigger while the release commit is its child.
-          if [[ -n "$PATH_B_VERSION" ]]; then
-            validate_version "$PATH_B_VERSION"
-            if current_tag_identity "$PATH_B_VERSION"; then
-              emit_target "$PATH_B_VERSION"
-              exit 0
-            fi
-            if automatic_child_identity "$PATH_B_VERSION"; then
-              if ! npm_state=$(npm_package_state "$PATH_B_VERSION"); then
+          case "$EVENT_NAME" in
+            push)
+              if [[ "$PUSHED_REF" != refs/tags/* ]]; then
+                echo "::error::Publishing runs only for tag pushes, not $PUSHED_REF."
                 exit 1
               fi
-              if [[ "$npm_state" == "published" ]]; then
-                emit_target "$PATH_B_VERSION"
-                exit 0
-              fi
-            fi
-            echo "::error::Release tag v$PATH_B_VERSION does not match an allowed automatic-release identity."
-            exit 1
-          fi
-
-          # A rerun may repair only one missing Release with an exact known identity.
-          candidates=()
-
-          version=$(node -p "require('./package.json').version")
-          validate_version "$version"
-          tag="v$version"
-          if current_tag_identity "$version"; then
-            if ! npm_state=$(npm_package_state "$version"); then
-              exit 1
-            fi
-            if [[ "$npm_state" == "published" ]]; then
-              release_state=$(github_release_state "$tag")
-              if [[ "$release_state" == "missing" ]]; then
-                candidates+=("$version")
-              fi
-            fi
-          fi
-
-          while IFS= read -r tag; do
-            [[ -n "$tag" ]] || continue
-            version="${tag#v}"
-            if ! validate_version "$version" 2>/dev/null; then
-              continue
-            fi
-
-            if automatic_child_identity "$version"; then
-              if ! npm_state=$(npm_package_state "$version"); then
+              TAG="${PUSHED_REF#refs/tags/}"
+              MODE="tag"
+              ;;
+            workflow_dispatch)
+              if [[ "$PUSHED_REF" != "refs/heads/main" ]]; then
+                echo "::error::Run this workflow from main, not $PUSHED_REF."
                 exit 1
               fi
-              if [[ "$npm_state" == "published" ]]; then
-                release_state=$(github_release_state "$tag")
-                if [[ "$release_state" == "missing" ]]; then
-                  candidates+=("$version")
+              REQUEST="${INPUT_VERSION:-auto}"
+              EXISTING="v${REQUEST#v}"
+              if git rev-parse --verify --quiet "refs/tags/$EXISTING" >/dev/null; then
+                if [[ -n "$INPUT_PREID" ]]; then
+                  echo "::error::Tag $EXISTING already exists; preid only applies when cutting a new version."
+                  exit 1
+                fi
+                TAG="$EXISTING"
+                MODE="existing"
+                echo "Tag $TAG already exists: re-running it. Nothing will be created."
+              else
+                args=(--next "$REQUEST")
+                if [[ -n "$INPUT_PREID" ]]; then
+                  args+=(--preid "$INPUT_PREID")
+                fi
+                if ! VERSION=$(node "$RUNNER_TEMP/release-tools/release-version.mjs" "${args[@]}"); then
+                  echo "::error::Could not compute a version from version='$REQUEST' preid='$INPUT_PREID'."
+                  exit 1
+                fi
+                TAG="v$VERSION"
+                if git rev-parse --verify --quiet "refs/tags/$TAG" >/dev/null; then
+                  # "Re-run jobs" on a cut run recomputes from the original main
+                  # and lands on the tag that run already created.
+                  MODE="existing"
+                  echo "::notice::$TAG already exists (a re-run?); re-running it. Nothing will be created."
+                else
+                  MODE="cut"
+                  echo "Cutting $TAG."
                 fi
               fi
-            fi
-          done < <(git tag --list 'v*')
+              ;;
+            *)
+              echo "::error::Unsupported event: $EVENT_NAME"
+              exit 1
+              ;;
+          esac
 
-          if [[ "${#candidates[@]}" -gt 1 ]]; then
-            echo "::error::Repair is ambiguous: more than one release identity matches."
+          {
+            echo "tag=$TAG"
+            echo "mode=$MODE"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Cut release commit and tag
+        if: steps.resolve.outputs.mode == 'cut'
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          npm version "${TAG#v}" -m "release: v%s [skip ci]"
+
+          # Atomic: the commit and the tag land together or not at all. Pushed
+          # with GITHUB_TOKEN, so the tag does not trigger another publish run;
+          # this run publishes it below.
+          if ! git push --atomic origin HEAD:refs/heads/main "refs/tags/$TAG"; then
+            echo "::error::Could not push the release commit and $TAG (main moved since this run started?). Nothing was pushed; run the workflow again."
             exit 1
           fi
-          if [[ "${#candidates[@]}" -eq 1 ]]; then
-            emit_target "${candidates[0]}"
+
+      - name: Verify release tag
+        id: release
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          # Guard 1: "v" + SemVer. Also yields the version, its dist-tag, and
+          # whether its Release should be "latest" (not when backfilling an old tag).
+          if ! described=$(node "$RUNNER_TEMP/release-tools/release-version.mjs" --describe "$TAG"); then
+            echo "::error::Tag $TAG is not a v-prefixed SemVer version."
+            exit 1
+          fi
+          read -r VERSION PRERELEASE DIST_TAG LATEST <<< "$described"
+          if [[ -z "$VERSION" || -z "$PRERELEASE" || -z "$DIST_TAG" || -z "$LATEST" ]]; then
+            echo "::error::release-version.mjs --describe printed '$described'."
+            exit 1
+          fi
+
+          if ! COMMIT=$(git rev-parse --verify --quiet "refs/tags/$TAG^{commit}"); then
+            echo "::error::Tag $TAG does not exist."
+            exit 1
+          fi
+
+          # Guard 2: only commits that reached main publish.
+          git fetch --quiet --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$COMMIT" refs/remotes/origin/main; then
+            echo "::error::Tag $TAG points at $COMMIT, which is not on origin/main."
+            exit 1
+          fi
+          git checkout --quiet --detach "$COMMIT"
+
+          # The tag is the version. A tag made in the GitHub UI points at a commit
+          # whose package.json still has the previous version, so stamp it here
+          # (this checkout only; main is caught up after publishing).
+          TAGGED_VERSION=$(node -p "require('./package.json').version")
+          if [[ "$TAGGED_VERSION" != "$VERSION" ]]; then
+            echo "package.json at $TAG says $TAGGED_VERSION; publishing it as $VERSION."
+          fi
+          npm version "$VERSION" --no-git-tag-version --allow-same-version > /dev/null
+
+          echo "Releasing $TAG ($COMMIT) to dist-tag '$DIST_TAG'."
+          {
+            echo "tag=$TAG"
+            echo "version=$VERSION"
+            echo "prerelease=$PRERELEASE"
+            echo "dist_tag=$DIST_TAG"
+            echo "latest=$LATEST"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check npm for this version
+        id: npm
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          NAME=$(node -p "require('./package.json').name")
+          error_file=$(mktemp "$RUNNER_TEMP/npm-view.XXXXXX")
+          set +e
+          published_version=$(npm view "$NAME@$VERSION" version 2>"$error_file")
+          result=$?
+          set -e
+          npm_error=$(<"$error_file")
+          rm -f "$error_file"
+
+          if [[ "$result" -eq 0 && "$published_version" == "$VERSION" ]]; then
+            echo "$NAME@$VERSION is already on npm; skipping publish."
+            echo "published=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          echo "No GitHub Release is due."
+          npm_code=$(
+            printf '%s\n' "$npm_error" |
+              awk '$1 == "npm" && ($2 == "error" || $2 == "ERR!") && $3 == "code" { gsub("\r", "", $4); print $4; exit }'
+          )
+          if [[ "$result" -ne 0 && "$npm_code" == "E404" ]]; then
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-      - name: Generate GitHub Release notes
-        if: steps.release_target.outputs.version != ''
+          # Anything else (auth, network, a registry error) must not be read as
+          # "absent" and trigger a doomed or duplicate publish.
+          echo "::error::Unable to determine whether $NAME@$VERSION exists on npm."
+          printf '%s\n' "$npm_error" >&2
+          exit 1
+
+      - name: Install dependencies
+        if: steps.npm.outputs.published == 'false'
+        run: npm ci
+
+      - name: Publish to npm
+        if: steps.npm.outputs.published == 'false'
         env:
-          TAG: ${{ steps.release_target.outputs.tag }}
+          VERSION: ${{ steps.release.outputs.version }}
+          DIST_TAG: ${{ steps.release.outputs.dist_tag }}
         run: |
-          node scripts/release-notes.mjs --tag "$TAG" > "$RUNNER_TEMP/release-notes.md"
+          set -euo pipefail
+          echo "Publishing $VERSION under dist-tag '$DIST_TAG'"
+          npm publish --access public --tag "$DIST_TAG"
+
+      # --- Append-only GitHub Release ------------------------------------------
+      - name: Generate GitHub Release notes
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          node "$RUNNER_TEMP/release-tools/release-notes.mjs" --tag "$TAG" > "$RUNNER_TEMP/release-notes.md"
 
       - name: Create GitHub Release
-        if: steps.release_target.outputs.version != ''
         env:
-          VERSION: ${{ steps.release_target.outputs.version }}
-          TAG: ${{ steps.release_target.outputs.tag }}
-          PRERELEASE: ${{ steps.release_target.outputs.prerelease }}
+          VERSION: ${{ steps.release.outputs.version }}
+          TAG: ${{ steps.release.outputs.tag }}
+          PRERELEASE: ${{ steps.release.outputs.prerelease }}
+          LATEST: ${{ steps.release.outputs.latest }}
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
 
-          VERSION_TO_VALIDATE="$VERSION" node --input-type=module <<'NODE'
-          import { parseSemVer } from './scripts/release-notes.mjs';
-
-          const version = process.env.VERSION_TO_VALIDATE;
-          if (!version || version.startsWith('v'))
-              throw new Error(`Expected an unprefixed SemVer version, received: ${String(version)}`);
-          parseSemVer(version);
-          NODE
-          if [[ "$TAG" != "v$VERSION" ]]; then
-            echo "::error::Release tag does not match the resolved version."
+          if [[ -z "$VERSION" || "$TAG" != "v$VERSION" ]]; then
+            echo "::error::Release tag does not match the verified version."
             exit 1
           fi
           if [[ ! "$REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
@@ -384,52 +305,38 @@ jobs:
             exit 1
           fi
 
-          github_release_state() {
-            local tag="$1"
-            local response
-            local result
-            local status
+          # List every Release, drafts included (the per-tag endpoint hides
+          # drafts). A failed listing stops the run rather than risk a duplicate.
+          error_file=$(mktemp "$RUNNER_TEMP/gh-releases.XXXXXX")
+          set +e
+          listing=$(gh api --paginate "repos/$REPOSITORY/releases" --jq '.[] | [.tag_name, (.draft | tostring)] | @tsv' 2>"$error_file")
+          result=$?
+          set -e
+          if [[ "$result" -ne 0 ]]; then
+            echo "::error::Unable to list GitHub Releases."
+            cat "$error_file" >&2
+            exit 1
+          fi
 
-            set +e
-            response=$(
-              gh api --include --method GET \
-                "repos/$REPOSITORY/releases/tags/$tag" 2>&1
-            )
-            result=$?
-            set -e
-            status=$(
-              printf '%s\n' "$response" |
-                awk '/^HTTP\/[^ ]+ [0-9][0-9][0-9]/ { status=$2 } END { print status }'
-            )
-
-            if [[ "$result" -eq 0 && "$status" =~ ^2[0-9][0-9]$ ]]; then
-              echo "existing"
-              return 0
-            fi
-            if [[ "$result" -ne 0 && "$status" == "404" ]]; then
-              echo "missing"
-              return 0
-            fi
-
-            echo "::error::Unable to determine whether GitHub Release $tag exists." >&2
-            printf '%s\n' "$response" >&2
-            return 1
-          }
-
-          release_state=$(github_release_state "$TAG")
-          if [[ "$release_state" == "existing" ]]; then
-            echo "GitHub Release $TAG already exists; leaving it unchanged."
+          state=$(
+            printf '%s\n' "$listing" |
+              awk -F '\t' -v tag="$TAG" '$1 == tag { print ($2 == "true" ? "draft" : "published"); exit }'
+          )
+          if [[ "$state" == "published" ]]; then
+            echo "GitHub Release $TAG already exists; leaving it and its notes unchanged."
             exit 0
           fi
-          if [[ "$release_state" != "missing" ]]; then
-            echo "::error::Invalid GitHub Release state."
-            exit 1
+          if [[ "$state" == "draft" ]]; then
+            echo "::notice::A draft GitHub Release for $TAG exists; leaving it unchanged. Publish it yourself."
+            exit 0
           fi
 
           if [[ "$PRERELEASE" == "true" ]]; then
             release_flags=(--prerelease --latest=false)
-          elif [[ "$PRERELEASE" == "false" ]]; then
+          elif [[ "$PRERELEASE" == "false" && "$LATEST" == "true" ]]; then
             release_flags=(--latest)
+          elif [[ "$PRERELEASE" == "false" && "$LATEST" == "false" ]]; then
+            release_flags=(--latest=false)
           else
             echo "::error::Invalid prerelease classification."
             exit 1
@@ -441,3 +348,41 @@ jobs:
             --title "$TAG" \
             --notes-file "$RUNNER_TEMP/release-notes.md" \
             "${release_flags[@]}"
+
+      # A tag made in the UI (or a repair) leaves main's package.json behind the
+      # published version. Bring it up with a plain fast-forward commit — never
+      # a force push, never a new tag — and only while main is still behind.
+      # Concurrent merges: re-fetch and redo the commit, up to three tries.
+      - name: Catch main's package.json up to the release
+        if: steps.resolve.outputs.mode != 'cut'
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for attempt in 1 2 3; do
+            git reset --hard --quiet # drop the publish-time stamp / a rejected attempt
+            git fetch --quiet --no-tags origin +refs/heads/main:refs/remotes/origin/main
+            git checkout --quiet -B release-sync refs/remotes/origin/main
+
+            MAIN_VERSION=$(node -p "require('./package.json').version")
+            order=$(node "$RUNNER_TEMP/release-tools/release-version.mjs" --compare "$VERSION" "$MAIN_VERSION")
+            if [[ "$order" != "1" ]]; then
+              echo "main's package.json is $MAIN_VERSION, not behind $VERSION; nothing to catch up."
+              exit 0
+            fi
+
+            npm version "$VERSION" --no-git-tag-version > /dev/null
+            git commit --quiet --all -m "release: v$VERSION [skip ci]"
+            if git push --quiet origin HEAD:refs/heads/main; then
+              echo "Bumped main's package.json $MAIN_VERSION → $VERSION (untagged; $TAG is unchanged)."
+              exit 0
+            fi
+            echo "main moved while catching up (attempt $attempt of 3); retrying on the new main."
+          done
+
+          echo "::error::Could not catch main's package.json up to $VERSION after 3 attempts. $TAG is published; re-run to retry."
+          exit 1

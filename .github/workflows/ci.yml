@@ -14,6 +14,9 @@ jobs:
               with:
                   node-version: 22
                   cache: npm
+            # Same npm as publish.yml: the build's artifact check nests `npm pack`,
+            # whose output shape varies by npm major. Keep the specs identical.
+            - run: npm install -g npm@^11.5.1
             - run: npm ci
             - run: npm run lint
             - run: npm run typecheck

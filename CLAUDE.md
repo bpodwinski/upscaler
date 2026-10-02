@@ -89,6 +89,15 @@ npm run typecheck  # tsc --noEmit
 npm run lint       # eslint
 npm run build      # library build → dist/ (vite lib + tsc declarations)
 
+# Releasing (docs/releasing.md). Merges to main NEVER publish. Releases need no
+# local step: Actions → Publish to npm → Run workflow (version: auto | patch |
+# minor | major | X.Y.Z, optional preid), or a vX.Y.Z tag on main (e.g. Releases →
+# Draft a new release). Both run .github/workflows/publish.yml. Optional local path:
+npm run release -- --dry-run   # next version from Conventional Commits + included commits
+npm run release                # gate → `npm version` commit + annotated tag (local only)
+# Agents: NEVER push a v* tag, run/dispatch the publish workflow, or pass
+# `npm run release -- --push` unless the maintainer explicitly asks.
+
 # How to run/read a benchmark, the Q0-Q12 scenario catalogue, and the device
 # setup: bench/docs/BENCHMARKING.md
 
