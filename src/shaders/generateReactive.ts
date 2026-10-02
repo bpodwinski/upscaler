@@ -11,7 +11,7 @@ import { assembleShader } from './wgsl';
  * current frame instead of ghosting. It saves the caller from authoring
  * coverage by hand when they can render an opaque-only pass.
  *
- * Reactivity is bidirectional (TEMPORAL-GUIDES-SPEC §6): an incoming mask —
+ * Reactivity is bidirectional (docs/temporal-guides.md): an incoming mask —
  * the caller's explicit coverage, or one an effect wrote — merges with the
  * generated diff by `max`, never overwritten. With no incoming mask the 1×1
  * zero dummy is bound and the merge is inert.

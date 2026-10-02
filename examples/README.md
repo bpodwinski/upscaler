@@ -20,7 +20,7 @@ shader/pipeline edits hot-reload here just like in the bench.
 | 02 | **FSR1 vs FSR3** (`02-fsr1-vs-fsr3`) | Switch bilinear → spatial → temporal and toggle features (sharpen, quality, debug views) to see what each tier buys. |
 | 03 | **Split compare** (`03-split-compare`) | Native vs FSR3, same scene and instant, wiped by the mouse. |
 | 04 | **Aliasing torture** (`04-aliasing-torture`) | A chain-link fence + moiré floor under a moving camera — where naive upscaling shimmers and temporal holds. |
-| 05 | **Transparency & particles** (`05-transparency`) | The honest limitation: particles/transparents ghost (no depth/motion) — the acceptance test for a future reactive mask. |
+| 05 | **Transparency & particles** (`05-transparency`) | Particles/transparents have no reliable depth or motion, so they ghost — fixed by the reactive mask, authored by hand (coverage) or auto-generated from an opaque-only render. The reactive mask's acceptance demo. |
 | 06 | **Screen-space effects** (`06-screenspace-gi`) | GTAO / SSR / SSGI rendered at reduced resolution, then upscaled — the raw-`Upscaler` reference for imperative effect pipelines. |
 | 07 | **TSL node** (`07-tsl-node`) | The whole upscaler as one line: `post.outputNode = upscaleScene(scene, camera)`. |
 | 08 | **TSL compose** (`08-tsl-compose`) | The node composed with other TSL effects (`.mul(vignette)`) in the same post graph. |
@@ -48,7 +48,7 @@ base render resolution, with the resulting size + base % shown in the HUD.
 
 The library already ships real per-pass GPU timing via WebGPU **`timestamp-query`**
 ([`src/internal/GpuTimer.ts`](../src/internal/GpuTimer.ts)) — `upscaler.gpuTimings`
-is a per-pass map of GPU milliseconds (dilate / depth-clip / accumulate / rcas / …),
+is a per-pass map of GPU milliseconds (reconstruct / exposure / shadingChange / accumulate / rcas / …),
 surfaced in the bench and `02` HUDs. This is the hard-to-get measurement; a scene
 inspector can't give you per-GPU-pass times. Notes for the DPR demo:
 
@@ -67,6 +67,7 @@ inspector can't give you per-GPU-pass times. Notes for the DPR demo:
 ## How they're built
 
 Demos `01`–`05` drive the library through [`shared/UpscalePresenter.ts`](shared/UpscalePresenter.ts),
+now a re-export of the library's `UpscalePass` (`15` imports `UpscalePass` directly),
 which encapsulates the whole imperative integration recipe (jitter-free velocity,
 MRT output count matched to the render-target attachment count, float depth, the
 linear/HDR output, and renderer-owned presentation). `06`, `12`, and `14` drive the raw
@@ -75,6 +76,7 @@ path-traced RGBA buffer).
 `07`–`11` and `13` are the TSL-node surface — no presenter at all, the node owns
 the recipe inside the post graph. New imperative demos should reuse the presenter
 rather than re-deriving the wiring; new graph demos should start from `07`.
+The integration guides these demos illustrate live in [`docs/`](../docs/README.md).
 
 ### The `06` pattern (TSL effect graph → FSR3)
 

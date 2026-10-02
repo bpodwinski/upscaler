@@ -1,6 +1,6 @@
 # WGSL passes
 
-Every pass is a WGSL compute module assembled from shared chunks (`common.ts` + pass body) by `wgsl.ts` — WGSL has no `#include`, so chunks are TS strings deduplicated by the assembler. All passes bind the same 96-byte `FsrConstants` UBO at `@group(0) @binding(0)` (layout mirrored by `internal/ConstantsBuffer.ts`), run as 8×8 workgroups, and write storage textures. Entry point is always `main`.
+Every pass is a WGSL compute module assembled from shared chunks (`common.ts` + pass body) by `wgsl.ts` — WGSL has no `#include`, so chunks are TS strings deduplicated by the assembler. All passes bind the same `FsrConstants` UBO at `@group(0) @binding(0)` (layout mirrored by `internal/ConstantsBuffer.ts`), run as 8×8 workgroups, and write storage textures. The UBO is a 96-byte struct in a 256-byte buffer (`ConstantsBuffer.SIZE`). Entry point is always `main`.
 
 ## Conventions
 
@@ -9,8 +9,10 @@ Every pass is a WGSL compute module assembled from shared chunks (`common.ts` + 
 - **Depth** — supports three's standard and reversed WebGPU depth conventions (flag bit + `linearizeDepth`, derived from `Matrix4.makePerspective`). Comparisons happen on positive view-space distances.
 - **Color and exposure domains** — the local temporal pipeline multiplies input by the
   selected local conditioning exposure (auto, fixed, or external), then accumulates in
-  _invertible-tonemap space_ (`c / (1 + max(c))`). Before RCAS it inverse-tonemaps, divides
-  by the current local exposure, and returns to the caller's linear/HDR domain. Tone
+  _invertible-tonemap space_ (`c / (1 + max(c))`). RCAS sharpens that conditioned history
+  directly, then inverse-tonemaps and divides by the current local exposure once on the
+  result (blit does the same without sharpening), returning to the caller's linear/HDR
+  domain. Tone
   mapping and output encoding are integration concerns outside the upscaler. FSR Upscaler
   3.1.5 also keeps three exposure concepts separate: the host's input `preExposure`,
   `DeltaPreExposure()` for moving reprojected history into the current host pre-exposure
@@ -184,8 +186,10 @@ coverage only if RCAS performance becomes material.
 #### RCAS color domain
 
 - **Current status:** Source-aligned output/color domain.
-- **Local implementation:** Inverse-tonemaps, divides by the current local exposure, and
-  filters in the caller's linear/HDR domain. It applies no presentation transform.
+- **Local implementation:** Writes the caller's linear/HDR domain: on the temporal path
+  it sharpens conditioned texels and inverse-tonemaps + divides by the current local
+  exposure once on the result (see *RCAS load domain* above); on the spatial path the
+  input is already in that domain. It applies no presentation transform.
 - **FSR 3.1.5 behavior:** Filters color conditioned by `Exposure()`, reverses
   `Exposure()`, and applies no presentation transform. Host `preExposure` remains, so
   linear HDR input remains linear HDR output.
@@ -208,8 +212,11 @@ when drawing to the screen; library users may instead continue linear post-proce
   (`1.37e-5 · halfViewportWidth · max(depth)` — `ffx_fsr2_depth_clip.h`
   `ComputeDepthClip`, taken from the GPU-verified candidate port). Because the
   comparison is cross-frame (no same-frame scatter), three stabilizers apply
-  (2026-07-22): taps at/behind the current surface are *skipped*, never allowed
-  to veto the pixel (matches the reference's per-tap semantics); the reprojection
+  (2026-07-22, the first amended 2026-07-24): taps at/behind the current surface
+  never veto the pixel — every valid tap votes (at/behind = full confidence) and the
+  **best tap wins** (max aggregation), because the first form, which *skipped*
+  agreeing taps, let one tap straddling the previous frame's texel-quantized
+  silhouette re-disocclude still edges every jitter phase (NEXT-STEPS §5); the reprojection
   is jitter-delta-compensated (same derivation as `shadingChange.ts`); and the
   tolerance is widened by the 3×3 ring's own depth relief (free from the dilation
   loop), so a slope's legitimate per-texel depth change is not read as
@@ -867,7 +874,7 @@ prepare-reactivity, T&C, or motion-divergence behavior.
 
 ## Debugging
 
-Set `settings.debugView` (`DebugView`) to render pipeline internals instead of the final image: motion vectors, disocclusion mask, linearized depth, accumulation age, locks, auto-exposed luminance, or the shading-change factor. When integrating a new scene, check in this order:
+Set `settings.debugView` (`DebugView`) to render pipeline internals instead of the final image (temporal path only): motion vectors, disocclusion mask, linearized depth, accumulation age, locks, auto-exposed luminance, the shading-change factor, or the reactive mask. When integrating a new scene, check in this order:
 
 1. **Motion vectors** — a static scene with a moving camera should produce smooth
    gradients and no per-object noise. Per-object flashing often points to previous-model
@@ -892,8 +899,8 @@ Set `settings.debugView` (`DebugView`) to render pipeline internals instead of t
 
 6. **Shading change** — should remain mostly dark on a static, steadily lit scene and
    respond temporarily to changed lighting or materials. Broad response while still
-   suggests `SHADING_LO` is too low; no response to an obvious change suggests it may be
-   too high.
+   suggests the `SHADING_FLOOR_*` constants (top of `shadingChange.ts`) are too low; no
+   response to an obvious change suggests they may be too high.
 
 7. **Reactivity** — shows the mask as accumulation sees it: white where transparents or
    particles were flagged, black on opaque geometry. If it is unexpectedly misaligned or

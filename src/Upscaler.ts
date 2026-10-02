@@ -63,19 +63,24 @@ type UpscalerInternalOptions = {
  * Pipelines:
  * - `bilinear` — blit (comparison baseline / native passthrough)
  * - `spatial`  — EASU → RCAS (FSR1)
- * - `temporal` — dilate → depth-clip → accumulate → RCAS (FSR2/3-style)
+ * - `temporal` — reconstruct (fused dilate + depth clip) → exposure →
+ *   shading change → accumulate → RCAS (FSR2/3-style)
+ * - `guides`   — reconstruct only (see {@link dispatchGuides})
  *
  * Usage per frame (temporal path):
  * ```ts
- * upscaler.beginFrame(camera, deltaTime);      // applies sub-pixel jitter
+ * upscaler.beginFrame(camera);                 // applies sub-pixel jitter
  * renderer.setRenderTarget(sceneRT);           // color+velocity MRT, depth
  * renderer.render(scene, camera);
- * upscaler.dispatch({ color, depth, velocity });
+ * renderer.setRenderTarget(null);
  * upscaler.endFrame(camera);                   // clears jitter
- * // present upscaler.outputTexture on a fullscreen quad
+ * upscaler.dispatch({ color, depth, velocity, deltaTime }, camera);
+ * // upscaler.outputTexture is linear/HDR — present or post-process it
  * ```
  * Feed `upscaler.unjitteredProjectionMatrix` to the scene's `velocity` node
- * via `setProjectionMatrix` so motion vectors stay jitter-free.
+ * via `setProjectionMatrix` so motion vectors stay jitter-free. The full
+ * recipe and input contracts: docs/getting-started.md and
+ * docs/inputs-and-contracts.md.
  */
 export class Upscaler {
     //* Public State
@@ -158,7 +163,7 @@ export class Upscaler {
     private _shadingLumaHistory: [GPUTexture, GPUTexture] | null = null;
     private _shadingSignal: GPUTexture | null = null;
 
-    //* Published Guides (TEMPORAL-GUIDES-SPEC §4)
+    //* Published Guides (contract: docs/temporal-guides.md)
     // The production working set is allocated as three StorageTextures so the
     // guides bundle is consumable outside (TSL texture() nodes, raw bind
     // groups); the raw fields above keep holding the GPU handles the encode
@@ -328,7 +333,7 @@ export class Upscaler {
      * disocclusion, and the late data products) as ordinary three textures.
      * Available on the `temporal` and `guides` paths after `configure()`.
      * See {@link TemporalGuides} for each product's contract, and
-     * docs/archive/temporal-guides/TEMPORAL-GUIDES-SPEC.md for the historical context.
+     * docs/temporal-guides.md for the frame stages and consumer rules.
      */
     get guides(): TemporalGuides {
         if (!this._guides) {
@@ -626,7 +631,7 @@ export class Upscaler {
         if (!inputs.depth || !inputs.velocity) {
             throw new Error('@pmndrs/upscaler: the temporal path requires depth and velocity inputs.');
         }
-        // The frame's two stages (TEMPORAL-GUIDES-SPEC §3): geometry guides
+        // The frame's two stages (docs/temporal-guides.md): geometry guides
         // need only depth + velocity; everything after needs the beauty color.
         // Composed on one encoder here so the monolithic dispatch keeps its
         // single submit — the seam exists for the split-dispatch guides API.
@@ -689,7 +694,7 @@ export class Upscaler {
         const locksOut = this._locks![1 - this._historyIndex];
         const exposurePrev = this._exposure![this._historyIndex];
         const exposureCur = this._exposure![1 - this._historyIndex];
-        //* Reactive mask — merge-not-overwrite (TEMPORAL-GUIDES-SPEC §6).
+        //* Reactive mask — merge-not-overwrite (docs/temporal-guides.md).
         //* With an opaque-only color, the generator runs and max-merges any
         //* incoming mask (explicit, or effect-written into guides.reactive
         //* and passed back as `reactive`); an explicit mask alone binds

@@ -138,6 +138,9 @@ examples/              — standalone example gallery (own vite.config.ts, port 
   01-hello … 09-kitchen-sink — single-purpose demos (see examples/README.md).
                          07/08 = the upscaleScene() node; 09 = the composable upscale()
                          node driving a full SSGI+SSR stack in one post graph.
+docs/                  — maintained consumer/contributor docs (index: docs/README.md);
+  research/            — live research (PARITY.md, PAPER-NOTES.md)
+  archive/             — historical specs/handoffs/plans, NOT normative
 ```
 
 Read `Upscaler.ts` and `bench/src/BenchPipeline.ts` together first — the second is the canonical example of how the first is meant to be driven. `examples/shared/UpscalePresenter.ts` is the same recipe packaged as a reusable helper; `examples/06-screenspace-gi` is the reference for feeding FSR3 the output of a TSL post-processing graph (GTAO/SSR/SSGI) rendered at reduced resolution.
@@ -281,9 +284,10 @@ composite.
   and the frame can be driven split: `dispatchGuides({depth, velocity})` right
   after the G-buffer (geometry guides only — reconstruct is the whole early
   stage), then `dispatchUpscale({color, …})`; `path: 'guides'` runs the early
-  stage alone with no output texture. Contracts + program plan:
- `docs/archive/temporal-guides/TEMPORAL-GUIDES-SPEC.md`; consumer M0 review:
- `docs/archive/temporal-guides/GUIDES-SPEC-RESPONSE.md`.
+  stage alone with no output texture. Maintained contract:
+  `docs/temporal-guides.md` (per-field detail on the `TemporalGuides` type);
+  program history (spec, consumer M0 review, handoffs) archived under
+  `docs/archive/temporal-guides/`.
   **Mechanisms a change must not break:** (1) guide textures are allocated via
   `_createSharedTexture` — a three `StorageTexture` + `initTexture()`, with the
   raw handle fetched back through `getGPUTexture()`; passes bind the raw handle,
@@ -354,6 +358,10 @@ Follow the existing style:
 - **Full TSDoc** (`@param`/`@returns`) on every exported function and the public class; exported types get a doc block.
 - WGSL passes: keep the shared-chunk + `assembleShader()` pattern; every pass binds the constants UBO at binding 0, uses 8×8 workgroups, guards against grid overrun (`if (any(vec2f(gid.xy) >= C.<size>)) { return; }`), entry point `main`. The `shaders.test.ts` structural tests enforce most of this — run them after editing any shader.
 - Keep new CI tests GPU-free.
+- **Docs are maintained, not archival.** A change to a public API, an input contract,
+  a default, or a guide product updates `docs/` (getting-started, inputs-and-contracts,
+  temporal-guides, debugging, compatibility, architecture) in the same change. Source
+  comments cite `docs/…`, never `docs/archive/…`, as normative.
 
 ## Provenance / license
 

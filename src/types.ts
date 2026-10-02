@@ -108,9 +108,10 @@ export interface UpscalerConfig {
      * Set `false` for those inputs: the temporal path still reprojects, clips,
      * and accumulates (so it denoises noisy GI and holds temporal stability, and
      * upscales), it just skips the sub-pixel offset — no reconstruction gain, no
-     * smear risk. Owning-the-render integrations (the `upscaleScene` node, `UpscalePass`)
-     * default it on; the composable `upscale` node defaults it off for exactly this
-     * reason.
+     * smear risk. Every temporal surface defaults it on — `UpscalePass`,
+     * `upscaleScene`, and the composable `upscale` node too, whose inputs render
+     * in-graph under its jitter — so opting out is the caller's call for
+     * externally-rendered inputs.
      */
     jitter?: boolean;
 }
@@ -205,7 +206,7 @@ export interface GuideDispatchInputs {
  * can sample instead of re-deriving privately. All fields are ordinary three
  * textures, consumable as TSL `texture()` nodes or via raw bind groups.
  *
- * Contract notes (archived spec: docs/archive/temporal-guides/TEMPORAL-GUIDES-SPEC.md):
+ * Contract notes (maintained guide: docs/temporal-guides.md):
  * - Ping-ponged products resolve to the **most recently written** half, so
  *   re-read the getter each frame (or re-point a texture node's `value`).
  * - Early products (`dilatedMotion`, `dilatedDepth`, `previousDepth`,

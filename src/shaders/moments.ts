@@ -3,7 +3,7 @@ import { assembleShader } from './wgsl';
 
 /**
  * Signal-agnostic per-pixel moments — the reusable statistics primitive
- * SVGF-class consumers need (TEMPORAL-GUIDES-SPEC §5). Not part of the
+ * SVGF-class consumers need (docs/temporal-guides.md). Not part of the
  * upscaling pipeline: the upscaler's own variance clip keeps its fused
  * inline 3×3 moments; this pass exists so external consumers can run the
  * same computation on a *different* signal (pre-albedo GI irradiance) in a
@@ -15,7 +15,8 @@ import { assembleShader } from './wgsl';
  * Variance follows as `E[x²] − E[x]²` after the consumer's own temporal
  * accumulation. A single coarse level of 4×4 block means ships alongside
  * (the consumer's short-history spatial fallback reads exactly one coarse
- * neighborhood and nothing deeper — spec §10, answer 4). One fused 8×8
+ * neighborhood and nothing deeper — the consumer's answer recorded in the
+ * archived guides spec, §10). One fused 8×8
  * dispatch: the block reduction is workgroup-local, one writer thread per
  * 4×4 block.
  *

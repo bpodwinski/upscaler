@@ -203,7 +203,8 @@ export class UpscalePass {
     /**
      * Sets a render-res opaque-only color for the next {@link draw}; the
      * upscaler auto-generates the reactive mask from its difference with the
-     * final render. Ignored if an explicit mask is set. Pass `null` to clear.
+     * final render. An explicit mask set alongside it is max-merged into the
+     * generated one, not ignored. Pass `null` to clear.
      * @param texture - A render-res opaque-only color texture, or null
      */
     setReactiveOpaqueColor(texture: THREE.Texture | null): void {
