@@ -714,7 +714,7 @@ Rectification note: alpha's box is the *local 3×3 range*, not a variance AABB. 
 coverage edge the jittered taps span the full 0..1 range, so history passes untouched and
 accumulates; on a flat region the range collapses and stale alpha cannot ghost. The clamp
 takes color's still-scene relax (`mix(clamp(h, min, max), h, stillRelax /
-STILL_CLAMP_RELAX)`): a feature thinner than a render texel leaves jitter phases whose 3×3
+max(STILL_CLAMP_RELAX, 1e-6))`): a feature thinner than a render texel leaves jitter phases whose 3×3
 is all-0 or all-1, which would otherwise re-snap converged coverage every cycle. Measured
 on `examples/15-transparent-canvas` with `scripts/measure-alpha-convergence.mjs`
 (`bench/docs/NEXT-STEPS.md` §6): a minority share of the sub-texel wire shimmer, most of

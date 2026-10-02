@@ -45,7 +45,7 @@ reported +2.6% for a change that an interleaved run measured at +5.1%.)
 | **block / repetition** | One full A-B-B-A pattern. `--blocks 4` runs four of them. |
 | **warmup** | Frames rendered and thrown away before timing starts, so shader compilation and caches are not in the sample. |
 | **samples** | Timed frames per leg. More samples = tighter medians, longer runs. |
-| **scenario** | A scripted camera/scene animation, `Q0`–`Q14`. See the catalogue below. |
+| **scenario** | A scripted camera/scene animation, `Q0`–`Q15`. See the catalogue below. |
 | **noise floor** | How much the harness disagrees with *itself*. The bar your delta has to clear. |
 
 ---
@@ -133,7 +133,7 @@ work did not change, the rest of the frame got cheaper.
 
 ---
 
-## Scenarios (Q0–Q14)
+## Scenarios (Q0–Q15)
 
 Scripted camera and scene animations, defined in
 `bench/src/benchmark/scenarios.ts`. Performance runs use the default; capture
@@ -156,6 +156,7 @@ runs select them with `--scenarios`.
 | Q12 | `cornell-still-convergence` | A consumer's Cornell-box repro: still camera, point-light shadow dither. The hardest convergence case we have. |
 | Q13 | `merged-reactive-masks` | Explicit reactive mask **and** the `reactiveOpaqueColor` auto-generator at once, on three still panels: explicit-only (reads 1.0), overlap (explicit 0.5 under a generated ramp, so it reads as a flat 0.5 floor rising to the 0.9 cap), diff-only. The `reactivity` capture is the per-pixel `max` from `generateReactive.ts`. A merge that overwrites, takes the min or sums the masks changes a panel. |
 | Q14 | `ssgi-thin-feature-locks` | Issue #17: still camera into an SSGI-lit box holding 1px wireframe meshes. Subruns `off` (no SSGI, clean control) / `static` (SSGI static pattern + spatial `recurrentDenoise`, the issue's config) / `rotating` (SSGI's default rotating pattern) / `builtin` (static pattern + `DenoiseNode`, the 06/09 recipe). Measure with `measure-convergence.mjs --scenario Q14 --subrun <s> --pairs 40`. |
+| Q15 | `sub-detector-lighting-drift` | Still camera, sun ramps 8 → 2 (120–188) and back 2 → 8 (240–308), exponentially at ~2 %/frame: half the shading detector's flattest floor, so the detector stays silent and only the variance clip limits lag. Measure with `scripts/measure-drift-lag.mjs`. |
 
 ---
 
@@ -182,6 +183,16 @@ node scripts/measure-convergence.mjs --scenario Q12 --ratio 2
 
 It reports consecutive-frame and same-jitter-phase differences, which is the
 measurement to run before and after touching anything in `accumulate.ts`.
+
+Its lighting-drift counterpart measures how far the output trails a slow lighting
+ramp on a still camera. It compares every sampled frame against a held-light
+reference at the same jitter phase, and reports the lag in frames plus whether
+the shading-change detector fired. Use it for anything that trades rectification
+for convergence, such as `STILL_CLAMP_RELAX` (`NEXT-STEPS.md` §8):
+
+```bash
+node scripts/measure-drift-lag.mjs --scenario Q15 --settings '{"autoExposure":false}'
+```
 
 Its alpha counterpart drives `examples/15-transparent-canvas` (sub-texel wires over a
 zero-alpha background) instead of the bench, and reads the output texture back so

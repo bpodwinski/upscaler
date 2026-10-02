@@ -77,12 +77,17 @@ WebGPU:
   --ratio 2` reports consecutive and same-jitter-phase frame differences plus
   debug-view PNGs on a deterministic bench scenario. Q1 and Q12 are the reference
   scenarios.
+- **Lighting-drift lag:** `node scripts/measure-drift-lag.mjs --scenario Q15
+  --settings '{"autoExposure":false}'` reports how many frames the output trails a
+  slow, sub-detector lighting ramp against a held-light reference. This is the other
+  side of the still-scene relax (`STILL_CLAMP_RELAX`); see
+  [`NEXT-STEPS.md` §8](../bench/docs/NEXT-STEPS.md).
 - **Alpha convergence:** `node scripts/measure-alpha-convergence.mjs --ratio 3` reads
   the output texture back on `examples/15-transparent-canvas` (frozen, still camera).
 - **Packaged TSL guides:** `npm run verify:packed-guides:gpu` builds and packs the
   library, then runs `examples/13-guides-node` against the packed artifact on a real
   GPU.
-- **Benchmarks:** how to run and read A/B timing runs, the Q0–Q12 scenario catalogue,
+- **Benchmarks:** how to run and read A/B timing runs, the Q0–Q15 scenario catalogue,
   and device setup are in [`bench/docs/BENCHMARKING.md`](../bench/docs/BENCHMARKING.md).
 
 Output from all of these lands under `bench/results/raw/`, which is gitignored.

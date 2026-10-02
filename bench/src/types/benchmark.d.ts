@@ -25,7 +25,8 @@ declare type BenchmarkScenarioId =
     | 'Q11'
     | 'Q12'
     | 'Q13'
-    | 'Q14';
+    | 'Q14'
+    | 'Q15';
 declare type BenchmarkDebugView =
     | 'final'
     | 'motion-vectors'

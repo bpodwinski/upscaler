@@ -79,8 +79,10 @@ const BASELINE_FINGERPRINTS: Record<string, string> = {
     shadingChange: '41ed97fa',
     // Updated 2026-07-21: DeltaPreExposure history correction (NEXT-STEPS item 2);
     // 2026-08-25: alpha resolved alongside color into the locks buffer's .a;
-    // 2026-10-02: the alpha clamp takes the color path's still-scene relax.
-    accumulate: 'f2accb8a',
+    // 2026-10-02: the alpha clamp takes the color path's still-scene relax;
+    // 2026-10-02: alphaRelax guarded against STILL_CLAMP_RELAX = 0 (NEXT-STEPS
+    // §8) — GPU captures byte-identical at the shipped 8.
+    accumulate: '63dbdfad',
     luminancePyramid: 'e4b7a644',
     // Updated 2026-07-22: reactive merge-not-overwrite (guides spec M3) — the
     // generator max-merges an incoming mask instead of being suppressed by it.
@@ -306,7 +308,10 @@ describe('alpha passthrough is unconditional', () => {
         // feature's all-0 / all-1 jitter phases must not re-snap converged alpha
         // on a still scene, while motion, disocclusion, shading change and
         // reactivity (all folded into stillRelax) restore the hard clamp.
-        expect(ACCUMULATE_SHADER).toContain('let alphaRelax = stillRelax / STILL_CLAMP_RELAX;');
+        // Guarded so STILL_CLAMP_RELAX = 0 (relax off) cannot divide 0 by 0.
+        expect(ACCUMULATE_SHADER).toContain(
+            'let alphaRelax = stillRelax / max(STILL_CLAMP_RELAX, 1.0e-6);',
+        );
         expect(ACCUMULATE_SHADER).toContain(
             'let rectifiedAlpha = mix(clamp(lockPrev.a, alphaMin, alphaMax), lockPrev.a, alphaRelax);',
         );

@@ -366,7 +366,10 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     // widened because rectification has nothing legitimate to catch (still,
     // converged, no disocclusion / shading change / reactivity), the alpha
     // history passes unclamped; any of those signals restores the clamp.
-    let alphaRelax = stillRelax / STILL_CLAMP_RELAX;
+    // The max() keeps this defined when the relax is tuned to 0 (stillRelax
+    // is then 0 too, so the clamp stays hard); for any positive constant it
+    // folds to the constant itself.
+    let alphaRelax = stillRelax / max(STILL_CLAMP_RELAX, 1.0e-6);
     let rectifiedAlpha = mix(clamp(lockPrev.a, alphaMin, alphaMax), lockPrev.a, alphaRelax);
     let resultAlpha = clamp(mix(rectifiedAlpha, currentAlpha, alpha), 0.0, 1.0);
 
