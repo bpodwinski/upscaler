@@ -22,7 +22,24 @@ test('parses build-only and Chrome path options', async () => {
         buildOnly: true,
         chrome: '/Applications/Chrome Test.app/Contents/MacOS/Chrome Test',
         keepTemp: false,
+        help: false,
+        port: undefined,
+        cdpPort: undefined,
     });
+});
+
+test('parses --help and pinned ports, and rejects unknown options', async () => {
+    const { parseArguments } = await loadHarness();
+
+    // --help must short-circuit before the full GPU smoke, not be ignored.
+    expect(parseArguments(['--help']).help).toBe(true);
+    expect(parseArguments(['-h']).help).toBe(true);
+    expect(parseArguments(['--port', '5600', '--cdp-port', '9600'])).toMatchObject({
+        port: 5600,
+        cdpPort: 9600,
+    });
+    expect(() => parseArguments(['--port', 'abc'])).toThrowError(/--port must be a port number/);
+    expect(() => parseArguments(['--bogus'])).toThrowError(/Unknown option --bogus/);
 });
 
 test('reports WebGPU, WGSL, console, and runtime browser failures', async () => {

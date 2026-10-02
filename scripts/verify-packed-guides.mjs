@@ -4,7 +4,6 @@ import {
     mkdirSync,
     mkdtempSync,
     readFileSync,
-    rmSync,
     symlinkSync,
 } from 'node:fs';
 import { createServer } from 'node:net';
@@ -13,7 +12,24 @@ import { basename, join, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
+import {
+    parsePort,
+    removeTempDirectory,
+    spawnVite,
+    stopChild,
+    waitForUrl,
+} from './local-processes.mjs';
+
 const ROOT = resolve(import.meta.dirname, '..');
+export const USAGE = `Usage: node scripts/verify-packed-guides.mjs [options]
+Builds + packs the library, builds Example 13 against the packed artifact, then
+(unless --build-only) drives it in headless Chrome on a real GPU.
+  --build-only       stop after the package-consumer build (GPU-free; what CI runs)
+  --chrome <path>    Chrome executable (default: CHROME_PATH or a standard install)
+  --port <n>         port for the preview server (default: a free port)
+  --cdp-port <n>     Chrome DevTools (CDP) port (default: a free port)
+  --keep-temp        keep the packed consumer + built site for inspection
+  --help, -h         print this message and exit`;
 const VITE_BIN = join(ROOT, 'node_modules/vite/bin/vite.js');
 const EXAMPLES_CONFIG = join(ROOT, 'examples/vite.config.ts');
 const EXAMPLE_PATH = '/13-guides-node/index.html';
@@ -23,13 +39,21 @@ export function parseArguments(argv) {
         buildOnly: false,
         chrome: undefined,
         keepTemp: false,
+        help: false,
+        port: undefined,
+        cdpPort: undefined,
     };
 
     for (let index = 0; index < argv.length; index++) {
         const value = argv[index];
         if (value === '--build-only') options.buildOnly = true;
         else if (value === '--keep-temp') options.keepTemp = true;
+        else if (value === '--help' || value === '-h') options.help = true;
         else if (value === '--chrome') options.chrome = argv[++index];
+        else if (value === '--port') options.port = parsePort(argv[++index] ?? true, '--port');
+        else if (value === '--cdp-port')
+            options.cdpPort = parsePort(argv[++index] ?? true, '--cdp-port');
+        else throw new Error(`Unknown option ${value}.\n\n${USAGE}`);
     }
 
     return options;
@@ -161,19 +185,6 @@ async function freePort() {
             server.close(() => resolvePort(address.port));
         });
     });
-}
-
-async function waitForUrl(url, attempts = 150) {
-    for (let attempt = 0; attempt < attempts; attempt++) {
-        try {
-            const response = await fetch(url);
-            if (response.ok) return;
-        } catch {
-            // The local process is still starting.
-        }
-        await new Promise((resolveWait) => setTimeout(resolveWait, 100));
-    }
-    throw new Error(`Timed out waiting for ${url}.`);
 }
 
 function chromeExecutable(explicit) {
@@ -367,8 +378,8 @@ async function runProbe(client) {
 }
 
 async function runGpuSmoke(outputDirectory, packageEntry, options) {
-    const serverPort = await freePort();
-    const cdpPort = await freePort();
+    const serverPort = options.port ?? (await freePort());
+    const cdpPort = options.cdpPort ?? (await freePort());
     const baseUrl = `http://127.0.0.1:${serverPort}`;
     const exampleUrl = `${baseUrl}${EXAMPLE_PATH}`;
     const profile = join(tmpdir(), `upscaler-packed-guides-chrome-${process.pid}-${Date.now()}`);
@@ -377,32 +388,19 @@ async function runGpuSmoke(outputDirectory, packageEntry, options) {
     let client;
 
     try {
-        preview = spawn(
-            process.execPath,
-            [
-                VITE_BIN,
-                'preview',
-                '--config',
-                EXAMPLES_CONFIG,
-                '--outDir',
-                outputDirectory,
-                '--host',
-                '127.0.0.1',
-                '--port',
-                String(serverPort),
-                '--strictPort',
-            ],
+        preview = spawnVite(
+            EXAMPLES_CONFIG,
+            { hostname: '127.0.0.1', port: serverPort },
             {
-                cwd: ROOT,
+                extra: ['preview', '--outDir', outputDirectory],
                 env: {
                     ...process.env,
                     PAGES_BASE: '/',
                     UPSCALER_PACKAGE_ENTRY: packageEntry,
                 },
-                stdio: 'ignore',
             },
         );
-        await waitForUrl(exampleUrl);
+        await waitForUrl(exampleUrl, { child: preview });
 
         chrome = spawn(
             chromeExecutable(options.chrome),
@@ -453,15 +451,22 @@ async function runGpuSmoke(outputDirectory, packageEntry, options) {
                 `${probe.backingTextureCount} backing textures, 0 monolithic fallbacks.`,
         );
     } finally {
+        // Teardown only warns: Chrome keeps writing its cache for a moment after
+        // SIGTERM, so it must have exited before its profile is deleted, and a
+        // leftover temp dir must never turn a PASS into a failure.
         client?.close();
-        chrome?.kill('SIGTERM');
-        preview?.kill('SIGTERM');
-        rmSync(profile, { recursive: true, force: true });
+        await stopChild(chrome);
+        await stopChild(preview);
+        await removeTempDirectory(profile, 'Chrome profile');
     }
 }
 
 async function main() {
     const options = parseArguments(process.argv.slice(2));
+    if (options.help) {
+        console.log(USAGE);
+        return;
+    }
     const temporaryRoot = mkdtempSync(
         join(tmpdir(), `upscaler-packed-guides-${process.pid}-`),
     );
@@ -486,7 +491,7 @@ async function main() {
     } finally {
         if (options.keepTemp)
             console.log(`Kept packed guides consumer at ${temporaryRoot}`);
-        else rmSync(temporaryRoot, { recursive: true, force: true });
+        else await removeTempDirectory(temporaryRoot, 'packed consumer directory');
     }
 }
 

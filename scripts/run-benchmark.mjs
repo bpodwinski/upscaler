@@ -1,7 +1,7 @@
 import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import process from 'node:process';
@@ -16,10 +16,18 @@ import {
     hashWorkingTreeEntries,
     reviewStorageKey,
 } from './benchmark-contract.mjs';
+import {
+    DEFAULT_BENCH_URL,
+    parsePort,
+    removeTempDirectory,
+    resolveServerUrl,
+    spawnVite,
+    stopChild,
+    waitForUrl as waitForServer,
+} from './local-processes.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const MANIFEST_PATH = join(ROOT, 'bench/results/experiments/e00-harness.json');
-const DEFAULT_URL = 'http://127.0.0.1:5199';
 const execFileAsync = promisify(execFile);
 
 class UserDecisionRequired extends Error {
@@ -634,7 +642,7 @@ async function performanceRun(client, context) {
         const ratioResults = [];
         for (let repetition = 0; repetition < repetitions; repetition++) {
             for (const [position, variant] of sequence) {
-                const url = runUrl(DEFAULT_URL, options, variant, ratio);
+                const url = runUrl(options.baseUrl, options, variant, ratio);
                 const name = `${retry ? 'retry-' : ''}ratio-${ratio}-r${repetition + 1}-${position}-${variant}`;
                 let result = null;
                 try {
@@ -1041,7 +1049,7 @@ async function captureRun(client, context, manifest) {
             for (const ratio of ratios) {
                 for (const [blind, variant] of variants) {
                     for (let reload = 1; reload <= reloads; reload++) {
-                        const url = runUrl(DEFAULT_URL, options, variant, ratio, scenario.id, subrun);
+                        const url = runUrl(options.baseUrl, options, variant, ratio, scenario.id, subrun);
                         const pageName = [
                             blind,
                             variant,
@@ -1428,19 +1436,6 @@ async function reviewExistingCapture(outputDirectory, rubricPath, manifest, bind
     return { status: 'complete', rubricTemplate: 'rubric-template.json', validation };
 }
 
-async function stopChild(child) {
-    if (!child || child.exitCode !== null || child.signalCode !== null) return;
-    const exited = new Promise((resolveExit) => child.once('exit', resolveExit));
-    child.kill('SIGTERM');
-    const graceful = await Promise.race([
-        exited.then(() => true),
-        new Promise((resolveWait) => setTimeout(() => resolveWait(false), 3000)),
-    ]);
-    if (graceful) return;
-    child.kill('SIGKILL');
-    await Promise.race([exited, new Promise((resolveWait) => setTimeout(resolveWait, 2000))]);
-}
-
 function collectChildOutput(child) {
     const output = { stdout: '', stderr: '' };
     child?.stdout?.on('data', (chunk) => {
@@ -1546,7 +1541,7 @@ async function createBrowserRuntime(cli, cdpBase, port, outputDirectory, name) {
         }
         await stopChild(chrome);
         await persistChildOutput(outputDirectory, name, processOutput);
-        if (profile) await rm(profile, { recursive: true, force: true });
+        await removeTempDirectory(profile, 'Chrome profile');
         throw error;
     }
 }
@@ -1560,7 +1555,7 @@ async function closeBrowserRuntime(runtime) {
         runtime.client.close();
         await stopChild(runtime.chrome);
         await persistChildOutput(runtime.outputDirectory, runtime.name, runtime.processOutput);
-        if (runtime.profile) await rm(runtime.profile, { recursive: true, force: true });
+        await removeTempDirectory(runtime.profile, 'Chrome profile');
     }
 }
 
@@ -1575,6 +1570,9 @@ async function main() {
   --scenarios Q0,..  --frames 0,..  --views final,..  --reloads N  --allow-differences  --review-all   capture shape
   --output <dir>               results directory (default bench/results/raw/E00/<timestamp>)
   --chrome <path> | --cdp <url>   browser selection
+  --port <n>                   CDP port for the Chrome this script launches (default 9333; ignored with --cdp)
+  --url <origin>               bench origin (default ${DEFAULT_BENCH_URL}); if nothing answers,
+                               the bench dev server is started on that host + port (--strictPort)
 Without --smoke this runs the strict E00 baseline acceptance protocol (64 runs, hard noise gates).`);
         return;
     }
@@ -1590,8 +1588,10 @@ Without --smoke this runs the strict E00 baseline acceptance protocol (64 runs, 
         throw new Error(`Authoritative E00 role A must be ${baselineRoleA}.`);
     if (!smoke && requestedComparison !== 'baseline' && requestedComparison !== baselineRoleB)
         throw new Error(`Authoritative E00 role B must be ${baselineRoleB}.`);
+    const server = resolveServerUrl(cli.url, DEFAULT_BENCH_URL);
     const options = {
         ...cli,
+        baseUrl: server.origin,
         mode,
         experiment: cli.experiment ?? 'E00',
         variant: requestedVariant === 'baseline' ? baselineRoleA : requestedVariant,
@@ -1651,22 +1651,21 @@ Without --smoke this runs the strict E00 baseline acceptance protocol (64 runs, 
         ),
     );
 
-    const port = Number(cli.port ?? 9333);
+    const port = parsePort(cli.port, '--port') ?? 9333;
     const cdpBase = cli.cdp ?? `http://127.0.0.1:${port}`;
-    let server = null;
+    let viteServer = null;
     let serverOutput = null;
     let runtime = null;
     let browserGeneration = 0;
     try {
         try {
-            await waitForUrl(DEFAULT_URL, 1);
+            await waitForUrl(server.origin, 1);
         } catch {
-            server = spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1'], {
-                cwd: ROOT,
+            viteServer = spawnVite('bench/vite.config.ts', server, {
                 stdio: ['ignore', 'pipe', 'pipe'],
             });
-            serverOutput = collectChildOutput(server);
-            await waitForUrl(DEFAULT_URL);
+            serverOutput = collectChildOutput(viteServer);
+            await waitForServer(server.origin, { child: viteServer });
         }
 
         runtime = await createBrowserRuntime(
@@ -1738,7 +1737,7 @@ Without --smoke this runs the strict E00 baseline acceptance protocol (64 runs, 
         throw error;
     } finally {
         await closeBrowserRuntime(runtime);
-        await stopChild(server);
+        await stopChild(viteServer);
         await persistChildOutput(outputDirectory, 'vite', serverOutput);
     }
 }
