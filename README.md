@@ -14,7 +14,7 @@ Three ships an official [`FSR1Node`](https://threejs.org/docs/#FSR1Node) — spa
 npm install @pmndrs/upscaler three
 ```
 
-WebGPU only — needs a WebGPU-capable browser (Chrome/Edge 113+) and `three` **r184+** (a peer dependency). There is no WebGL fallback.
+WebGPU only — needs a WebGPU-capable browser (Chrome/Edge 113+) and `three` **r186+** (a peer dependency). r184/r185 still work but are deprecated — the TSL node warns once and falls back to the pre-r186 render-pipeline hooks; that fallback will be removed. There is no WebGL fallback.
 
 **▶ Live demos: [pmndrs.github.io/upscaler](https://pmndrs.github.io/upscaler/)** — 11 interactive examples: spatial vs temporal, the aliasing-torture scene, transparency + reactive masks, the composable TSL node, SSGI/SSR upscaled in one post graph, and more.
 
