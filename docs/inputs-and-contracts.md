@@ -93,9 +93,20 @@ must be exactly what that node produces, rendered into a named MRT attachment:
 Each frame the projection is offset by a sub-pixel amount from a Halton(2,3) sequence
 of `8 · ratio²` phases (FidelityFX's `ffxFsr2GetJitterPhaseCount`): 18 at 1.5×, 32 at
 2×. A still scene therefore delivers a supersampled image over time, which is what the
-temporal path integrates. The offset is applied with `camera.setViewOffset`, the same
-mechanism as three's TRAA. `beginFrame(camera)` applies it and `endFrame(camera)`
-clears it.
+temporal path integrates. The offset is applied through the camera's view offset
+(`camera.view`), the same mechanism as three's TRAA. `beginFrame(camera)` applies it
+and `endFrame(camera)` removes it.
+
+- **An app-set view offset is preserved.** If the camera already has a view offset
+  (tiled or multi-screen rendering with `camera.setViewOffset(fullWidth, fullHeight,
+  x, y, width, height)`), the jitter composes on top of it, scaled by
+  `width / renderWidth` so it stays exactly one render pixel. `endFrame()` restores
+  `camera.view` to precisely what it was before `beginFrame()`: no offset stays none,
+  and an app offset keeps its values. A perspective camera's `aspect` is never touched.
+  `unjitteredProjectionMatrix` includes the app's offset and excludes only the jitter,
+  so motion vectors stay correct. Non-jittering paths (`spatial`, `bilinear`,
+  `jitter: false`) never touch the view offset. three's own `traa()`/`taau()`
+  still clear an app offset.
 
 - **The input must be re-rendered under the jitter every frame.** Jitter buys
   reconstruction only if the color you dispatch was rendered with this frame's
