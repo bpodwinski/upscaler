@@ -31,6 +31,7 @@ shader/pipeline edits hot-reload here just like in the bench.
 | 13 | **Guides node** (`13-guides-node`) | The same split frame, declaratively: `temporalGuides()` publishes the bundle into the graph, a toy effect consumes disocclusion pre-upscale, `upscale({ guides })` shares one computation. |
 | 14 | **Path tracer · alpha** (`14-pathtracer-alpha`) | A transparent canvas over page content: `three-gpu-pathtracer`'s WebGPU renderer accumulates at half resolution with a zero-alpha background, and the FSR1 spatial path upscales coverage along with color (issue #15). Needs network — model/HDRI and the Draco decoder are streamed. |
 | 15 | **Transparent canvas** (`15-transparent-canvas`) | Alpha on the *temporal* path — coverage reconstructed from jitter, not interpolated. The acceptance demo for temporal RGBA; toggles temporal/spatial on sub-texel wires. |
+| 16 | **Spatial node** (`16-spatial-node`) | `upscaleSpatial(color)`, the color-only FSR1 node, in a `RenderPipeline`: fed by an in-graph reduced-res `pass()` or an externally filled `texture()`. RCAS sharpness / `rcasDenoise` controls, an input-grain slider for the denoise to act on, and HDR neon (well above 1.0) to show RCAS sharpening highlight edges in conditioned space (#30). |
 Most interactive demos have a **render scale ×** slider (1.0×–3.0×) that sweeps the
 base render resolution, with the resulting size + base % shown in the HUD.
 
@@ -73,7 +74,7 @@ MRT output count matched to the render-target attachment count, float depth, the
 linear/HDR output, and renderer-owned presentation). `06`, `12`, and `14` drive the raw
 `Upscaler` directly (an external effect graph, the split guides frame, and a
 path-traced RGBA buffer).
-`07`–`11` and `13` are the TSL-node surface — no presenter at all, the node owns
+`07`–`11`, `13` and `16` are the TSL-node surface — no presenter at all, the node owns
 the recipe inside the post graph. New imperative demos should reuse the presenter
 rather than re-deriving the wiring; new graph demos should start from `07`.
 The integration guides these demos illustrate live in [`docs/`](../docs/README.md).
