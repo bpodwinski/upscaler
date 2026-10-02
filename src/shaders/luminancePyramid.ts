@@ -53,7 +53,17 @@ const EXPOSURE_KEY : f32 = 0.18;
 // Clamp so a pitch-black or fully blown-out frame can't drive exposure to
 // infinity/zero and destabilize the accumulation it is meant to steady.
 const EXPOSURE_MIN : f32 = 0.02;
-const EXPOSURE_MAX : f32 = 80.0;
+// The brightening cap is also the dark-scene highlight ceiling. History is
+// stored in f16 as x/(1+x), x the pre-exposed color, and tonemapInvert clamps
+// at 0.999: nothing resolves above 999 / exposure, and below that a stored
+// value moves in relative steps of ~(1 + x)/2048. A mostly-black frame drives the
+// log-average to its floor, so the old cap (80) put every highlight above
+// ~12.5 linear on the ceiling and averaged sub-pixel ones to the same value
+// whatever their brightness (issue #49). 8 (three stops) lifts the ceiling to
+// ~125 and stays above every bench scene's metered target (2.4–6.8), so
+// ordinary scenes are unchanged. Highlights can't key the exposure instead:
+// the 32×32 taps miss small and sub-pixel lights. See bench/docs/NEXT-STEPS.md.
+const EXPOSURE_MAX : f32 = 8.0;
 // Eye-adaptation rate (per second) toward the target exposure.
 const ADAPT_SPEED : f32 = 2.5;
 

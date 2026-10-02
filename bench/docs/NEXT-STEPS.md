@@ -750,6 +750,149 @@ The per-frame `firing` / `strong` / mean v series land in `summary.json`
 (`shadingChange.perFrame`) under `bench/results/raw/convergence/`, which is
 git-ignored.
 
+## 9. Auto-exposure ceiling on dark scenes — DONE (2026-10-03, issue #49): `EXPOSURE_MAX` 80 → 8
+
+PR #48's probe found that a dark scene saturates temporal history near linear
+12.5. On a mostly-black frame the log-average sits at its 1e-4 floor, so
+auto-exposure pins at `EXPOSURE_MAX`. At 80 that broke HDR highlights in three ways.
+
+**The arithmetic.** The temporal path stores `x / (1 + x)` of the pre-exposed color
+`x = L · exposure` in an rgba16float history.
+
+- **Hard ceiling, from `tonemapInvert`.** It clamps the stored value at 0.999, so
+  nothing resolves above `0.999 / 0.001 / exposure = 999 / exposure`. That is 12.49
+  at exposure 80. The f16 grid alone would allow 2047 / exposure, since the last
+  value below 1 is `1 − 2⁻¹¹`. So the clamp sets the ceiling, not storage.
+- **f16 quantization below the ceiling.** In [0.5, 1) the f16 step is 2⁻¹¹, so a
+  stored plateau moves in relative steps of about `(1 + x) / 2048`: 4 % at x = 80,
+  16 % at x = 320. At exposure 80 a 4.0 plateau reads 3.645, which is the
+  `1 − 7·2⁻¹¹` level.
+- **Tonemap compression, the one that dominates for small lights.** History blends
+  in that space. A highlight with x ≫ 1 stores ≈ 1 whatever its brightness. A
+  sub-pixel emitter rasterizes on only some jitter phases (the variance clip
+  removes it on the rest), so it accumulates to roughly its coverage fraction
+  and decodes to the same value for 0.25 and 64. This is FSR2's firefly guard
+  working as designed, but its scale is 1 / exposure. At exposure 80 everything
+  above ~0.05 linear counts as a firefly.
+
+**Method.** New probe page `bench/exposure-ceiling.html`, driven by new meter
+`scripts/measure-exposure-ceiling.mjs`.
+
+- **Scene.** Emissive squares at 0.25 / 1 / 4 / 16 / 64 linear, in three sizes:
+  - 16 render px plateaus, which have native = level at the centre;
+  - 3 render px squares;
+  - 0.5 render px emitters off the render grid, which have native energy = level.
+
+  They sit on a flat background, black or 0.005 for a night scene.
+- **Path.** Temporal, 512² display, ratio 2, sharpness 0.8, still orthographic
+  camera.
+- **Readback.** The rgba16float output is read back exactly. Centre values and
+  window energies are averaged over the last 32 frames (one jitter cycle).
+- **Emulating caps.** A fixed `settings.exposure` is exactly what auto-exposure
+  produces when it pins at a cap of that value. So each row below is a candidate
+  `EXPOSURE_MAX`, run without editing the shader.
+- **Metering.** The page also mirrors the luminance pyramid's 32×32 bilinear taps on
+  the render-res input, to show what a highlight-keyed exposure would see.
+
+Environment: Apple Metal-3, headless Chrome over CDP, run from a git worktree.
+
+Black background (auto-exposure pins at the cap):
+
+| exposure (= cap) | 16 px plateau 1 / 4 / 16 / 64 | 3 px centre 64 | sub-px energy 0.25 / 1 / 64 (native 0.25 / 1 / 64) |
+| --- | --- | --- | --- |
+| **80 (old)** | 0.972 / **3.645** / **12.5** / **12.5** | 6.65 | **0.018 / 0.019 / 0.019** |
+| 32 | 0.984 / 3.969 / 16.0 / 31.2 | 16.6 | 0.042 / 0.047 / 0.048 |
+| 16 | 0.995 / 3.937 / 15.9 / 62.4 | 33.2 | 0.074 / 0.090 / 0.097 |
+| **8 (new)** | 0.998 / 3.937 / 15.9 / **63.9** | 54.7 | 0.120 / 0.168 / 0.193 |
+| 4 | 0.999 / 3.980 / 15.7 / 63.7 | 54.7 | 0.175 / 0.297 / 0.385 |
+| 2 | 0.999 / 3.990 / 15.7 / 63.5 | 54.7 | 0.227 / 0.482 / 0.766 |
+| 1 | 1.000 / 3.994 / 15.9 / 63.0 | 54.7 | 0.267 / 0.701 / 1.519 |
+| mid-grey scene (0.18, auto, exposure 0.94) | 0.999 / 3.998 / 15.9 / 62.9 | 54.9 | 0.094 / 0.719 / 2.002 (native 0.07 / 0.82 / 63.8 above grey) |
+
+- **The 3 px centre is ~55 at every exposure ≤ 8 and in the mid-grey scene.** That
+  value is the temporal path's own response to a 3-pixel square, not an exposure
+  effect.
+- **Night scene, background 0.005.** Main meters an exposure of 31.6 here (not even
+  pinned), so the ceiling is 31.6:
+  - **main:** plateaus 16 → 12.9 and 64 → 31.6; sub-pixel energies 0.051–0.060 for
+    every level;
+  - **cap 8:** plateaus 15.9 / 63.9; sub-pixel energies 0.128 / 0.182 / 0.201.
+- **Blit path (sharpness 0) has the same ceiling.** Exposure 80 reads 12.5 /
+  12.5; cap 8 reads 15.9 / 63.9.
+- **No NaN or Inf** appeared in any run.
+
+**Options weighed.**
+
+- **Lower `EXPOSURE_MAX` — adopted, at 8.**
+  - **Bench scenes are untouched.** Every bench scene meters below the cap (auto
+    exposure on Q0/Q1/Q2/Q9/Q11 is 2.0–3.3; Q12 is 6.6–6.8). So their target is
+    never clamped, and 28 rgba16float output captures read back bit-for-bit
+    identical to main: Q0/Q2/Q9/Q11/Q12 at f0, f23, f59, f119 and f239, and Q1 at
+    f0, f23 and f239. That covers Q11's host pre-exposure step (host 2.5 at f119)
+    and Q9's lighting step.
+  - **Every downstream pass is unchanged too.** The shading-change detector
+    (it reads the conditioning `.r`, not `avgLum`), locks, accumulation age and
+    `DebugView.Exposure` all read that same texel. `measure-convergence.mjs` on Q1
+    and Q12 gives identical figures (0.1144 / 0.0258).
+  - **Why 8.** It is the smallest power of two above Q12's 6.8. It lifts the
+    dark-scene ceiling to ~125 linear and puts a 64 lamp at x = 512.
+- **Key exposure to highlights — rejected.** The probe mirrors the 32×32
+  metering taps. On a frame of only 3 px squares and sub-pixel emitters, the
+  brightest tap reads **0.000** on every jitter phase. Small lamps are exactly the
+  #32/#49 case, and a highlight-keyed exposure would never see them. Metering every
+  pixel needs a full-resolution reduction, which is a new pass. The 16 px plateaus
+  are caught at 512², but at bench resolution the tap spacing is 20 × 11 render
+  px. A light near that size would wink in and out of the meter as the camera
+  moves, and the exposure would pump.
+- **Clamp so metered highlights stay below a knee — rejected**, for the same
+  metering blind spot. It would also change Q1, where highlights already sit
+  around x ≈ 64.
+- **Leave it and document `exposureTexture` — kept as the escape hatch only.** The
+  ceiling was reachable with no exposure input at all, so leaving it would ship a
+  12.5 ceiling to every dark scene.
+
+**What the cap costs.** A dim scene whose log-average is below 0.18 / 8 = 0.0225
+now conditions darker than mid-grey. Its conditioned key becomes `8 · average`
+instead of 0.18. To emulate that, `measure-convergence.mjs` ran Q1 and Q12 with a
+fixed exposure below their metered value: Q1 at 3.2, 0.72 and 0.16; Q12 at 6.7,
+1.5 and 0.33. Those are keys of 0.18, 0.04 and 0.009. The mean of the `Locks`
+view's red channel is on 0–255.
+
+| | key 0.18 | key 0.04 (≈ average 0.005 under cap 8) | key 0.009 (≈ average 0.001) |
+| --- | --- | --- | --- |
+| Q1 consecutive churn | 0.114 | 0.117 (+3 %) | 0.125 (+10 %) |
+| Q1 `Locks` mean | 18.5 | 10.1 | 1.8 |
+| Q12 consecutive churn | 0.019 | 0.021 | 0.022 |
+
+- **Locks are the cost.** `LOCK_CONTRAST_LO/HI` are absolute in conditioned luma, so
+  dim thin features lock less.
+- **Churn barely moves.** The variance clip is scale-invariant in the near-linear
+  part of the tonemap.
+- **The trade.** That is the price of the ~10× headroom. An app that wants its dark
+  scene conditioned near mid-grey and has no highlights to protect can pass a
+  higher fixed `exposure` or an `exposureTexture`. Neither goes through the auto
+  clamp.
+
+**Known and not changed:**
+- **Highlight compression is inherent.** Sub-pixel highlights are still compressed
+  at every exposure (1.5 of 64 even at exposure 1). Storing linear history, as
+  FSR2 does, would remove the near-1 quantization, but that is an `accumulate.ts`
+  change, not an exposure one.
+- **Bright scenes keep a 999 / exposure ceiling.** It is ~1000 linear at exposure 1.
+
+Reproduce, with the bench on 5199 or `--url`:
+
+```bash
+node scripts/measure-exposure-ceiling.mjs --label cap8-black            # auto + fixed sweep
+node scripts/measure-exposure-ceiling.mjs --label night --background 0.005 --exposures auto,31.6
+node scripts/measure-exposure-ceiling.mjs --label small --hide large --exposures auto
+node scripts/measure-convergence.mjs --scenario Q1 --label key04 \
+  --settings '{"autoExposure":false,"exposure":0.72}' --views final,locks
+```
+
+Artifacts land under `bench/results/raw/exposure-ceiling/` and
+`bench/results/raw/convergence/` (git-ignored).
+
 ## Explicitly not planned (measured against)
 
 - Lanczos2/bicubic history filtering (+47% accumulate, no visible win).

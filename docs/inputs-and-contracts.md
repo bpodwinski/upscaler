@@ -181,6 +181,16 @@ final brightness**. Three sources, in increasing priority:
    `upscale()` node's `exposureTexture` option. It mirrors FSR3's `exposure`
    resource.
 
+The conditioning exposure also sets the **HDR headroom** of the temporal output.
+Values resolve up to about `999 / exposure` in the input's linear domain. Below
+that they lose precision as they approach it, and sub-pixel highlights are
+compressed more strongly as exposure rises. Auto-exposure brightens at most 8×
+(three stops), so even a pitch-black scene keeps about 125 linear of headroom.
+A fixed `exposure` or an `exposureTexture` is not clamped. At 80, everything above
+about 12.5 clips to the same value, so keep app-supplied values near what the
+scene's highlights allow. See issue
+[#49](https://github.com/pmndrs/upscaler/issues/49).
+
 **Host pre-exposure** (`preExposureTexture`, raw `Upscaler` only) is different: it
 declares an exposure factor your app has *already baked into* the input color. That
 factor is part of your color domain, so it is **preserved** at output. The upscaler

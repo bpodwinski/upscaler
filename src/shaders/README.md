@@ -201,7 +201,8 @@ coverage only if RCAS performance becomes material.
     3.7 / 12.2 / 29.6 for linear-space RCAS on the same history. Capped, they are
     14.7 / 48.8 / 118 and 8.5 / 28.3 / 68.5.
   - **Synthetic, auto-exposure (pinned at 80 on black):** every emitter became ~21.9,
-    whatever its value. Capped, the maximum is 2.7.
+    whatever its value. Capped, the maximum is 2.7. (The auto-exposure cap is now 8;
+    see "Local exposure conditioning" below.)
   - **Synthetic, external exposure 1000:** every emitter became 1.73. Capped, 0.22.
   - **Bench, converged (ordinary scene content, sharpness 0.8, auto-exposure):** in Q1
     at f239 a specular pixel read **316** while its four neighbours read ~4–5; capped,
@@ -908,6 +909,17 @@ channel, but still feeds this local conditioning/history path. It is not a way t
 declare AMD-style host `preExposure`; using it as one will divide that factor back out
 during output and will not provide `DeltaPreExposure()` history correction.
 `DebugView.Exposure` visualizes clamped exposed luma, not the selected exposure scalar.
+
+The auto target is clamped to [0.02, 8]. The upper bound is also the temporal path's
+dark-scene highlight ceiling. History stores `x / (1 + x)` of the pre-exposed color
+in f16, and `tonemapInvert` clamps at 0.999, so nothing resolves above
+`999 / exposure`. Below that, a stored plateau moves in relative steps of about
+`(1 + x) / 2048`, and sub-pixel highlights average toward their coverage whatever
+their brightness. At the former cap of 80, a black-background scene clipped every
+highlight at 12.5. At 8 the ceiling is about 125, and every bench scene's metered
+target (≤ 6.8) is unclamped (issue #49, `bench/docs/NEXT-STEPS.md` §9). Fixed and
+external exposures bypass the clamp, so a value of 80 there still means a 12.5
+ceiling.
 
 ### Shading-change detector
 

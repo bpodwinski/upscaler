@@ -86,7 +86,7 @@ const BASELINE_FINGERPRINTS: Record<string, string> = {
     // 2026-10-02: alphaRelax guarded against STILL_CLAMP_RELAX = 0 (NEXT-STEPS
     // §8) — GPU captures byte-identical at the shipped 8.
     accumulate: '63dbdfad',
-    luminancePyramid: 'e4b7a644',
+    luminancePyramid: '32cf3854',
     // Updated 2026-07-22: reactive merge-not-overwrite (guides spec M3) — the
     // generator max-merges an incoming mask instead of being suppressed by it.
     generateReactive: '9d0739e5',
@@ -550,5 +550,16 @@ describe('E00 benchmark foundation', () => {
             constants: { SAMPLE_COUNT: 4 },
             assembledChunks: ['common', 'body'],
         });
+    });
+});
+
+describe('auto-exposure clamp', () => {
+    // EXPOSURE_MAX is the dark-scene highlight ceiling: history resolves at most
+    // 999 / exposure (issue #49, bench/docs/NEXT-STEPS.md §9). 80 clipped at 12.5.
+    it('caps brightening at 8 and still clamps the auto target', () => {
+        expect(LUMINANCE_PYRAMID_SHADER).toContain('const EXPOSURE_MAX : f32 = 8.0;');
+        expect(LUMINANCE_PYRAMID_SHADER).toContain(
+            'clamp(EXPOSURE_KEY / max(avgLum, 1.0e-4), EXPOSURE_MIN, EXPOSURE_MAX)',
+        );
     });
 });

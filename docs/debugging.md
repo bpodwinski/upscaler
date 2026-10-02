@@ -19,7 +19,7 @@ Check them in this order:
 | 2 | `Disocclusion` | Thin, stable outlines around moving silhouettes; black on a still scene. | Full-screen flashing: depth linearization is wrong. Check the camera you pass (near/far, perspective vs orthographic) and the reversed-depth setting. |
 | 3 | `AccumulationAge` | Saturates to white within about a second when still; resets along disocclusion trails. | Never whitening: history isn't persisting (configure called every frame, `reset` stuck on, or the camera actually moving). |
 | 4 | `Locks` | Lit on thin high-contrast features (wires, fence edges, specular silhouettes), black on flat surfaces. | All black: thin features may dim under motion. Lit everywhere: ghosting risk. Toggle `lockThinFeatures` to compare. |
-| 5 | `Exposure` | Exposed scene luma reads near mid-grey overall. | All black or all white: exposure pinned at its clamp, or invalid input luma (NaN/Inf in `color`). |
+| 5 | `Exposure` | Exposed scene luma reads near mid-grey overall. A dim scene (log-average below about 0.02) reads darker by design, because auto-exposure brightens at most 8× to keep highlight headroom. | All white: exposure pinned at its minimum. All black on a scene that isn't dark: invalid input luma (NaN/Inf in `color`). |
 | 6 | `ShadingChange` | Black on a still, steadily lit scene; clean single-frame spikes on light changes. | Lit while still: false positives age history and cause shimmer. Toggle `detectShadingChanges` to confirm. |
 | 7 | `Reactivity` | White on flagged transparents/particles, black on opaque geometry. | Empty or misaligned: the mask isn't authored, isn't passed, or isn't rendered under the same jitter as `color`. |
 
@@ -56,6 +56,7 @@ afterwards. The pipeline picks the change up on its next `render()`
 | Transparent objects or particles ghost | No reactive mask; see [Reactive masks](inputs-and-contracts.md#reactive-masks). |
 | Page shows through empty regions | Expected since alpha passthrough: set `scene.background` or an opaque clear color; see [Alpha](inputs-and-contracts.md#alpha). |
 | Frame edges fade to transparent | A post graph scales the upscaled `vec4` (alpha included) by a scalar; multiply by `vec4(vec3(v), 1)`. |
+| HDR highlights in a dark scene clip to one value, or small lights of very different brightness read alike in the linear output | The conditioning exposure is too high for the highlights; the temporal output resolves only up to about `999 / exposure`. Auto-exposure caps at 8. Check any fixed `exposure` or `exposureTexture` you supply. See [Exposure](inputs-and-contracts.md#exposure). |
 | Brightness lags or trails for a moment after your app steps its own exposure | The host exposure baked into `color` isn't declared. Pass it as `preExposureTexture` (not `exposureTexture`) so history is corrected across the step. |
 | Still image shimmers | Measure before tuning; see [Verifying on a real GPU](#verifying-on-a-real-gpu). Check `ShadingChange`, then `Disocclusion`. |
 | `ShadingChange` lights up in blocks along thin bright features over an empty background on a still camera | Fixed for issue [#22](https://github.com/pmndrs/upscaler/issues/22): the detector's contrast floor used to read only the current frame, so a block fired whenever the jitter phase missed a sub-texel wire. If you still see it, measure it on bench scenario Q16 (`measure-convergence.mjs --scenario Q16 --shading-frames 32`). The same wires also show short `Disocclusion` dashes on a still camera; that is a known, separate effect. |
@@ -103,6 +104,11 @@ WebGPU:
   slow, sub-detector lighting ramp against a held-light reference. This is the other
   side of the still-scene relax (`STILL_CLAMP_RELAX`); see
   [`NEXT-STEPS.md` §8](../bench/docs/NEXT-STEPS.md).
+- **HDR highlight headroom:** `node scripts/measure-exposure-ceiling.mjs` reads the
+  rgba16float output back exactly. The scene is emissive 0.25–64 squares in three
+  sizes on a dark background, compared against native, for each conditioning exposure
+  (`auto` or fixed values). See
+  [`NEXT-STEPS.md` §9](../bench/docs/NEXT-STEPS.md).
 - **Alpha convergence:** `node scripts/measure-alpha-convergence.mjs --ratio 3` reads
   the output texture back on `examples/15-transparent-canvas` (frozen, still camera).
 - **Packaged TSL guides:** `npm run verify:packed-guides:gpu` builds and packs the
