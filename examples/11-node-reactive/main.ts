@@ -180,6 +180,11 @@ renderer.setAnimationLoop(() => {
 
     const u = (fsrNode as unknown as { upscaler?: Upscaler }).upscaler;
     if (u) u.settings.debugView = state.debug;
+    // The node graph's output transform is the RenderPipeline's, read from the
+    // renderer each frame — drop its tone mapping while a debug view is up so
+    // the view shows raw (sRGB-encoded) values, as UpscalePass does.
+    renderer.toneMapping =
+        state.debug === DebugView.None ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
     post.render();
     updateHud();
 });

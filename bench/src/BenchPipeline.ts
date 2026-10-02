@@ -167,6 +167,7 @@ export class BenchPipeline {
     private _velocitySeedFrame = -2;
 
     private _mode: BenchMode = 'upscale-temporal';
+    private _debugView: DebugView = DebugView.None;
     private _quality: QualityMode = QualityMode.Quality;
     private _displayWidth = 0;
     private _displayHeight = 0;
@@ -872,9 +873,30 @@ export class BenchPipeline {
         );
     }
 
-    /** Presents the resolver output without another transfer transform. */
+    /**
+     * Presents the resolver output through the renderer's output transform.
+     * Debug views skip its tone mapping but keep its output color space, so a
+     * debug value `v` lands on the canvas as sRGB-encoded `v`.
+     */
     present(): void {
-        this._quad.render(this._renderer);
+        // Debug views only render on the temporal path; any other mode is
+        // showing its final image whatever the setting says.
+        if (this._debugView === DebugView.None || this._mode !== 'upscale-temporal') {
+            this._quad.render(this._renderer);
+            return;
+        }
+        // WebGPURenderer ignores `material.toneMapped`: a frame bound for the
+        // canvas renders into an internal framebuffer target and is tone
+        // mapped as a whole by the renderer's output pass, from
+        // `renderer.toneMapping`. That setting is the only switch that reaches
+        // it, so drop it for the debug present alone.
+        const toneMapping = this._renderer.toneMapping;
+        this._renderer.toneMapping = THREE.NoToneMapping;
+        try {
+            this._quad.render(this._renderer);
+        } finally {
+            this._renderer.toneMapping = toneMapping;
+        }
     }
 
     /** Advances the pinned NodeFrame exactly once for one automated frame. */
@@ -1107,8 +1129,9 @@ export class BenchPipeline {
     }): void {
         Object.assign(this.resolver.settings, settings);
         // Debug buffers are already normalized visualization colors; only the
-        // final linear/HDR result should pass through presentation tone mapping.
-        this._quadMaterial.toneMapped = settings.debugView === DebugView.None;
+        // final linear/HDR result should pass through presentation tone mapping
+        // (see present()).
+        this._debugView = settings.debugView;
     }
 
     dispose(): void {
