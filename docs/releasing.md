@@ -68,6 +68,9 @@ Before publishing anything, the run fails if:
 
 Then it:
 
+- **chooses the npm dist-tag** (see [below](#versions-and-dist-tags)) and prints it.
+  For a stable version this reads npm's current `latest` first; if that lookup fails
+  for any reason other than a 404, the run stops before publishing.
 - **publishes to npm** with `npm publish --access public --tag <dist-tag>`, whose
   `prepublishOnly` gate runs lint, typecheck, test and build again. A version that is
   already on npm is skipped, not republished.
@@ -92,15 +95,34 @@ Then it:
 can't cut `1.0.0`. Choosing `major` explicitly does cut `1.0.0`. The policy lives in
 [`scripts/release-version.mjs`](../scripts/release-version.mjs).
 
-| Version        | npm dist-tag | Install                        | GitHub Release |
-| -------------- | ------------ | ------------------------------ | -------------- |
-| `0.3.0`        | `latest`     | `npm i @pmndrs/upscaler`       | latest         |
-| `0.3.0-beta.0` | `beta`       | `npm i @pmndrs/upscaler@beta`  | prerelease     |
-| `1.0.0-rc.0`   | `rc`         | `npm i @pmndrs/upscaler@rc`    | prerelease     |
-| `0.3.0-0`      | `next`       | `npm i @pmndrs/upscaler@next`  | prerelease     |
+| Version                            | npm dist-tag  | Install                              | GitHub Release |
+| ---------------------------------- | ------------- | ------------------------------------ | -------------- |
+| `0.3.0` (newest stable)            | `latest`      | `npm i @pmndrs/upscaler`             | latest         |
+| `0.2.1` (after `0.3.0`)            | `v0.2-latest` | `npm i @pmndrs/upscaler@v0.2-latest` | not latest     |
+| `0.3.0-beta.0`                     | `beta`        | `npm i @pmndrs/upscaler@beta`        | prerelease     |
+| `1.0.0-rc.0`                       | `rc`          | `npm i @pmndrs/upscaler@rc`          | prerelease     |
+| `0.3.0-0`                          | `next`        | `npm i @pmndrs/upscaler@next`        | prerelease     |
 
-A prerelease never moves `latest`. A Release created for an older tag never takes
-"latest" from a newer one.
+`latest` only ever moves forward. A stable version takes `latest` only when it is
+at or above npm's current `latest` (`npm view @pmndrs/upscaler dist-tags.latest`),
+or when npm has no `latest` yet (a first publish). An older stable version, such as
+a maintenance release `0.2.1` published after `0.3.0`, goes to its **line tag**
+`v<major>.<minor>-latest` (`v0.2-latest`), and `latest` stays on `0.3.0`. The run
+uses `latest` or the line tag, never a guess: if npm's `latest` can't be read
+(auth, network or registry errors, or a value that isn't a version), it fails
+before publishing. Re-run it once npm is reachable.
+
+A prerelease never moves `latest` and never reads it. A Release created for an
+older tag never takes "latest" from a newer one, so npm and GitHub agree.
+
+On a tag push, GitHub runs `publish.yml` from the tagged commit. A maintenance tag
+on a commit from before this rule existed runs the older workflow, which still
+assigns `latest` to every stable version. Tag a commit that has this workflow, or
+fix the dist-tags by hand afterwards (`npm dist-tag add`).
+
+`npm run release` prints the dist-tag it expects in its summary line, for example
+`0.2.0 → 0.3.0 (npm dist-tag: latest; npm's latest is 0.2.0)`. If it can't read
+npm, it warns and leaves the choice to the workflow.
 
 ## Re-running a release
 

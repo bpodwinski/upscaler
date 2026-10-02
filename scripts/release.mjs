@@ -17,8 +17,8 @@
 // drive it without a repository or network.
 import { execFileSync } from 'node:child_process';
 
-import { isDirectRun } from './release-notes.mjs';
-import { assertNewer, computeNextVersion, distTagFor, normalizeSpec } from './release-version.mjs';
+import { isDirectRun, parseSemVer } from './release-notes.mjs';
+import { assertNewer, computeNextVersion, distTagFor, lineDistTag, normalizeSpec } from './release-version.mjs';
 
 const BRANCH = 'main';
 const REMOTE = 'origin';
@@ -101,6 +101,50 @@ export function checkPreconditions(run) {
 }
 
 /**
+ * npm's current `latest` version for a package.
+ *
+ * @param {(command: string, args: string[]) => string} run
+ * @param {string} name
+ * @returns {string | null} null when the package (or its `latest`) doesn't exist yet.
+ * @throws {Error} On any lookup failure other than a 404.
+ */
+export function readNpmLatest(run, name) {
+    try {
+        return run('npm', ['view', name, 'dist-tags.latest']).trim() || null;
+    } catch (error) {
+        const stderr = String(error?.stderr ?? error?.message ?? '');
+        if (/^npm (?:error|ERR!) code E404\b/m.test(stderr)) return null;
+        throw error;
+    }
+}
+
+/**
+ * The dist-tag publish.yml will use for `version`, as a printable phrase. Stable
+ * versions depend on npm's current `latest`; when it can't be read the phrase
+ * says so (with a warning) rather than guess, since publish.yml re-reads it and
+ * decides at publish time.
+ *
+ * @param {(command: string, args: string[]) => string} run
+ * @param {string} name
+ * @param {string} version
+ * @param {(line: string) => void} warn
+ * @returns {string}
+ */
+function describeDistTag(run, name, version, warn) {
+    if (parseSemVer(version).prerelease.length > 0) return distTagFor(version, null);
+    let npmLatest;
+    try {
+        npmLatest = readNpmLatest(run, name);
+    } catch (error) {
+        warn(`warning: could not read npm's latest dist-tag: ${error instanceof Error ? error.message : String(error)}`);
+        return `latest if not older than npm's latest, else ${lineDistTag(version)}; publish.yml decides`;
+    }
+    const distTag = distTagFor(version, npmLatest);
+    if (!npmLatest) return `${distTag}; npm has no latest yet`;
+    return distTag === 'latest' ? `latest; npm's latest is ${npmLatest}` : `${distTag}; npm's latest stays ${npmLatest}`;
+}
+
+/**
  * Runs the release flow.
  *
  * @param {{
@@ -147,7 +191,8 @@ export function release({ argv, run, log = console.log, warn = console.warn }) {
     const tag = `v${version}`;
     if (run('git', ['tag', '--list', tag]).trim() !== '') throw new Error(`Tag ${tag} already exists.`);
 
-    log(`${packageJson.name} ${packageJson.version} → ${version} (npm dist-tag: ${distTagFor(version)})`);
+    const distTag = describeDistTag(run, packageJson.name, version, warn);
+    log(`${packageJson.name} ${packageJson.version} → ${version} (npm dist-tag: ${distTag})`);
     log(`Commits since ${computed.previousTag ?? 'the first commit'} (${computed.commits.length}):`);
     for (const commit of computed.commits) log(`  ${commit.sha.slice(0, 7)} ${commit.subject}`);
     const capped = computed.level === 'major' && packageJson.version.startsWith('0.');

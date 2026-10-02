@@ -31,8 +31,14 @@ name: Publish to npm
 # is created only when the tag has none — an existing one (published with your
 # own notes, or a draft) is never edited.
 #
-# Stable versions publish to the `latest` dist-tag; prereleases to their first
-# identifier (0.3.0-beta.1 → beta), numeric-only ones (0.3.0-0) to `next`.
+# Dist-tags: prereleases publish to their first identifier (0.3.0-beta.1 →
+# beta), numeric-only ones (0.3.0-0) to `next`. A stable version publishes to
+# `latest` only when it is at or above npm's current `latest` (read with
+# `npm view <name> dist-tags.latest`; a 404 means a first publish, so `latest`).
+# An older stable version, such as 0.2.1 after 0.3.0, publishes under its line
+# tag `v<major>.<minor>-latest` (v0.2-latest), so `latest` never moves
+# backwards. Any other failure to read npm's `latest` fails the run. Same rule
+# as the GitHub Release: an older tag never takes "latest".
 # `npm publish` runs the package's prepublishOnly gate (lint/typecheck/test/
 # build) first, so a broken tree can't ship.
 #
@@ -183,14 +189,15 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Guard 1: "v" + SemVer. Also yields the version, its dist-tag, and
-          # whether its Release should be "latest" (not when backfilling an old tag).
+          # Guard 1: "v" + SemVer. Also yields the version and whether its
+          # Release should be "latest" (not when backfilling an old tag). The npm
+          # dist-tag is chosen later, against npm's current latest.
           if ! described=$(node "$RUNNER_TEMP/release-tools/release-version.mjs" --describe "$TAG"); then
             echo "::error::Tag $TAG is not a v-prefixed SemVer version."
             exit 1
           fi
-          read -r VERSION PRERELEASE DIST_TAG LATEST <<< "$described"
-          if [[ -z "$VERSION" || -z "$PRERELEASE" || -z "$DIST_TAG" || -z "$LATEST" ]]; then
+          read -r VERSION PRERELEASE LATEST EXTRA <<< "$described"
+          if [[ -z "$VERSION" || -z "$PRERELEASE" || -z "$LATEST" || -n "$EXTRA" ]]; then
             echo "::error::release-version.mjs --describe printed '$described'."
             exit 1
           fi
@@ -217,12 +224,11 @@ jobs:
           fi
           npm version "$VERSION" --no-git-tag-version --allow-same-version > /dev/null
 
-          echo "Releasing $TAG ($COMMIT) to dist-tag '$DIST_TAG'."
+          echo "Releasing $TAG ($COMMIT)."
           {
             echo "tag=$TAG"
             echo "version=$VERSION"
             echo "prerelease=$PRERELEASE"
-            echo "dist_tag=$DIST_TAG"
             echo "latest=$LATEST"
           } >> "$GITHUB_OUTPUT"
 
@@ -263,6 +269,62 @@ jobs:
           printf '%s\n' "$npm_error" >&2
           exit 1
 
+      # `latest` only for a stable version at or above npm's current latest; an
+      # older line (0.2.1 after 0.3.0) gets v0.2-latest instead. A 404 means a
+      # first publish. Any other lookup failure stops the run rather than guess:
+      # a wrong guess would move `latest` backwards.
+      - name: Choose npm dist-tag
+        id: dist
+        if: steps.npm.outputs.published == 'false'
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          PRERELEASE: ${{ steps.release.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+
+          NPM_LATEST=""
+          if [[ "$PRERELEASE" == "false" ]]; then
+            NAME=$(node -p "require('./package.json').name")
+            error_file=$(mktemp "$RUNNER_TEMP/npm-latest.XXXXXX")
+            set +e
+            NPM_LATEST=$(npm view "$NAME" dist-tags.latest 2>"$error_file")
+            result=$?
+            set -e
+            npm_error=$(<"$error_file")
+            rm -f "$error_file"
+
+            if [[ "$result" -ne 0 ]]; then
+              npm_code=$(
+                printf '%s\n' "$npm_error" |
+                  awk '$1 == "npm" && ($2 == "error" || $2 == "ERR!") && $3 == "code" { gsub("\r", "", $4); print $4; exit }'
+              )
+              if [[ "$npm_code" != "E404" ]]; then
+                echo "::error::Unable to read npm's latest dist-tag for $NAME; refusing to guess where $VERSION publishes."
+                printf '%s\n' "$npm_error" >&2
+                exit 1
+              fi
+              NPM_LATEST=""
+            fi
+          elif [[ "$PRERELEASE" != "true" ]]; then
+            echo "::error::Invalid prerelease classification."
+            exit 1
+          fi
+
+          if ! DIST_TAG=$(node "$RUNNER_TEMP/release-tools/release-version.mjs" --dist-tag "$VERSION" "$NPM_LATEST"); then
+            echo "::error::Could not choose a dist-tag for $VERSION (npm's latest: '$NPM_LATEST')."
+            exit 1
+          fi
+          if [[ "$PRERELEASE" == "true" ]]; then
+            echo "$VERSION is a prerelease: dist-tag '$DIST_TAG'."
+          elif [[ -z "$NPM_LATEST" ]]; then
+            echo "npm has no latest for this package yet: $VERSION takes dist-tag '$DIST_TAG'."
+          elif [[ "$DIST_TAG" == "latest" ]]; then
+            echo "$VERSION is at or above npm's latest ($NPM_LATEST): dist-tag 'latest'."
+          else
+            echo "::notice::$VERSION is older than npm's latest ($NPM_LATEST): publishing under dist-tag '$DIST_TAG'; 'latest' stays on $NPM_LATEST."
+          fi
+          echo "tag=$DIST_TAG" >> "$GITHUB_OUTPUT"
+
       - name: Install dependencies
         if: steps.npm.outputs.published == 'false'
         run: npm ci
@@ -271,9 +333,13 @@ jobs:
         if: steps.npm.outputs.published == 'false'
         env:
           VERSION: ${{ steps.release.outputs.version }}
-          DIST_TAG: ${{ steps.release.outputs.dist_tag }}
+          DIST_TAG: ${{ steps.dist.outputs.tag }}
         run: |
           set -euo pipefail
+          if [[ -z "$DIST_TAG" ]]; then
+            echo "::error::No dist-tag was chosen for $VERSION."
+            exit 1
+          fi
           echo "Publishing $VERSION under dist-tag '$DIST_TAG'"
           npm publish --access public --tag "$DIST_TAG"
 

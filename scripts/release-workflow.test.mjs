@@ -17,9 +17,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test } from 'vitest';
 
 const SLOW = 60_000;
+
+// Every job runs on spawnSync, and vitest only yields microtasks between tests,
+// so the worker can't read its RPC replies until the file ends; past ~60s that
+// surfaces as an unhandled 'Timeout calling "onTaskUpdate"'. A macrotask turn
+// between tests lets them through.
+afterEach(() => new Promise((resolve) => setImmediate(resolve)));
 const workflow = readFileSync(
     new URL('../.github/workflows/publish.yml', import.meta.url),
     'utf8',
@@ -140,6 +146,18 @@ case "$1" in
         exit 0
         ;;
     view)
+        if [[ "\${3:-}" == "dist-tags.latest" ]]; then
+            case "$NPM_LATEST_MODE" in
+                none) printf 'npm error code E404\\n' >&2; exit 1 ;;
+                empty) exit 0 ;;
+                auth) printf 'npm error code E401\\n' >&2; exit 1 ;;
+                network) printf 'npm error code ECONNRESET\\n' >&2; exit 1 ;;
+                server) printf 'npm error code E500\\n' >&2; exit 1 ;;
+                indeterminate) printf 'unexpected registry response\\n' >&2; exit 1 ;;
+                *) printf '%s\\n' "$NPM_LATEST_MODE" ;;
+            esac
+            exit 0
+        fi
         version="\${2##*@}"
         case "$NPM_MODE" in
             published) printf '%s\\n' "$version" ;;
@@ -271,7 +289,8 @@ function readLog(path) {
  *   ref?: string;                        // overrides github.ref
  *   inputs?: { version?: string; preid?: string };
  *   at?: string;                         // dispatch: check out this commit instead of main's tip
- *   npm?: string;                        // NPM_MODE for `npm view`
+ *   npm?: string;                        // NPM_MODE for `npm view <name>@<version>`
+ *   npmLatest?: string;                  // npm's latest version, or a NPM_LATEST_MODE failure mode
  *   gh?: string;                         // GH_MODE for the Release listing
  *   publish?: 'success' | 'fail';
  *   race?: boolean;                      // land a concurrent merge before the first push
@@ -279,7 +298,18 @@ function readLog(path) {
  */
 function runJob(
     fixture,
-    { event = 'push', tag, ref, inputs = {}, at, npm = 'absent', gh = 'missing', publish = 'success', race = false } = {},
+    {
+        event = 'push',
+        tag,
+        ref,
+        inputs = {},
+        at,
+        npm = 'absent',
+        npmLatest = '0.2.0',
+        gh = 'missing',
+        publish = 'success',
+        race = false,
+    } = {},
 ) {
     const run = ++fixture.runs;
     const work = join(fixture.root, `work-${run}`);
@@ -331,6 +361,7 @@ function runJob(
                 NPM_LOG: npmLog,
                 GH_LOG: ghLog,
                 NPM_MODE: npm,
+                NPM_LATEST_MODE: npmLatest,
                 GH_MODE: gh,
                 NPM_PUBLISH_MODE: publish,
                 RACE_FILE: race ? raceFile : '',
@@ -358,6 +389,7 @@ function runJob(
         output,
         outputs: context.outputs,
         publishes: npmCalls.filter((line) => line.startsWith('publish ')),
+        latestLookups: npmCalls.filter((line) => line.endsWith(' dist-tags.latest')),
         publishedVersions: npmCalls.filter((line) => line.startsWith('published ')).map((line) => line.slice(10)),
         installs: npmCalls.filter((line) => line === 'ci'),
         releases: readLog(ghLog),
@@ -397,7 +429,8 @@ describe('tag push (including a tag made in the GitHub UI)', () => {
                 expect(job.failed, job.output).toBeNull();
                 expect(job.output).toContain('package.json at v0.3.0 says 0.2.0; publishing it as 0.3.0');
                 expect(job.outputs.resolve).toEqual({ tag: 'v0.3.0', mode: 'tag' });
-                expect(job.outputs.release).toMatchObject({ version: '0.3.0', dist_tag: 'latest', latest: 'true' });
+                expect(job.outputs.release).toMatchObject({ version: '0.3.0', latest: 'true' });
+                expect(job.outputs.dist).toEqual({ tag: 'latest' });
                 expect(job.publishes).toEqual(['publish --access public --tag latest']);
                 expect(job.publishedVersions).toEqual(['0.3.0']);
                 expect(job.releases).toHaveLength(1);
@@ -476,6 +509,149 @@ describe('tag push (including a tag made in the GitHub UI)', () => {
                 expect(job.failed).toBe('Publish to npm');
                 expect(job.releases).toEqual([]);
                 expect(mainSubjects(fixture)[0]).toBe('feat: a feature');
+            }),
+        SLOW,
+    );
+});
+
+//* npm Dist-Tag ===
+
+describe('npm dist-tag', () => {
+    test(
+        'a stable version newer than npm\'s latest takes latest',
+        () =>
+            withFixture({ tag: 'v0.3.0' }, (fixture) => {
+                const job = runJob(fixture, { tag: 'v0.3.0', npmLatest: '0.2.0' });
+
+                expect(job.failed, job.output).toBeNull();
+                expect(job.latestLookups).toEqual(['view @pmndrs/upscaler dist-tags.latest']);
+                expect(job.output).toContain("0.3.0 is at or above npm's latest (0.2.0): dist-tag 'latest'");
+                expect(job.outputs.dist).toEqual({ tag: 'latest' });
+                expect(job.publishes).toEqual(['publish --access public --tag latest']);
+            }),
+        SLOW,
+    );
+
+    test(
+        'a maintenance release on an older line publishes under its line tag, never latest',
+        () =>
+            withFixture({ tag: 'v0.3.0' }, (fixture) => {
+                // 0.3.0 shipped and main caught up; then v0.2.1 is cut on an older main commit.
+                pushToMain(fixture, 'release: v0.3.0 [skip ci]', '0.3.0');
+                git(fixture.seed, ['tag', '-a', 'v0.2.1', '-m', 'v0.2.1', 'main~2']);
+                git(fixture.seed, ['push', '-q', 'origin', 'v0.2.1']);
+                const main = originGit(fixture, ['rev-parse', 'main']);
+
+                const job = runJob(fixture, { tag: 'v0.2.1', npmLatest: '0.3.0' });
+
+                expect(job.failed, job.output).toBeNull();
+                expect(job.output).toContain(
+                    "0.2.1 is older than npm's latest (0.3.0): publishing under dist-tag 'v0.2-latest'; 'latest' stays on 0.3.0",
+                );
+                expect(job.outputs.dist).toEqual({ tag: 'v0.2-latest' });
+                expect(job.publishes).toEqual(['publish --access public --tag v0.2-latest']);
+                expect(job.publishedVersions).toEqual(['0.2.1']);
+                // Mirrors the GitHub Release rule: the older tag doesn't take "latest" there either.
+                expect(job.releases[0]).toMatch(/^release create v0\.2\.1 .* --latest=false$/);
+                expect(originGit(fixture, ['rev-parse', 'main'])).toBe(main);
+            }),
+        SLOW,
+    );
+
+    test(
+        're-running the version npm already calls latest keeps latest',
+        () =>
+            withFixture({}, (fixture) => {
+                expect(dispatch(fixture, { version: 'auto' }, { npmLatest: '0.2.0', gh: 'network' }).failed).toBe(
+                    'Create GitHub Release',
+                );
+
+                // Equal is not older: a repair that reaches the publish step while npm's
+                // latest is already this version keeps `latest`, not v0.3-latest.
+                const repair = dispatch(fixture, { version: '0.3.0' }, { npmLatest: '0.3.0' });
+
+                expect(repair.failed, repair.output).toBeNull();
+                expect(repair.outputs.dist).toEqual({ tag: 'latest' });
+            }),
+        SLOW,
+    );
+
+    test.each([
+        ['a 404 (the package is not on npm yet)', 'none'],
+        ['no latest dist-tag', 'empty'],
+    ])(
+        'a first publish with %s takes latest',
+        (_scenario, npmLatest) =>
+            withFixture({ tag: 'v0.3.0' }, (fixture) => {
+                const job = runJob(fixture, { tag: 'v0.3.0', npmLatest });
+
+                expect(job.failed, job.output).toBeNull();
+                expect(job.output).toContain("npm has no latest for this package yet: 0.3.0 takes dist-tag 'latest'");
+                expect(job.publishes).toEqual(['publish --access public --tag latest']);
+            }),
+        SLOW,
+    );
+
+    test.each(['auth', 'network', 'server', 'indeterminate'])(
+        'an npm %s failure reading latest stops the run before publishing',
+        (npmLatest) =>
+            withFixture({ tag: 'v0.3.0' }, (fixture) => {
+                const job = runJob(fixture, { tag: 'v0.3.0', npmLatest });
+
+                expect(job.failed).toBe('Choose npm dist-tag');
+                expect(job.output).toMatch(/unable to read npm's latest dist-tag for @pmndrs\/upscaler/i);
+                expect(job.installs).toEqual([]);
+                expect(job.publishes).toEqual([]);
+                expect(job.releases).toEqual([]);
+                expect(mainSubjects(fixture)[0]).toBe('feat: a feature');
+            }),
+        SLOW,
+    );
+
+    test(
+        'an npm latest that is not a version stops the run before publishing',
+        () =>
+            withFixture({ tag: 'v0.3.0' }, (fixture) => {
+                const job = runJob(fixture, { tag: 'v0.3.0', npmLatest: 'garbage' });
+
+                expect(job.failed).toBe('Choose npm dist-tag');
+                expect(job.output).toMatch(/not a SemVer version: "garbage"/);
+                expect(job.publishes).toEqual([]);
+                expect(job.releases).toEqual([]);
+            }),
+        SLOW,
+    );
+
+    test.each([
+        ['v0.3.0-beta.1', 'beta'],
+        ['v0.3.0-rc.0', 'rc'],
+        ['v0.3.0-0', 'next'],
+    ])(
+        'prerelease %s still publishes to %s, without reading npm\'s latest',
+        (tag, distTag) =>
+            withFixture({ tag }, (fixture) => {
+                // npm's latest is newer and unreadable alike: neither matters for a prerelease.
+                for (const npmLatest of ['0.4.0', 'network']) {
+                    const job = runJob(fixture, { tag, npmLatest });
+
+                    expect(job.failed, job.output).toBeNull();
+                    expect(job.latestLookups).toEqual([]);
+                    expect(job.outputs.dist).toEqual({ tag: distTag });
+                    expect(job.publishes).toEqual([`publish --access public --tag ${distTag}`]);
+                }
+            }),
+        SLOW,
+    );
+
+    test(
+        'a version already on npm skips the lookup along with the publish',
+        () =>
+            withFixture({ tag: 'v0.3.0' }, (fixture) => {
+                const job = runJob(fixture, { tag: 'v0.3.0', npm: 'published', npmLatest: 'network' });
+
+                expect(job.failed, job.output).toBeNull();
+                expect(job.latestLookups).toEqual([]);
+                expect(job.publishes).toEqual([]);
             }),
         SLOW,
     );
