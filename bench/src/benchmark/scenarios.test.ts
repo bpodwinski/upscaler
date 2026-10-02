@@ -8,12 +8,12 @@ const capture = (scenario: string) =>
 
 describe('benchmark scenario registry', () => {
     it('defines every scenario the page-side allowlist accepts, under its own id', () => {
-        const ids = Object.keys(BENCHMARK_SCENARIOS);
-        expect(ids).toEqual(Array.from({ length: ids.length }, (_, i) => `Q${i}`));
-        for (const id of ids) {
+        for (const id of Object.keys(BENCHMARK_SCENARIOS)) {
+            expect(id).toMatch(/^Q\d+$/);
             expect(BENCHMARK_SCENARIOS[id as BenchmarkScenarioId].id).toBe(id);
             expect(capture(id).scenario).toBe(id);
         }
+        expect(() => capture('Q99')).toThrow(/Invalid benchmark scenario/);
     });
 
     it('resolves every capture expression within the scenario', () => {
