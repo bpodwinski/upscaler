@@ -26,6 +26,25 @@ Check them in this order:
 The per-pass reference for what each internal means is
 [`src/shaders/README.md`](../src/shaders/README.md#debugging).
 
+### Reading debug values
+
+A debug view writes a raw value `v` (0–1) to the output texture. `UpscalePass` and the
+bench present it **without tone mapping but with the renderer's output color space**, so
+on an sRGB canvas `v` lands as its sRGB encoding: reactivity 0.5 reads 188/255, 1.0 reads
+255. To recover `v` from a screenshot, decode the pixel with the sRGB transfer function
+(188 → 0.50). Reading the output texture directly gives `v` unencoded.
+
+Tone mapping is skipped because a tone curve remaps every reading (ACES filmic turns 0.5
+into 197/255 and caps 1.0 at 227/255) and would hide clipping. The `material.toneMapped`
+flag can't do this: `WebGPURenderer` ignores it and tone maps a canvas-bound frame as a
+whole, from `renderer.toneMapping`. So `UpscalePass.present()` sets
+`renderer.toneMapping = NoToneMapping` for the debug draw alone and restores it.
+
+On a TSL node, the `RenderPipeline` owns the output transform, so set
+`renderer.toneMapping = NoToneMapping` yourself while a debug view is on and restore it
+afterwards. The pipeline picks the change up on its next `render()`
+(`examples/11-node-reactive` does this).
+
 ## Symptoms
 
 | Symptom | Likely cause |

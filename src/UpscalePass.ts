@@ -3,7 +3,7 @@ import { mrt, output, texture, velocity } from 'three/tsl';
 
 import { Upscaler } from './Upscaler';
 import { getQualityModeRatio } from './math/resolution';
-import { QualityMode, type RuntimeSettings, type UpscalePath } from './types';
+import { DebugView, QualityMode, type RuntimeSettings, type UpscalePath } from './types';
 
 /** Options for {@link UpscalePass.configure}. */
 export interface UpscalePassConfig {
@@ -28,7 +28,8 @@ export interface UpscalePassConfig {
  * - render resolution taken from the upscaler, float depth + half-float color
  * - a full-screen present that uses the renderer's normal output transform,
  *   RGBA included (so a transparent canvas — three's default `alpha: true` —
- *   shows the page wherever the render left alpha below 1)
+ *   shows the page wherever the render left alpha below 1); a debug view skips
+ *   the tone mapping so it shows raw values
  *
  * Use {@link renderScene} for the common single-view case, or {@link draw} +
  * {@link outputTexture} when you want to present the result yourself (split
@@ -171,9 +172,27 @@ export class UpscalePass {
         );
     }
 
-    /** Presents {@link outputTexture} using the renderer's output transform. */
+    /**
+     * Presents {@link outputTexture} using the renderer's output transform.
+     * While a debug view is active (temporal path) the renderer's tone mapping
+     * is skipped and only its output color space applies, so a debug value `v`
+     * reaches the canvas as `v` encoded for that color space — not tone mapped.
+     */
     present(): void {
-        this._quad.render(this._renderer);
+        if (this._path !== 'temporal' || this.upscaler.settings.debugView === DebugView.None) {
+            this._quad.render(this._renderer);
+            return;
+        }
+        // WebGPURenderer ignores `material.toneMapped`: a canvas-bound frame is
+        // tone mapped as a whole by the renderer's output pass, driven by
+        // `renderer.toneMapping`, so that is the switch to drop for this draw.
+        const toneMapping = this._renderer.toneMapping;
+        this._renderer.toneMapping = THREE.NoToneMapping;
+        try {
+            this._quad.render(this._renderer);
+        } finally {
+            this._renderer.toneMapping = toneMapping;
+        }
     }
 
     /** Convenience: {@link draw} then {@link present}. */
