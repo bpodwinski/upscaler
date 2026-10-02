@@ -142,14 +142,12 @@ see [Debugging](./docs/debugging.md#verifying-on-a-real-gpu). The code layout is
 
 ## Releasing
 
-Merging to `main` never publishes. A release is cut by pushing a version tag: run `npm run release` on an up-to-date `main` to compute the next version from [Conventional Commits](https://www.conventionalcommits.org/), run the gate, and create the `release: vX.Y.Z` commit and tag, then push them. The tag push runs the publish workflow, which checks that the tag matches `package.json` and is on `main`, publishes to npm with OIDC **Trusted Publishing** (no tokens, provenance attached), and creates the GitHub Release. [GitHub Releases](https://github.com/pmndrs/upscaler/releases) are the changelog.
+Merging to `main` never publishes, and releasing needs no local step. Either:
 
-```bash
-npm run release -- --dry-run   # preview the version and the commits it includes
-npm run release -- --push      # gate, commit + tag, push: publishes
-```
+- **Actions → Publish to npm → Run workflow** (`version: auto`): CI computes the next version from [Conventional Commits](https://www.conventionalcommits.org/), commits and tags it on `main`, and publishes, all in one run. `patch`/`minor`/`major`, an explicit `X.Y.Z` and a prerelease `preid` are options; or
+- **Releases → Draft a new release → new tag `vX.Y.Z` on `main` → Publish release**: the tag is the version. CI publishes it, keeps your Release notes, and bumps `main`'s `package.json` afterwards.
 
-Prereleases (`--preid beta`), re-running a release and the one-time npm setup are covered in [Releasing](./docs/releasing.md).
+Both check that the tag is SemVer and on `main`, publish to npm with OIDC **Trusted Publishing** (no tokens, provenance attached), and create the GitHub Release if it is missing. [GitHub Releases](https://github.com/pmndrs/upscaler/releases) are the changelog. Re-runs, prereleases, the optional local `npm run release` and the one-time npm setup are covered in [Releasing](./docs/releasing.md).
 
 ## References
 

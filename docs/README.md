@@ -35,9 +35,9 @@ Maintained, for contributors:
   FidelityFX FSR 3.1.5 and the operational notes for each pass.
 - [`bench/docs/BENCHMARKING.md`](../bench/docs/BENCHMARKING.md): how to run and read a
   benchmark.
-- [Releasing](releasing.md): cutting a release with `npm run release` and a version
-  tag, prereleases, re-running the publish workflow, and the npm Trusted Publishing
-  setup.
+- [Releasing](releasing.md): releasing from the Run workflow button or a `vX.Y.Z` tag
+  (both in CI, no local step), prereleases, re-runs, the optional `npm run release`,
+  and the npm Trusted Publishing setup.
 - [`CLAUDE.md`](../CLAUDE.md): working notes for agents and maintainers, including
   the landmines a change must not re-break.
 
