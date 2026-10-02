@@ -9,15 +9,11 @@ experiments. This one is the *manual*.
 ## TL;DR
 
 ```bash
-npm run bench:alpha          # the RGBA-passthrough A/B, ratios 1, 2, 3
-npm run bench:alpha:device   # the same, driven on a phone
 npm run dev                  # interactive bench with a live GPU-ms readout
-```
 
-Anything past `--` overrides the defaults:
-
-```bash
-npm run bench:alpha -- --ratios 2 --blocks 8
+# An interleaved A/B of two registered variants (see "Running an A/B")
+node scripts/run-benchmark.mjs --smoke --ratios 2 --blocks 4 \
+  --variant rcas-hoisted-exposure-v1 --comparison baseline
 ```
 
 ---
@@ -44,7 +40,7 @@ reported +2.6% for a change that an interleaved run measured at +5.1%.)
 
 | term | meaning |
 | --- | --- |
-| **variant** | A registered pipeline configuration, by id — `alpha-rgba-v1`, `baseline`, … |
+| **variant** | A registered pipeline configuration, by id — `baseline`, `rcas-tonemap-space-v1`, … |
 | **ratio** | Display ÷ render resolution. `2` means the scene renders at half width and half height. `1` is native-resolution AA. |
 | **block / repetition** | One full A-B-B-A pattern. `--blocks 4` runs four of them. |
 | **warmup** | Frames rendered and thrown away before timing starts, so shader compilation and caches are not in the sample. |
@@ -62,7 +58,7 @@ Every A/B needs two registered variant ids. To see what exists, look at
 ```bash
 node scripts/run-benchmark.mjs --smoke \
   --ratios 1,2,3 --blocks 4 --warmup 240 --samples 300 \
-  --variant alpha-rgba-v1 --comparison alpha-opaque-v1
+  --variant rcas-hoisted-exposure-v1 --comparison baseline
 ```
 
 `--smoke` is **required** for candidate A/B runs. Without it the script runs the
@@ -123,7 +119,7 @@ Compare it to the noise floor:
   bare percentage.
 - **<3×** — you have not measured anything yet. Add blocks and samples.
 
-A worked example from the alpha A/B: `compute-sum` moved 5.1% against a 0.41%
+A worked example from the (since retired) alpha on/off A/B — `NEXT-STEPS.md` §6: `compute-sum` moved 5.1% against a 0.41%
 noise floor (12×, solid), while `rcas` moved 27.2% against a 9.7% floor (2.8×,
 believable but stated with the caveat). Same run, two very different confidence
 levels — which is exactly why the floor is per-label.
@@ -190,7 +186,8 @@ measurement to run before and after touching anything in `accumulate.ts`.
 ## Benchmarking on a device
 
 ```bash
-npm run bench:alpha:device
+node scripts/run-benchmark.mjs --smoke --cdp http://127.0.0.1:9222 \
+  --ratios 2 --blocks 8 --variant <A> --comparison <B>
 ```
 
 Android with Chrome only — **iOS cannot work**, because Safari exposes no
@@ -205,9 +202,9 @@ adb reverse tcp:5199 tcp:5199                               # device reaches our
 
 `run-benchmark.mjs` hardcodes `http://127.0.0.1:5199` and binds the dev server to
 loopback. Without the **reverse** mapping the phone loads its own localhost, and
-the run dies in a timeout with nothing useful to point at. `bench:alpha:device`
-preflights the DevTools endpoint and warns if `adb reverse --list` is missing the
-mapping, so you get a message instead of a hang.
+the run dies in a timeout with nothing useful to point at. Check both before
+starting: `curl http://127.0.0.1:9222/json/version` must answer, and
+`adb reverse --list` must show `tcp:5199`.
 
 Expect worse data than a desktop run, for two reasons:
 

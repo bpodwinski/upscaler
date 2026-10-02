@@ -165,21 +165,26 @@ Reproduced and fixed:
   collapses and stale alpha cannot ghost. Item 5's relax machinery exists for
   sub-texel luminance churn, which a coverage mask does not have — deliberately not
   reused here.
-- **Opt-out, not opt-in.** `new Upscaler({ alpha: false })` compiles RGB-only
-  builds of EASU / accumulate / RCAS / blit. Those builds are **byte-identical to
-  the pre-alpha shaders** — `shaders.test.ts` pins all four fingerprints against
-  the values this repo shipped before RGBA landed, so the opt-out is provably the
-  old pipeline rather than a second code path that can drift. Selected at
-  construction (it picks pipelines, and the opaque RCAS/blit declare no alpha
-  binding, so the bind-group shapes differ). Default stays **on**: defaulting off
-  would ship the reported bug.
-- **Compile-time, not a runtime branch.** A `hasFlag()` around the work would be a
-  uniform branch, so no divergence — but it would not recover the cost, because
-  the register allocation for the wider path stays either way. Two shader builds
-  do recover it (measured below).
+- **Unconditional — no option (decided in the PR #18 review).** The first draft
+  shipped an `alpha` constructor option defaulting to `renderer.alpha`, with
+  RGB-only builds of EASU / accumulate / RCAS / blit byte-identical to the
+  pre-alpha shaders. Review (gkjohnson, then the maintainer) found the default
+  backwards in practice: three's `WebGPURenderer` defaults to `alpha: true`
+  (`Renderer.js`, r184–r186), so the RGBA builds already ran for nearly everyone
+  and the opaque builds only ran on an explicit `alpha: false`. With alpha-1
+  inputs the RGBA builds produce identical RGB and alpha exactly 1 (EASU's dering
+  clamp and accumulate's alpha box collapse to [1, 1], `mix(1, 1, w)` stores 1.0
+  in rgba16float, RCAS passes the center alpha, blit samples a constant 1), so the
+  option bought only the ~33 µs below at the price of a second code path, an API
+  surface, a linked-guides mismatch warning, and a bind-group footgun (the bench's
+  `_rcasShader` overrides declared the alpha binding while the opaque `Upscaler`
+  did not bind it). Removed along with the `alpha-rgba-v1` / `alpha-opaque-v1`
+  bench identities and `npm run bench:alpha`; the table below is kept as the
+  measured cost of carrying alpha. three's own `FSR1Node` makes the same call.
 
-Cost — interleaved ABBA, `--variant alpha-rgba-v1 --comparison alpha-opaque-v1`,
-300 samples/block, both sides current production on the production RCAS shader:
+Cost — interleaved ABBA, `--variant alpha-rgba-v1 --comparison alpha-opaque-v1`
+(identities since retired; see above), 300 samples/block, both sides then-current
+production on the production RCAS shader:
 
 | ratio | compute-sum (opaque → RGBA) | delta | accumulate | rcas |
 | --- | --- | --- | --- | --- |
@@ -206,37 +211,12 @@ used the default bench variant — which resolves to `RCAS_LEGACY_SHADER`, the
 heavy per-tap form. Against that baseline the same absolute load is a small
 relative cost, which understated the real figure. The table above supersedes it.
 
-**Reproducing it, including on a device.** The pair is registered in
-`bench/src/benchmark/variants.ts` and wrapped in `scripts/bench-alpha.mjs`:
-
-```bash
-npm run bench:alpha                              # local Chrome, ratios 1,2,3
-npm run bench:alpha -- --ratios 2 --blocks 8     # extra flags override the defaults
-npm run bench:alpha:device                       # a phone over remote debugging
-```
-
-The device mode defaults to `--cdp http://127.0.0.1:9222` and preflights it,
-because two things have to be reachable and only one of them is obvious:
-
-```bash
-adb forward tcp:9222 localabstract:chrome_devtools_remote   # drive the device
-adb reverse tcp:5199 tcp:5199                               # device -> host bench
-```
-
-`run-benchmark.mjs` hardcodes `http://127.0.0.1:5199` and binds the dev server to
-loopback, so without the **reverse** mapping the phone loads its own localhost
-and the run dies in a timeout with nothing to point at. The wrapper checks the
-DevTools endpoint, warns when `adb reverse --list` has no `tcp:5199`, and prints
-the two commands on failure. iOS cannot work at all here — Safari exposes no CDP.
-
-Two caveats on the numbers themselves: (1) `timestamp-query` is frequently absent
-on mobile browsers, and `GpuTimer` no-ops when it is, so the per-pass map comes
-back empty and only frame time is available — noisier, and it includes the scene
-render; (2) the cost is ALU and register pressure, exactly what diverges between
-desktop and a mobile tiler, so do not assume the ~33 µs transfers. Ratio 3 is the
-interesting row for mobile, and it is already the worst percentage on desktop.
-Device runs against a user-owned browser also lose the harness's cold-start and
-throttling controls, so give them more blocks than a local run needs.
+**Reproducing it.** The A/B pair was retired with the option, so this table can no
+longer be re-run as-is; reproducing it would mean restoring the opaque builds on a
+scratch branch. Device setup for mobile runs (CDP forward + `adb reverse` for the
+bench port, and why `timestamp-query` is often missing on phones) lives in
+`bench/docs/BENCHMARKING.md`. The cost is ALU and register pressure, exactly what
+diverges between desktop and a mobile tiler, so do not assume ~33 µs transfers.
 
 **Open alternative, not taken.** Putting alpha in the history texture's `.a` and
 moving the accumulation age into the locks buffer would make RCAS's alpha free
@@ -265,7 +245,16 @@ GPU verification (headless Chrome + CDP, Apple Metal-3, 2026-08-25):
 Frozen-identity note: the alpha-source binding was added to **every** RCAS form, so
 `rcasPerTap` (and `easuSourceApprox`, which derives from `EASU_SHADER`) re-fingerprint.
 Their A/B pairings stay valid — candidate and baseline gained the same plumbing — and
-the new fingerprints are recorded in the two shader tests.
+the new fingerprints are recorded in the two shader tests. Removing the option did not
+change a byte of any RGBA shader (all eight exported EASU/RCAS/blit/accumulate strings
+compared identical before/after), so every production fingerprint is unchanged by it.
+
+**Behaviour change for consumers.** 0.2 wrote alpha 1.0 everywhere. With a default
+`WebGPURenderer` (`alpha: true`, clear alpha 0) and no `scene.background` / opaque clear
+color, empty regions are now transparent through `UpscalePass` and the TSL nodes —
+matching three without the upscaler. Set `scene.background` or an opaque clear color
+(or `alpha: false` on the renderer) for the old look. Flagged as a breaking change in
+the release notes (README "Alpha" carries the migration note).
 
 ## Explicitly not planned (measured against)
 

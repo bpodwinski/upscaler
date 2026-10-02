@@ -250,8 +250,10 @@ export interface TemporalGuides {
     /**
      * Luminance-stability lock state at **display** res (rgba16float):
      * r = lock lifetime, g = locked luma (conditioned tonemap space),
-     * b = shading-change age. A previous-frame prior for render-stage
-     * consumers. `null` on the `guides` path.
+     * b = shading-change age, a = the resolved (accumulated) caller alpha,
+     * 0..1 — the value RCAS/blit write to the output's `.a`, kept here because
+     * the history's own `.a` is the accumulation age. A previous-frame prior
+     * for render-stage consumers. `null` on the `guides` path.
      */
     readonly lockStatus: Texture | null;
     /**

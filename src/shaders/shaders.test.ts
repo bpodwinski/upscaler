@@ -11,17 +11,21 @@ import {
     getActiveResolverCount,
 } from '../../bench/src/benchmark/variants';
 import { ComputePass } from '../internal/ComputePass';
-import { ACCUMULATE_OPAQUE_SHADER, ACCUMULATE_SHADER } from './accumulate';
-import { BLIT_OPAQUE_SHADER, BLIT_SHADER } from './blit';
+import * as accumulateModule from './accumulate';
+import { ACCUMULATE_SHADER } from './accumulate';
+import * as blitModule from './blit';
+import { BLIT_SHADER } from './blit';
 import { DEBUG_SHADER } from './debug';
-import { EASU_OPAQUE_SHADER, EASU_SHADER } from './easu';
+import * as easuModule from './easu';
+import { EASU_SHADER } from './easu';
 import { GENERATE_REACTIVE_SHADER } from './generateReactive';
 import { LUMINANCE_PYRAMID_SHADER } from './luminancePyramid';
 import { MOMENTS_SHADER } from './moments';
+import * as rcasModule from './rcas';
 import {
     RCAS_HOISTED_EXPOSURE_SHADER,
     RCAS_LEGACY_SHADER,
-    RCAS_OPAQUE_SHADER,
+    RCAS_PER_TAP_SHADER,
     RCAS_SHADER,
     RCAS_TONEMAP_SPACE_SHADER,
 } from './rcas';
@@ -199,44 +203,63 @@ describe('RCAS load-strategy experiment shaders', () => {
     });
 });
 
-// The `alpha: false` opt-out exists to be provably free, not merely cheap. Each
-// opaque build must be the byte-for-byte pre-alpha shader — the fingerprints
-// below are the ones this repo shipped before RGBA passthrough landed. If one
-// of these drifts, the opt-out has become a second code path and the A/B that
-// justifies it is measuring the wrong thing.
-describe('opaque builds reproduce the pre-alpha pipeline', () => {
-    const PRE_ALPHA_FINGERPRINTS: Record<string, string> = {
-        blit: '673108e1',
-        easu: '11632358',
-        rcas: '51bd6d54',
-        accumulate: '612f610d',
-    };
-    const OPAQUE_SHADERS: Record<string, string> = {
-        blit: BLIT_OPAQUE_SHADER,
-        easu: EASU_OPAQUE_SHADER,
-        rcas: RCAS_OPAQUE_SHADER,
-        accumulate: ACCUMULATE_OPAQUE_SHADER,
-    };
+// Alpha passthrough is unconditional (issue #15, review of PR #18): there is
+// one build of each pass, as in three's FSR1Node. With an opaque input every
+// stage reduces to alpha exactly 1, so an RGB-only variant would buy a
+// micro-optimisation at the price of a second code path and an option whose
+// renderer-derived default selected the RGBA build for nearly everyone anyway.
+describe('alpha passthrough is unconditional', () => {
+    const bindings = (source: string) =>
+        [...source.matchAll(/@group\(0\) @binding\((\d+)\)/g)].map((m) => Number(m[1]));
 
-    it.each(Object.keys(OPAQUE_SHADERS))('%s is byte-identical to the pre-alpha shader', (name) => {
-        expect(fingerprint(OPAQUE_SHADERS[name])).toBe(PRE_ALPHA_FINGERPRINTS[name]);
-    });
-
-    it('declares no alpha binding, so its bind group is one entry shorter', () => {
-        for (const source of [RCAS_OPAQUE_SHADER, BLIT_OPAQUE_SHADER]) {
-            expect(source).not.toContain('alphaSource');
+    it('exports no RGB-only shader builds', () => {
+        for (const module of [accumulateModule, blitModule, easuModule, rcasModule]) {
+            for (const name of Object.keys(module)) expect(name).not.toMatch(/OPAQUE/);
         }
-        const bindings = (source: string) =>
-            [...source.matchAll(/@group\(0\) @binding\((\d+)\)/g)].map((m) => Number(m[1]));
-        expect(bindings(RCAS_OPAQUE_SHADER)).toEqual([0, 1, 2, 3]);
-        expect(bindings(BLIT_OPAQUE_SHADER)).toEqual([0, 1, 2, 3, 4]);
     });
 
-    it('keeps the RGBA builds distinct from them', () => {
-        expect(BLIT_SHADER).not.toBe(BLIT_OPAQUE_SHADER);
-        expect(EASU_SHADER).not.toBe(EASU_OPAQUE_SHADER);
-        expect(RCAS_SHADER).not.toBe(RCAS_OPAQUE_SHADER);
-        expect(ACCUMULATE_SHADER).not.toBe(ACCUMULATE_OPAQUE_SHADER);
+    it('declares the RCAS alpha source in every form Upscaler can be handed', () => {
+        // `_rcasShader` overrides (the bench's frozen identities and load-strategy
+        // experiments) share _encodeRcas's five-entry bind group, so each must
+        // declare binding 4 or bind-group creation fails on device.
+        for (const source of [
+            RCAS_SHADER,
+            RCAS_LEGACY_SHADER,
+            RCAS_PER_TAP_SHADER,
+            RCAS_HOISTED_EXPOSURE_SHADER,
+            RCAS_TONEMAP_SPACE_SHADER,
+        ]) {
+            expect(bindings(source)).toEqual([0, 1, 2, 3, 4]);
+            expect(source).toContain('@group(0) @binding(4) var alphaSource : texture_2d<f32>;');
+            expect(source).toContain('vec4f(pix, textureLoad(alphaSource, sp, 0).a)');
+            expect(source).not.toContain('vec4f(pix, 1.0)');
+        }
+    });
+
+    it('carries alpha through blit and EASU instead of writing 1.0', () => {
+        expect(bindings(BLIT_SHADER)).toEqual([0, 1, 2, 3, 4, 5]);
+        expect(BLIT_SHADER).toContain('textureStore(outputColor, gid.xy, vec4f(c, a));');
+        expect(BLIT_SHADER).not.toContain('vec4f(c, 1.0)');
+        // EASU filters all four channels with one kernel and one dering clamp.
+        expect(EASU_SHADER).toContain('fn easuLoad(p : vec2i) -> vec4f {');
+        expect(EASU_SHADER).toContain('var aC = vec4f(0.0);');
+        expect(EASU_SHADER).toContain('textureStore(outputColor, gid.xy, pix);');
+        expect(EASU_SHADER).not.toContain('vec4f(pix, 1.0)');
+    });
+
+    it('keeps the resolved alpha in the locks buffer, never the history age', () => {
+        // History .a is the accumulation age on its Catmull-Rom reprojection;
+        // alpha must ride the locks buffer's spare .a on both store paths.
+        expect(ACCUMULATE_SHADER).toContain(
+            'textureStore(locksOut, gid.xy, vec4f(0.0, 0.0, 0.0, currentAlpha));',
+        );
+        expect(ACCUMULATE_SHADER).toContain(
+            'textureStore(locksOut, gid.xy, vec4f(lockLife, lockedLuma, shadingChange, resultAlpha));',
+        );
+        expect(ACCUMULATE_SHADER).not.toContain('textureStore(locksOut, gid.xy, vec4f(0.0));');
+        expect(ACCUMULATE_SHADER).toContain(
+            'textureStore(historyOut, gid.xy, vec4f(result, newCount / C.maxAccumulation));',
+        );
     });
 });
 

@@ -1,5 +1,4 @@
 import {
-    createAlphaVariantResolver,
     createBaselineResolver,
     createRcasExperimentResolver,
     createRcasNumericParityResolver,
@@ -37,8 +36,6 @@ const RESOLVER_FACTORIES = {
     'source-filter-bundle-v1': createSourceBundleResolver,
     'source-structural-bundle-v1': createSourceBundleResolver,
     'source-spd-resolver-bundle-v1': createSourceBundleResolver,
-    'alpha-rgba-v1': createAlphaVariantResolver,
-    'alpha-opaque-v1': createAlphaVariantResolver,
 } satisfies Record<BenchmarkVariantId, BenchmarkVariantDefinition['create']>;
 
 /**
@@ -66,10 +63,6 @@ export function getBenchmarkUpscalerKind(
 }
 
 function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
-    // The RGBA/opaque pair is production on both sides — same resource graph,
-    // same timing labels, same RCAS. Only the compiled shader builds differ, so
-    // it gets its own shaderKey and is otherwise the baseline metadata.
-    const alphaVariant = id === 'alpha-rgba-v1' || id === 'alpha-opaque-v1';
     const sourceBundle = getBenchmarkUpscalerKind(id) === 'candidate';
     const structural =
         id === 'source-structural-bundle-v1' || id === 'source-spd-resolver-bundle-v1';
@@ -136,11 +129,7 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
           : ['prepareInputs', 'exposure', 'depthClip', 'accumulate', 'rcas'];
     return {
         id,
-        name: id === 'alpha-rgba-v1'
-            ? 'Production, RGBA passthrough'
-            : id === 'alpha-opaque-v1'
-              ? 'Production, opaque builds (pre-alpha shaders)'
-            : spdResolver
+        name: spdResolver
             ? 'Source SPD temporal resolver bundle v1'
             : structural
               ? 'Source structural inputs/reactivity bundle v1'
@@ -170,7 +159,7 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
         },
         resourceGraph: sourceBundle ? sourceResourceGraph : RESOURCE_GRAPH,
         pipeline: {
-            shaderKey: alphaVariant || sourceBundle || rcasExperiment
+            shaderKey: sourceBundle || rcasExperiment
                 ? id
                 : rcasNumericParity
                 ? rcasDenoise

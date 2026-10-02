@@ -137,18 +137,11 @@ The **spatial path** (`path: 'spatial'`) is a faithful FSR1 port: EASU's edge-di
 
 ### Alpha
 
-Every path upscales **RGBA**, not RGB: the input's alpha is filtered and accumulated alongside color rather than replaced with 1.0, so a `WebGPURenderer({ alpha: true })` canvas stays transparent through the upscale and composites over the page. EASU runs one kernel over all four channels (the convention three's own `FSR1Node` uses); RCAS sharpens color and passes coverage through untouched; the temporal path resolves alpha with the accumulate pass's own jitter-aware taps and blend weight, so a coverage edge converges on the same schedule as the color it belongs to. **It follows your renderer.** Create the canvas transparent (`new WebGPURenderer({ alpha: true })`) and coverage is carried through with no further configuration; an opaque canvas compiles RGB-only shader builds and pays nothing for a channel it cannot display.
+Every path upscales **RGBA**, not RGB: the input's alpha is filtered and accumulated alongside color rather than replaced with 1.0, so a transparent canvas stays transparent through the upscale and composites over the page — the same convention as three's own `FSR1Node`. EASU runs one kernel over all four channels; RCAS sharpens color and passes coverage through untouched; the temporal path resolves alpha with the accumulate pass's own jitter-aware taps and blend weight, so a coverage edge converges on the same schedule as the color it belongs to.
 
-Override it when the renderer's flag is the wrong signal:
+There is no option for it. With an opaque input (alpha 1 everywhere) every stage resolves to alpha exactly 1, so an opaque render comes out opaque; carrying the fourth channel costs a few tens of microseconds of display-resolution work.
 
-```js
-// Opaque canvas, but the upscaled texture feeds a post graph that needs coverage.
-new Upscaler({ renderer, alpha: true });
-// Transparent canvas whose transparency is for something else on the page.
-new Upscaler({ renderer, alpha: false });
-```
-
-`UpscalePass` and the TSL nodes take the same option, and `upscaler.alpha` reports what was resolved. It is a constructor option rather than a runtime setting because it selects pipelines: alpha-on costs a flat ~33 µs of display-resolution work (~0.2% of a 60 fps frame), and alpha-off compiles shaders byte-identical to the pre-alpha ones.
+> **Coming from 0.2:** earlier versions wrote alpha 1.0 everywhere. three's `WebGPURenderer` defaults to `alpha: true` and clears to alpha 0, so a scene with no `scene.background` (and no opaque clear color) presented through `UpscalePass` or the TSL nodes now shows the page through its empty regions — exactly what three does without the upscaler. For the old look, set `scene.background` or `renderer.setClearColor(color, 1)`, or create the renderer with `alpha: false`. (A hand-rolled present quad with an opaque material still resolves alpha to 1.)
 
 Live references: `examples/14-pathtracer-alpha` (`three-gpu-pathtracer` accumulating at half resolution behind a transparent canvas, spatial path) and `examples/15-transparent-canvas` (the temporal path, where jitter reconstructs coverage rather than just interpolating it).
 

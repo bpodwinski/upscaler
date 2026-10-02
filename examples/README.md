@@ -96,12 +96,13 @@ check) until the depth/velocity GPU textures exist before the first dispatch.
 
 ### The `14` pattern (transparent canvas)
 
-Alpha survives every path, so a renderer created with `alpha: true` composites over
-the page. Three things have to line up:
+Alpha survives every path, so a transparent canvas composites over the page.
+Three things have to line up:
 
-1. `new WebGPURenderer({ alpha: true })` (the swap chain goes to `'premultiplied'`)
-   plus `renderer.setClearAlpha(0)` and `scene.background = null`, so the render
-   leaves the background at alpha 0.
+1. A transparent canvas — `new WebGPURenderer({ alpha: true })`, which is three's
+   default (the swap chain goes to `'premultiplied'` and clears to alpha 0) — and
+   `scene.background = null`, so the render leaves the background at alpha 0. Every
+   other example paints `scene.background`, which is what keeps it opaque.
 2. The input the upscaler is handed must actually carry that alpha — for `14` that
    is the path tracer's own RGBA accumulation target.
 3. The present must keep it. `UpscalePass.present()` already does (its quad is

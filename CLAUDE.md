@@ -92,12 +92,6 @@ npm run build      # library build → dist/ (vite lib + tsc declarations)
 # How to run/read a benchmark, the Q0-Q12 scenario catalogue, and the device
 # setup: bench/docs/BENCHMARKING.md
 
-# RGBA-passthrough A/B (alpha on vs off, interleaved ABBA). --device drives a
-# phone over remote debugging; it preflights the CDP endpoint and the adb
-# reverse mapping the bench dev server needs. Evidence: bench/docs/NEXT-STEPS.md §6.
-npm run bench:alpha
-npm run bench:alpha:device
-
 # Still-scene convergence meter (GPU, headless Chrome + CDP): consecutive +
 # same-jitter-phase frame diffs plus debug-view PNGs on a deterministic
 # scenario. Q12 = cornell + point-light shadow dither (consumer report 3 repro).
@@ -212,7 +206,7 @@ harness: locks on `04-aliasing-torture`, the reactive mask on `05-transparency` 
 explicit acceptance test), RCAS denoise on `06-screenspace-gi`.
 
 **Temporal fidelity:**
-- **Luminance-stability locks.** Persistent display-res lock buffer in `accumulate.ts` (r = lifetime, g = locked luma), reprojected through motion; detects thin luminance outliers, grows a lock while present, breaks on disocclusion/shading change, then widens the rectification AABB + boosts history for locked pixels. Toggle `settings.lockThinFeatures` (`FLAG_LOCKS`); inspect via `DebugView.Locks`. Tuning constants (top of `accumulate.ts`) are defaults, not final — tighten if thin features ghost, loosen if they still dim.
+- **Luminance-stability locks.** Persistent display-res lock buffer in `accumulate.ts` (r = lifetime, g = locked luma, b = shading-change factor, a = resolved caller alpha — see Alpha passthrough below), reprojected through motion; detects thin luminance outliers, grows a lock while present, breaks on disocclusion/shading change, then widens the rectification AABB + boosts history for locked pixels. Toggle `settings.lockThinFeatures` (`FLAG_LOCKS`); inspect via `DebugView.Locks`. Tuning constants (top of `accumulate.ts`) are defaults, not final — tighten if thin features ghost, loosen if they still dim.
 - **Auto-exposure.** `luminancePyramid.ts` reduces the scene to a single log-average luminance (one-workgroup 32×32-tap reduction; no mip chain — nothing consumes intermediate mips) → a pre-exposure eased over time (eye-adaptation). `accumulate.ts` pre-exposes the input before the invertible tonemap; `rcas.ts`/`blit.ts` divide it back out before display — so HDR scenes of very different brightness accumulate in the same well-conditioned range **without changing final brightness**. Toggle `settings.autoExposure` (`FLAG_AUTO_EXPOSURE`); inspect via `DebugView.Exposure`. Constants (top of `luminancePyramid.ts`: key/min/max/adapt-speed) are defaults.
   - **External exposure input.** An app that meters its own exposure feeds it via `dispatch({ exposureTexture })` (value in the red texel, any float format); it overrides both auto and fixed exposure and is still divided back out before display (conditions accumulation, not brightness). Wired as binding 5 of the pyramid pass behind `FLAG_EXTERNAL_EXPOSURE` (the 1024 bit) and funnelled through the same single `select`, so downstream passes are untouched and `avgLum` stays our own measurement for the shading detector. Bound to the reactive dummy as a placeholder when absent. Also on the composable node as `options.exposureTexture` (mirrors FSR3's `exposure` dispatch resource).
   - **Host pre-exposure (`preExposureTexture`).** DeltaPreExposure history correction + host-invariant auto-exposure metering (auto-exposure must not chase a step the app already metered — skipping this reads as a ~2s full-screen false shading change). Validated on the Q11 bench scenario; byte-identical output when the input is absent.
@@ -221,43 +215,40 @@ explicit acceptance test), RCAS denoise on `06-screenspace-gi`.
 - **Reactive-mask authoring helper.** `dispatch({ reactiveOpaqueColor })` auto-generates the mask from the opaque-vs-final color diff (`generateReactive.ts`, FSR2's `GenerateReactiveMask`); no explicit `reactive` mask needed. `UpscalePresenter.setReactiveOpaqueColor()` threads it; `examples/05-transparency` offers manual-coverage vs auto-diff. Caveat: jitter the opaque pass like the final or high-contrast edges leave faint reactivity (sub-pixel misalignment).
 - **RCAS denoise variant.** `rcas.ts` has FSR1's `FSR_RCAS_DENOISE` path (attenuate the sharpening lobe on lone luma outliers so grain from noisy inputs isn't amplified), gated by `settings.rcasDenoise` (`FLAG_RCAS_DENOISE`, off by default). Pairs with an upstream spatial denoiser; `examples/06-screenspace-gi` toggles it on for the reduced-res SSR/GI.
 
-**Alpha (RGBA) passthrough** (2026-08-25, issue #15). Every path preserves the input's
-alpha instead of writing 1.0, so a `WebGPURenderer({ alpha: true })` canvas stays
-transparent through the upscale. EASU filters RGBA with one kernel; RCAS sharpens RGB and
-passes the center tap's alpha; the temporal path resolves alpha with the accumulate pass's
-own Lanczos taps and blend weight. **The mechanism to not re-break:** the history
-texture's `.a` is the accumulation age, so resolved alpha is stored in the **locks
-texture's spare `.a`** and read by RCAS/blit through a dedicated binding (rcas 4, blit 5;
-bound to the color input itself on the bilinear/spatial paths, so one code path covers
-all three). This keeps the age on its exact Catmull-Rom reprojection — the delicate,
-measured part — and costs no extra fetch while locks are on, since the lock path already
-samples `locksIn` at `prevUV`. Alpha's rectification is the local 3×3 alpha range, not the
-variance AABB + relax terms (a coverage mask has no sub-texel luminance churn to protect).
-**The default follows `renderer.alpha`** — a transparent canvas is exactly the case that
-needs coverage carried through, and an opaque one cannot display it, so most users never
-touch the flag. Explicit `alpha: true/false` overrides (an opaque canvas whose output is
-composited elsewhere needs `true`; the renderer's flag cannot see that). Threaded through
-`UpscalePass`, `UpscalerNode`, and the linked-guides `_acquireUpscaler` handshake — which
-warns rather than silently ignoring a conflicting request, since pipelines are already
-compiled by then. `upscaler.alpha` reports the resolved value; `src/upscaler.test.ts` pins
-the resolution rule (GPU-free). `alpha: false` compiles RGB-only builds
-of EASU/accumulate/RCAS/blit that are **byte-identical to the pre-alpha shaders**
-(`shaders.test.ts` pins all four fingerprints — if one drifts the opt-out has silently
-become a second code path). It is a constructor option, not a setting: it selects
-pipelines, and the opaque RCAS/blit declare no alpha binding, so bind-group shapes differ
-with it. Deliberately compile-time rather than a `hasFlag()` branch — a uniform branch
-would not recover the cost, since the wider path's register allocation stays either way.
-Measured cost of alpha-on (interleaved ABBA, `alpha-rgba-v1` vs `alpha-opaque-v1`):
-**~33 µs flat** — +14.6 µs accumulate, +18.1 µs RCAS — which is +3.6% / +5.1% / +5.5% of
-compute at ratio 1 / 2 / 3. Both passes are display-res, so the absolute cost does not
-scale with ratio; the percentage only moves because the rest of the frame gets cheaper.
-**RCAS pays +27%** because production RCAS is the cheap conditioned-space form, so one
-extra display-res load is large relatively. Evidence + the rejected
-history/locks-swap alternative: `bench/docs/NEXT-STEPS.md` §6. GPU-verified across
-`UpscalePass`, the TSL nodes, and the raw `Upscaler`; the acceptance demos are
-`examples/14-pathtracer-alpha` (spatial) and `examples/15-transparent-canvas` (temporal). Note `UpscalePass`'s present quad is
-`transparent: true` + `NoBlending` — an opaque material resolves alpha to 1, and a
-full-screen present wants an overwrite, not a composite.
+**Alpha (RGBA) passthrough** (2026-08-25, issue #15; made unconditional in the PR #18
+review). Every path preserves the input's alpha instead of writing 1.0, so a transparent
+canvas stays transparent through the upscale. EASU filters RGBA with one kernel; RCAS
+sharpens RGB and passes the center tap's alpha; the temporal path resolves alpha with the
+accumulate pass's own Lanczos taps and blend weight. **The mechanism to not re-break:** the
+history texture's `.a` is the accumulation age, so resolved alpha is stored in the **locks
+texture's spare `.a`** (public as `guides.lockStatus.a`) and read by RCAS/blit through a
+dedicated binding (rcas 4, blit 5; bound to the color input itself on the bilinear/spatial
+paths, so one code path covers all three). This keeps the age on its exact Catmull-Rom
+reprojection — the delicate, measured part — and costs no extra fetch while locks are on,
+since the lock path already samples `locksIn` at `prevUV`.
+**Unconditional — no option, no RGB-only builds** (like three's `FSR1Node`). An earlier
+draft had an `alpha` option defaulting to `renderer.alpha` plus byte-identical opaque
+builds; since three's `WebGPURenderer` defaults to `alpha: true`, that default selected the
+RGBA builds for nearly everyone, and with alpha-1 inputs the RGBA builds already produce
+identical RGB and alpha exactly 1 (EASU's dering clamp and accumulate's alpha box pin to
+[1, 1], RCAS passes center alpha, blit samples a constant 1). Don't reintroduce a flag for
+the ~33 µs it saved. **Every RCAS form declares binding 4** (production, the frozen
+`RCAS_PER_TAP_SHADER` / `RCAS_LEGACY_SHADER` bench identities, the load-strategy
+experiments), because `_encodeRcas` always binds five entries — an `_rcasShader` override
+without it fails bind-group creation; `shaders.test.ts` enforces it.
+**Behaviour change vs 0.2:** with a default renderer (`alpha: true`, clear alpha 0) and no
+`scene.background`/opaque clear color, empty regions are now transparent through the
+upscale (matching three without the upscaler). The examples run on three's default canvas
+(`examples/shared/boot.ts` no longer forces `alpha: false`) and every opaque example paints
+`scene.background`. Measured cost (interleaved ABBA, 2026-08-25, before the option was
+removed): **~33 µs flat** — +14.6 µs accumulate, +18.1 µs RCAS — which is +3.6% / +5.1% /
++5.5% of compute at ratio 1 / 2 / 3 (display-res work, so it does not scale with ratio).
+Evidence + the rejected history/locks-swap alternative: `bench/docs/NEXT-STEPS.md` §6.
+GPU-verified across `UpscalePass`, the TSL nodes, and the raw `Upscaler`; the acceptance
+demos are `examples/14-pathtracer-alpha` (spatial) and `examples/15-transparent-canvas`
+(temporal). Note `UpscalePass`'s present quad is `transparent: true` + `NoBlending` — an
+opaque material resolves alpha to 1, and a full-screen present wants an overwrite, not a
+composite.
 
 **Public surfaces** (both GPU-verified):
 - **`UpscalePass`** (`src/UpscalePass.ts`) — the imperative drop-in (graduated from `UpscalePresenter`, which is now a re-export shim). Bakes in the MRT/jitter/velocity/present recipe. Covers renderer-agnostic / non-graph use.

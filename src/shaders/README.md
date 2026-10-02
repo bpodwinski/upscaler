@@ -663,9 +663,15 @@ only as an example presentation policy.
   content) and on the temporal path (transparent-canvas scene, still and moving), across
   `UpscalePass`, the TSL nodes, and the raw `Upscaler`.
 
-**Decision:** **Adopted, unconditional.** No flag: with an opaque input every stage
-reduces to the previous math (a filtered/blended field of 1.0 is 1.0), so there is no
-behavior to opt into or out of.
+**Decision:** **Adopted, unconditional.** No flag and no RGB-only builds: with an opaque
+input every stage reduces to the previous math (a filtered/blended field of 1.0 is 1.0 —
+EASU's dering clamp and accumulate's alpha box pin to [1, 1]), so there is no behavior to
+opt into or out of. A draft `alpha` option with byte-identical opaque builds was removed
+in review: three's `WebGPURenderer` defaults to `alpha: true`, so its renderer-derived
+default ran the RGBA builds for nearly everyone anyway, and the only thing it bought was
+~33 µs of display-res work (`bench/docs/NEXT-STEPS.md` §6). Because every RCAS form
+(production, frozen bench identities, experiments) declares the alpha-source binding,
+one bind-group shape fits any `_rcasShader` override.
 
 Rectification note: alpha's box is the *local 3×3 range*, not a variance AABB with the
 relax terms color uses. At a coverage edge the jittered taps span the full 0..1 range, so
@@ -795,7 +801,8 @@ runtime flags, while structural changes need separate resource graphs and pipeli
 
 The local lock heuristic is intended to reduce thin-feature dimming and shimmer from
 rectification. `accumulate.ts` keeps display-resolution lock state (r = lifetime,
-g = locked luma), reprojects it with motion, and derives candidates from neighborhood
+g = locked luma, b = shading-change factor for the debug view, a = resolved caller alpha
+— see *Alpha passthrough*), reprojects it with motion, and derives candidates from neighborhood
 `peakiness × contrast`. A lock widens the local rectification box
 (`LOCK_CLAMP_RELAX`) and increases history influence (`LOCK_HISTORY_BOOST`).
 

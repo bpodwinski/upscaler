@@ -26,8 +26,9 @@ import { assembleShader } from './wgsl';
  * same blend weight — and stored in the locks buffer's spare `.a`, because
  * the history's own `.a` is the accumulation age. The color history's age
  * therefore keeps its exact Catmull-Rom reprojection; alpha reprojects
- * bilinearly with the locks. An opaque input (alpha 1 everywhere) leaves
- * every stage byte-identical to the pre-alpha pipeline.
+ * bilinearly with the locks. An opaque input (alpha 1 everywhere) resolves
+ * to exactly 1: every tap, box bound and history value is 1, so the blend
+ * cannot move it.
  *
  * Bindings:
  * - 1: scene color, render size (linear HDR)
@@ -47,87 +48,11 @@ import { assembleShader } from './wgsl';
  * - 12: shading-change response, ceil(render/2) (r32float from
  *       shadingChange.ts; 1×1 zero dummy when the detector is off)
  */
-function createAccumulateShader(alpha: boolean): string {
-    // Each pair is (RGBA build, opaque build). The opaque strings reproduce the
-    // pre-alpha shader exactly, which the `accumulate` fingerprint test pins —
-    // so `alpha: false` is provably the old pipeline, not a parallel one.
-    const pick = (on: string, off: string) => (alpha ? on : off);
-    const alphaAccumulators = pick(
-        `
-    var alphaSum = 0.0;`,
-        '',
-    );
-    const alphaBox = pick(
-        `
-    var alphaMin = 1.0e5;
-    var alphaMax = -1.0e5;`,
-        '',
-    );
-    const tapLoad = pick(
-        `let src = textureLoad(inputColor, coord, 0);
-            let c = tonemapInvertible(src.rgb * exposure);`,
-        'let c = tonemapInvertible(textureLoad(inputColor, coord, 0).rgb * exposure);',
-    );
-    const tapAlpha = pick(
-        `
-            // Alpha takes the same weights but none of the conditioning — it is
-            // already bounded, and tonemapping a coverage value is meaningless.
-            alphaSum += src.a * w;`,
-        '',
-    );
-    const tapAlphaBox = pick(
-        `
-            alphaMin = min(alphaMin, src.a);
-            alphaMax = max(alphaMax, src.a);`,
-        '',
-    );
-    const currentAlpha = pick(
-        `
-    let currentAlpha = clamp(alphaSum / max(weightSum, 1.0e-4), alphaMin, alphaMax);`,
-        '',
-    );
-    const resetLocks = pick(
-        'textureStore(locksOut, gid.xy, vec4f(0.0, 0.0, 0.0, currentAlpha));',
-        'textureStore(locksOut, gid.xy, vec4f(0.0));',
-    );
-    // The RGBA build hoists the lock fetch out of the branch so the alpha
-    // history can share it; the opaque build leaves it exactly where it was.
-    const lockFetchHoisted = pick(
-        `
-    //
-    // The fetch is hoisted out of the branch because the alpha history shares
-    // it (locks .a); with locks on — the default — that costs nothing new.
-    let lockPrev = textureSampleLevel(locksIn, linearSampler, prevUV, 0.0);`,
-        '',
-    );
-    const lockFetchInline = pick('', '\n        let lockPrev = textureSampleLevel(locksIn, linearSampler, prevUV, 0.0);');
-    const alphaResolve = pick(
-        `
-    //* Alpha Resolve
-    // Alpha gets the color blend weight, so a coverage edge converges on the
-    // same schedule as the color it belongs to. Its rectification is the local
-    // 3x3 alpha range rather than a variance AABB: at a coverage edge the
-    // jittered taps span the whole 0..1 range, so history passes untouched and
-    // accumulates; on a flat region the range collapses and stale alpha cannot
-    // ghost. No relax term — that machinery exists for the sub-texel luminance
-    // churn a coverage mask does not have.
-    let rectifiedAlpha = clamp(lockPrev.a, alphaMin, alphaMax);
-    let resultAlpha = clamp(mix(rectifiedAlpha, currentAlpha, alpha), 0.0, 1.0);
-`,
-        '',
-    );
-    const locksStore = pick(
-        `    // b = shading-change factor (for the debug view); a = resolved alpha.
-    textureStore(locksOut, gid.xy, vec4f(lockLife, lockedLuma, shadingChange, resultAlpha));`,
-        `    // b = shading-change factor (for the debug view); a unused.
-    textureStore(locksOut, gid.xy, vec4f(lockLife, lockedLuma, shadingChange, 0.0));`,
-    );
-
-    return assembleShader(
-        WGSL_CONSTANTS,
-        WGSL_COLOR,
-        WGSL_TONEMAP,
-        /* wgsl */ `
+export const ACCUMULATE_SHADER = assembleShader(
+    WGSL_CONSTANTS,
+    WGSL_COLOR,
+    WGSL_TONEMAP,
+    /* wgsl */ `
 @group(0) @binding(1) var inputColor : texture_2d<f32>;
 @group(0) @binding(2) var dilatedMotion : texture_2d<f32>;
 @group(0) @binding(3) var masks : texture_2d<f32>;
@@ -262,27 +187,36 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     let baseTexel = vec2i(round(srcPos));
     let maxCoord = vec2i(C.renderSize) - 1;
 
-    var colorSum = vec3f(0.0);${alphaAccumulators}
+    var colorSum = vec3f(0.0);
+    var alphaSum = 0.0;
     var weightSum = 0.0;
     var m1 = vec3f(0.0); // YCoCg first moment
     var m2 = vec3f(0.0); // YCoCg second moment
     var boxMin = vec3f(1.0e5);
-    var boxMax = vec3f(-1.0e5);${alphaBox}
+    var boxMax = vec3f(-1.0e5);
+    var alphaMin = 1.0e5;
+    var alphaMax = -1.0e5;
 
     for (var y = -1; y <= 1; y++) {
         for (var x = -1; x <= 1; x++) {
             let coord = clamp(baseTexel + vec2i(x, y), vec2i(0), maxCoord);
             let d = srcPos - vec2f(coord);
             let w = lanczos2(d.x) * lanczos2(d.y);
-            ${tapLoad}
-            colorSum += c * w;${tapAlpha}
+            let src = textureLoad(inputColor, coord, 0);
+            let c = tonemapInvertible(src.rgb * exposure);
+            colorSum += c * w;
+            // Alpha takes the same weights but none of the conditioning — it is
+            // already bounded, and tonemapping a coverage value is meaningless.
+            alphaSum += src.a * w;
             weightSum += w;
 
             let ycc = rgbToYCoCg(c);
             m1 += ycc;
             m2 += ycc * ycc;
             boxMin = min(boxMin, ycc);
-            boxMax = max(boxMax, ycc);${tapAlphaBox}
+            boxMax = max(boxMax, ycc);
+            alphaMin = min(alphaMin, src.a);
+            alphaMax = max(alphaMax, src.a);
         }
     }
 
@@ -290,7 +224,8 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     var current = yCoCgToRgb(clamp(
         rgbToYCoCg(colorSum / max(weightSum, 1.0e-4)),
         boxMin, boxMax,
-    ));${currentAlpha}
+    ));
+    let currentAlpha = clamp(alphaSum / max(weightSum, 1.0e-4), alphaMin, alphaMax);
 
     // Confidence in the current sample: 1 when a jittered sample landed on
     // this display pixel, lower when we're interpolating between samples.
@@ -303,7 +238,7 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
 
     if (hasFlag(FLAG_RESET) || offscreen) {
         textureStore(historyOut, gid.xy, vec4f(current, 1.0 / C.maxAccumulation));
-        ${resetLocks}
+        textureStore(locksOut, gid.xy, vec4f(0.0, 0.0, 0.0, currentAlpha));
         return;
     }
 
@@ -345,7 +280,11 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     // Detect a thin feature (a luminance outlier vs the neighborhood) that is
     // temporally stable, and grow a lock on it; the lock then shields the
     // feature from rectification below. Locks reproject through motion just
-    // like the color history.${lockFetchHoisted}
+    // like the color history.
+    //
+    // The fetch is hoisted out of the branch because the alpha history shares
+    // it (locks .a); with locks on — the default — that costs nothing new.
+    let lockPrev = textureSampleLevel(locksIn, linearSampler, prevUV, 0.0);
     var lockLife = 0.0;
     var lockedLuma = curY;
     if (hasFlag(FLAG_LOCKS)) {
@@ -356,7 +295,7 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
         let featureStrength =
             smoothstep(LOCK_PEAK_LO, LOCK_PEAK_HI, peakiness) *
             smoothstep(LOCK_CONTRAST_LO, LOCK_CONTRAST_HI, contrast);
-${lockFetchInline}
+
         lockedLuma = select(lockPrev.g, curY, lockPrev.r < 0.05);
         // Grow the lock while a feature is present, decay it otherwise.
         lockLife = lockPrev.r + select(-LOCK_DECAY, LOCK_GROW * featureStrength, featureStrength > 0.1);
@@ -413,19 +352,21 @@ ${lockFetchInline}
     // Snap reactive pixels toward the current frame regardless of accumulation.
     alpha = mix(alpha, 1.0, REACTIVE_STRENGTH * reactivity);
     let result = mix(rectifiedHistory, current, alpha);
-${alphaResolve}
+
+    //* Alpha Resolve
+    // Alpha gets the color blend weight, so a coverage edge converges on the
+    // same schedule as the color it belongs to. Its rectification is the local
+    // 3x3 alpha range rather than a variance AABB: at a coverage edge the
+    // jittered taps span the whole 0..1 range, so history passes untouched and
+    // accumulates; on a flat region the range collapses and stale alpha cannot
+    // ghost. No relax term — that machinery exists for the sub-texel luminance
+    // churn a coverage mask does not have.
+    let rectifiedAlpha = clamp(lockPrev.a, alphaMin, alphaMax);
+    let resultAlpha = clamp(mix(rectifiedAlpha, currentAlpha, alpha), 0.0, 1.0);
+
     textureStore(historyOut, gid.xy, vec4f(result, newCount / C.maxAccumulation));
-${locksStore}
+    // b = shading-change factor (for the debug view); a = resolved alpha.
+    textureStore(locksOut, gid.xy, vec4f(lockLife, lockedLuma, shadingChange, resultAlpha));
 }
 `,
-    );
-}
-
-/** Production build: the caller's alpha is resolved alongside the color. */
-export const ACCUMULATE_SHADER = createAccumulateShader(true);
-
-/**
- * Opaque build (`alpha: false`). Byte-identical to the pre-alpha shader — the
- * `accumulate` fingerprint test pins that.
- */
-export const ACCUMULATE_OPAQUE_SHADER = createAccumulateShader(false);
+);

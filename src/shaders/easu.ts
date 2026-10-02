@@ -27,44 +27,29 @@ import { assembleShader } from './wgsl';
  * Alpha rides the kernel as a fourth channel: the same taps, the same
  * weights, the same anti-ringing clamp. Edge analysis stays RGB-only (FSR's
  * luma), so an opaque input (alpha 1 everywhere) reproduces the historical
- * `vec4f(pix, 1.0)` output exactly, while a transparent one keeps a coverage
- * mask that matches the color it was filtered with. Same convention as
- * three's own `FSR1Node`.
- *
- * `alpha: false` builds the RGB-only pipeline: the kernel narrows back to
- * `vec3f` and the store writes a literal 1.0. Selected once at pipeline
- * creation, so the opaque build carries none of the wider build's registers.
+ * `vec4f(pix, 1.0)` output — the clamp pins alpha to [1, 1] — while a
+ * transparent one keeps a coverage mask that matches the color it was
+ * filtered with. Unconditional, as in three's own `FSR1Node`: there is no
+ * RGB-only build to select.
  *
  * Bindings:
  * - 1: input color, render resolution (linear HDR)
  * - 2: output storage (rgba16float, display size — RCAS reads it next)
  */
-function createEasuShader(alpha: boolean): string {
-    const vec = alpha ? 'vec4f' : 'vec3f';
-    const load = alpha
-        ? `// Loads a render-resolution texel in the caller's color domain, alpha included.
-fn easuLoad(p : vec2i) -> vec4f {
-    let clamped = clamp(p, vec2i(0), vec2i(C.renderSize) - 1);
-    return textureLoad(inputColor, clamped, 0);
-}`
-        : `// Loads a render-resolution texel in the caller's color domain.
-fn easuLoad(p : vec2i) -> vec3f {
-    let clamped = clamp(p, vec2i(0), vec2i(C.renderSize) - 1);
-    return textureLoad(inputColor, clamped, 0).rgb;
-}`;
-    const store = alpha
-        ? 'textureStore(outputColor, gid.xy, pix);'
-        : 'textureStore(outputColor, gid.xy, vec4f(pix, 1.0));';
-    return assembleShader(
-        WGSL_CONSTANTS,
-        /* wgsl */ `
+export const EASU_SHADER = assembleShader(
+    WGSL_CONSTANTS,
+    /* wgsl */ `
 @group(0) @binding(1) var inputColor : texture_2d<f32>;
 @group(0) @binding(2) var outputColor : texture_storage_2d<rgba16float, write>;
 
-${load}
+// Loads a render-resolution texel in the caller's color domain, alpha included.
+fn easuLoad(p : vec2i) -> vec4f {
+    let clamped = clamp(p, vec2i(0), vec2i(C.renderSize) - 1);
+    return textureLoad(inputColor, clamped, 0);
+}
 
 // EASU operates on a green-weighted luma: L = 0.5*R + G + 0.5*B.
-fn easuLuma(c : ${vec}) -> f32 {
+fn easuLuma(c : vec4f) -> f32 {
     return 0.5 * c.r + c.g + 0.5 * c.b;
 }
 
@@ -102,8 +87,8 @@ fn easuSet(
 // One kernel tap: rotate the offset into edge space, apply anisotropy, then
 // evaluate the polynomial Lanczos2 approximation (FsrEasuTapF).
 fn easuTap(
-    aC : ptr<function, ${vec}>, aW : ptr<function, f32>,
-    off : vec2f, dir : vec2f, len : vec2f, lob : f32, clp : f32, c : ${vec},
+    aC : ptr<function, vec4f>, aW : ptr<function, f32>,
+    off : vec2f, dir : vec2f, len : vec2f, lob : f32, clp : f32, c : vec4f,
 ) {
     var v = vec2f(
         off.x * dir.x + off.y * dir.y,
@@ -195,7 +180,7 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     // Dering clamp uses the 4 nearest texels only.
     let min4 = min(min(cF, cG), min(cJ, cK));
     let max4 = max(max(cF, cG), max(cJ, cK));
-    var aC = ${vec}(0.0);
+    var aC = vec4f(0.0);
     var aW = 0.0;
     easuTap(&aC, &aW, vec2f(0.0, -1.0) - pp, dir, len2, lob, clp, cB);
     easuTap(&aC, &aW, vec2f(1.0, -1.0) - pp, dir, len2, lob, clp, cC);
@@ -211,17 +196,7 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     easuTap(&aC, &aW, vec2f(1.0, 2.0) - pp, dir, len2, lob, clp, cO);
 
     let pix = min(max4, max(min4, aC / aW));
-    ${store}
+    textureStore(outputColor, gid.xy, pix);
 }
 `,
-    );
-}
-
-/** Production build: the caller's alpha is filtered with the color. */
-export const EASU_SHADER = createEasuShader(true);
-
-/**
- * Opaque build (`alpha: false`). Byte-identical to the pre-alpha shader — the
- * `easu` fingerprint test pins that.
- */
-export const EASU_OPAQUE_SHADER = createEasuShader(false);
+);
