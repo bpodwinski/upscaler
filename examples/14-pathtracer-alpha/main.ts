@@ -88,10 +88,10 @@ try {
 dracoLoader.dispose();
 
 envTexture.mapping = THREE.EquirectangularReflectionMapping;
-// Pre-blur the environment. Multiple-importance sampling is still a stub on
-// the path tracer's WebGPU branch, so an unblurred HDRI's small bright sky
-// leaves permanent specular fireflies on the rover's metal — a soft env is
-// the branch-appropriate fix, and this demo is about coverage, not caustics.
+// Pre-blur the environment. An unblurred HDRI's small bright sky leaves
+// long-lived specular fireflies on the rover's metal (this was written when
+// multiple-importance sampling was still a stub on the WebGPU renderer), and
+// this demo is about coverage, not caustics.
 const envGenerator = new BlurredEnvMapGenerator(renderer);
 const blurredEnv = await envGenerator.generate(envTexture, 0.35);
 envGenerator.dispose();
@@ -148,6 +148,7 @@ const settings = {
     upscale: true,
     bounces: 5,
 };
+pathTracer.maxBounces = settings.bounces;
 
 function configure(): void {
     const { width, height } = displaySize(dpr);
@@ -181,7 +182,7 @@ gui.add(settings, 'sharpness', 0, 1, 0.05).name('RCAS sharpness');
 gui.add(settings, 'bounces', 1, 10, 1)
     .name('bounces')
     .onChange((value: number) => {
-        pathTracer.bounces = value;
+        pathTracer.maxBounces = value;
     });
 gui.add({ pageStyle: switchPageStyle }, 'pageStyle').name('cycle page backdrop');
 
