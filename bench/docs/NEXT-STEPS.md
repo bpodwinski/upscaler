@@ -1082,7 +1082,7 @@ node scripts/measure-drift-lag.mjs --scenario Q9 --frames 56:239:2 --settings '{
 Artifacts land under `bench/results/raw/emitters/` (summary.json, plus series.json with one
 raw per-frame series per group) and `bench/results/raw/convergence/` (git-ignored).
 
-## 9. Conditioned-space RCAS overshoot on converged HDR plateaus — DONE (2026-10-03, issue #50)
+## 12. Conditioned-space RCAS overshoot on converged HDR plateaus — DONE (2026-10-03, issue #50)
 
 Item 1 moved RCAS into conditioned space (`c/(1+max(c))`) and inverts once. The
 limiter there keeps the sharpened result below conditioned 1, but conditioned 1 is
