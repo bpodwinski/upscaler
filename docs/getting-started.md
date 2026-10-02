@@ -220,7 +220,7 @@ function frame(dt: number) {
     renderer.render(scene, camera);
     renderer.setRenderTarget(null);
     renderer.setMRT(null);
-    upscaler.endFrame(camera);     // clears the jitter view offset
+    upscaler.endFrame(camera);     // removes the jitter, restoring any view offset you set
 
     upscaler.dispatch(
         { color: rt.textures[0], depth: rt.depthTexture!, velocity: rt.textures[1], deltaTime: dt },

@@ -17,6 +17,7 @@ import { ConstantsBuffer } from './internal/ConstantsBuffer';
 import { GpuTimer } from './internal/GpuTimer';
 import { getDevice, getGPUTexture } from './internal/threeWebGPU';
 import { JitterSequence } from './math/jitter';
+import { applyJitterViewOffset, restoreViewOffset, type ViewOffsetSnapshot } from './math/viewOffset';
 import { getQualityModeRatio, getRenderResolution } from './math/resolution';
 import { ACCUMULATE_SHADER } from './shaders/accumulate';
 import { BLIT_SHADER } from './shaders/blit';
@@ -73,7 +74,7 @@ type UpscalerInternalOptions = {
  * renderer.setRenderTarget(sceneRT);           // color+velocity MRT, depth
  * renderer.render(scene, camera);
  * renderer.setRenderTarget(null);
- * upscaler.endFrame(camera);                   // clears jitter
+ * upscaler.endFrame(camera);                   // removes jitter, restores the camera's view
  * upscaler.dispatch({ color, depth, velocity, deltaTime }, camera);
  * // upscaler.outputTexture is linear/HDR — present or post-process it
  * ```
@@ -132,6 +133,10 @@ export class Upscaler {
 
     private _jitter!: JitterSequence;
     private _jitterEnabled = true;
+    // The camera's view state from before this frame's jitter, held while the
+    // jitter is applied (beginFrame → endFrame). Restoring from it, rather
+    // than clearing, keeps an app-set view offset (tiled/multi-screen) intact.
+    private _viewSnapshot: ViewOffsetSnapshot | null = null;
     private _frameIndex = 0;
     private _pendingReset = true;
     private _warnedMsaa = false;
@@ -370,13 +375,20 @@ export class Upscaler {
     /**
      * Starts a frame: advances the jitter sequence and applies it to the
      * camera as a sub-pixel view offset (same mechanism as three's TRAA).
-     * No-op on non-temporal paths, or when jitter is disabled (see the
-     * `jitter` config flag — the temporal path still reprojects and
-     * accumulates, it just doesn't add the sub-pixel offset).
+     * The jitter composes with any view offset the app already set on the
+     * camera (tiled or multi-screen rendering); {@link endFrame} restores
+     * that offset exactly. No-op on non-temporal paths, or when jitter is
+     * disabled (see the `jitter` config flag — the temporal path still
+     * reprojects and accumulates, it just doesn't add the sub-pixel offset).
      * @param camera - The scene camera (perspective or orthographic)
      */
     beginFrame(camera: JitterableCamera): void {
+        // A frame left open (no endFrame) must not snapshot its own jitter as
+        // the app's view, or the offsets would compound frame over frame.
+        this._restoreView();
+
         // Snapshot the jitter-free projection for velocity before offsetting.
+        // It keeps the app's own view offset; only the jitter is excluded.
         camera.updateProjectionMatrix();
         this.unjitteredProjectionMatrix.copy(camera.projectionMatrix);
 
@@ -384,9 +396,8 @@ export class Upscaler {
 
         this._jitter.advance();
         const [jx, jy] = this._jitter.current;
-        camera.setViewOffset(
-            this._renderWidth,
-            this._renderHeight,
+        this._viewSnapshot = applyJitterViewOffset(
+            camera,
             jx,
             jy,
             this._renderWidth,
@@ -395,13 +406,20 @@ export class Upscaler {
     }
 
     /**
-     * Ends a frame: removes the jitter view offset from the camera.
-     * @param camera - The camera passed to {@link beginFrame}
+     * Ends a frame: removes the jitter, putting the camera's view offset back
+     * exactly as it was before {@link beginFrame} (none stays none; an
+     * app-set offset keeps its values). No-op when no jitter was applied.
+     * @param _camera - The camera passed to {@link beginFrame} (the restore
+     * targets the camera recorded there)
      */
-    endFrame(camera: JitterableCamera): void {
-        if (camera.view !== null && camera.view.enabled) {
-            camera.clearViewOffset();
-        }
+    endFrame(_camera: JitterableCamera): void {
+        this._restoreView();
+    }
+
+    private _restoreView(): void {
+        if (!this._viewSnapshot) return;
+        restoreViewOffset(this._viewSnapshot);
+        this._viewSnapshot = null;
     }
 
     /**
