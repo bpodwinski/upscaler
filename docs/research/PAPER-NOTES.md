@@ -114,7 +114,8 @@ unstable input luminance): 0.024 consecutive.
 the converged mean a fixed point of clip∘blend?); comparison against FSR2's
 actual still behavior on the same scene; sensitivity of the ghosting
 trade-off to the relax factor on a scene with sub-detector lighting drift
-([#5](https://github.com/pmndrs/upscaler/issues/5)).
+([#5](https://github.com/pmndrs/upscaler/issues/5)) — measured since, see
+entry 7.
 
 **Amended 2026-10-02 (alpha passthrough, PR #18):** defect (ii) is not
 specific to color — it applies to *every* channel rectified against a
@@ -145,6 +146,58 @@ Evidence: NEXT-STEPS §6 ("Alpha still-scene convergence"); commit
 Still needs: the detector's false positives on sub-texel geometry over an
 empty background characterized on their own (a shading-change floor problem,
 not an alpha one); the same measurement on a second device.
+
+## 7. The still-scene relax costs drift lag in a step, not a slope
+
+**Claim:** widening the rectification box on still, converged, signal-free
+pixels (entry 6's fix, ×(1 + R)) has a price under lighting drift too slow for
+a 1-frame shading detector. That price arrives almost entirely with the
+*first* useful widening. On a still camera with the sun ramping exponentially
+at ~2 %/frame (half the detector's flattest floor, verified silent), the output
+lags a held-light reference by these amounts with auto-exposure off:
+- R = 0: 5.3 frames;
+- R = 4: 9.6 frames (+80 %);
+- R = 8 (shipped): 10.5 frames (+10 % more);
+- R = 16: 11.1 frames (+5 % more).
+
+Meanwhile, still-scene same-jitter-phase churn keeps falling about 40 % per
+doubling (Q1: 0.178 → 0.044 → 0.027 → 0.016).
+
+The mechanism: once the box is a few σ wide it already contains the
+per-frame drift on every pixel with real 3×3 variance (texture, edges,
+specular), so further widening has nothing left to release. Flat pixels
+(σ ≈ 0) stay clamped at any R. The consequence: R is a convergence knob, and
+the drift trade-off cannot be tuned out through it. If the lag matters, it
+needs a *cumulative* slow-drift gate on the relax, not a smaller R. The lag
+reads as a uniform delayed fade, not a spatial ghost: signed error ≈ absolute
+error, about 175 ms at 60 fps on R = 8.
+
+**Methods note others would hit:** an auto-exposure that adapts without
+re-conditioning history (stored history is re-decoded under the new
+exposure) masks 30–45 % of the measured lag on a down-ramp. Measure the clip
+with adaptation off, and report both.
+
+**Evidence:** [`bench/docs/NEXT-STEPS.md`](../../bench/docs/NEXT-STEPS.md) §8
+(the full relax {0, 4, 8, 16} table, Q9 alongside); scenario **Q15**
+`sub-detector-lighting-drift` in
+[`bench/src/benchmark/scenarios.ts`](../../bench/src/benchmark/scenarios.ts);
+[`scripts/measure-drift-lag.mjs`](../../scripts/measure-drift-lag.mjs) (the
+held-light reference + lag-in-frames metric).
+`bench/results/raw/drift-lag/*` and `bench/results/raw/convergence/relax*` are
+local-only. To regenerate them, edit `STILL_CLAMP_RELAX` in
+`src/shaders/accumulate.ts` for each value, then run:
+- `node scripts/measure-drift-lag.mjs --scenario Q15 --frames 116:379:2 --label relax<R>-noae --settings '{"autoExposure":false}'`
+- the same command without `--settings`, for the auto-exposure-on column;
+- `node scripts/measure-convergence.mjs --scenario Q1 --ratio 2 --pairs 40 --label relax<R>` (and `--scenario Q12`).
+
+**Still needs:**
+- a second device and ratios other than 2;
+- ramp rates closer to the detector floor (the lag scales with rate);
+- a multi-pair same-phase metric (the convergence column is one pair);
+- a prototype of the slow-drift gate, to show the step can be removed rather
+  than traded;
+- a small analytic model: box width in σ against per-frame drift in σ, giving
+  the R at which the clip stops engaging.
 
 ## 3. Source-faithful pass graphs measured against fused re-derivations
 

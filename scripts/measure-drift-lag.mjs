@@ -41,8 +41,8 @@
  *     [--settings '{"autoExposure":false}'] [--port 9333]
  *     [--url http://127.0.0.1:5199]
  *
- * --settings is merged over the bench's canonical capture settings on every
- * capture. Auto-exposure is worth isolating: an adapting exposure re-decodes
+ * --settings is passed to every capture() as its settings override (the same
+ * plumbing measure-convergence.mjs uses). Auto-exposure is worth isolating: an adapting exposure re-decodes
  * history conditioned under the previous exposure (no conditioning-exposure
  * history correction, NEXT-STEPS "not planned"), which reads as lag of its
  * own, independent of the variance clip.
@@ -57,6 +57,16 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { inflateSync } from 'node:zlib';
+
+import {
+    DEFAULT_BENCH_URL,
+    parsePort,
+    removeTempDirectory,
+    resolveServerUrl,
+    spawnVite,
+    stopChild,
+    waitForUrl,
+} from './local-processes.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -85,9 +95,9 @@ const ratio = Number(cli.ratio ?? 2);
 const width = Number(cli.width ?? 1280);
 const height = Number(cli.height ?? 720);
 const label = cli.label ?? 'baseline';
-const settingsOverride = cli.settings ? JSON.parse(cli.settings) : {};
-const port = Number(cli.port ?? 9333);
-const baseUrl = cli.url ?? 'http://127.0.0.1:5199';
+const captureSettings = typeof cli.settings === 'string' ? JSON.parse(cli.settings) : {};
+const port = parsePort(cli.port, '--port') ?? 9333;
+const server = resolveServerUrl(cli.url, DEFAULT_BENCH_URL);
 const [frameStart, frameEnd, frameStep] = (cli.frames ?? '116:379:4').split(':').map(Number);
 const sampleFrames = [];
 for (let frame = frameStart; frame <= frameEnd; frame += frameStep) sampleFrames.push(frame);
@@ -224,19 +234,6 @@ function chromeExecutable() {
     return executable;
 }
 
-async function waitForUrl(url, attempts = 150) {
-    for (let attempt = 0; attempt < attempts; attempt++) {
-        try {
-            const response = await fetch(url);
-            if (response.ok) return;
-        } catch {
-            // Still starting.
-        }
-        await new Promise((resolveWait) => setTimeout(resolveWait, 100));
-    }
-    throw new Error(`Timed out waiting for ${url}`);
-}
-
 class CdpClient {
     constructor(url) {
         this.socket = new WebSocket(url);
@@ -310,11 +307,15 @@ async function captureCanvas(client) {
 }
 
 const PRESENTED = 'new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))';
+const SETTINGS = JSON.stringify(captureSettings);
 
 /** Plays the scenario from frame 0 and captures every sample frame in `view`. */
 async function playRamp(client, view, onFrame) {
     const [first, ...rest] = sampleFrames;
-    await evaluate(client, `window.__UPSCALER_BENCH__.capture({ frame: ${first}, debugView: '${view}' }).then(() => ${PRESENTED})`);
+    await evaluate(
+        client,
+        `window.__UPSCALER_BENCH__.capture({ frame: ${first}, debugView: '${view}', settings: ${SETTINGS} }).then(() => ${PRESENTED})`,
+    );
     await onFrame(first, await captureCanvas(client));
     for (const frame of rest) {
         await evaluate(client, `window.__UPSCALER_BENCH__.step(${frame}).then(() => ${PRESENTED})`);
@@ -329,21 +330,16 @@ async function main() {
     const accumulateSource = await readFile(join(ROOT, 'src/shaders/accumulate.ts'), 'utf8');
     const relax = Number(/const STILL_CLAMP_RELAX : f32 = ([\d.e+-]+);/.exec(accumulateSource)?.[1]);
 
-    let server = null;
+    let viteServer = null;
     let chrome = null;
     let profile = null;
     let client = null;
     try {
         try {
-            await waitForUrl(baseUrl, 1);
+            await waitForUrl(server.origin, { attempts: 1 });
         } catch {
-            const url = new URL(baseUrl);
-            server = spawn(
-                'npx',
-                ['vite', '--config', 'bench/vite.config.ts', '--host', url.hostname, '--port', url.port, '--strictPort'],
-                { cwd: ROOT, stdio: ['ignore', 'ignore', 'ignore'] },
-            );
-            await waitForUrl(baseUrl);
+            viteServer = spawnVite('bench/vite.config.ts', server);
+            await waitForUrl(server.origin, { child: viteServer });
         }
 
         profile = join(tmpdir(), `upscaler-drift-${process.pid}-${Date.now()}`);
@@ -373,7 +369,7 @@ async function main() {
         );
         await Promise.all([client.call('Page.enable'), client.call('Runtime.enable'), client.call('Log.enable')]);
 
-        const url = new URL(baseUrl);
+        const url = new URL(server.origin);
         url.searchParams.set('benchMode', 'capture');
         url.searchParams.set('scenario', scenario);
         url.searchParams.set('ratio', String(ratio));
@@ -392,12 +388,9 @@ async function main() {
         const rois = await evaluate(
             client,
             `(() => {
-                const context = window.__UPSCALER_BENCH__._context;
-                window.__driftOriginalFrame = context.scenario.frame;
-                const pipeline = context.pipeline;
-                const apply = pipeline.applySettings.bind(pipeline);
-                pipeline.applySettings = (settings) => apply({ ...settings, ...${JSON.stringify(settingsOverride)} });
-                return context.scenario.rois;
+                const scenario = window.__UPSCALER_BENCH__._context.scenario;
+                window.__driftOriginalFrame = scenario.frame;
+                return scenario.rois;
             })()`,
         );
 
@@ -424,7 +417,10 @@ async function main() {
                     window.__UPSCALER_BENCH__._context.scenario.frame = (n) => ({ ...original(n), directionalIntensity: ${held} });
                 })()`,
             );
-            await evaluate(client, `window.__UPSCALER_BENCH__.capture({ frame: ${frame}, debugView: 'final' }).then(() => ${PRESENTED})`);
+            await evaluate(
+                client,
+                `window.__UPSCALER_BENCH__.capture({ frame: ${frame}, debugView: 'final', settings: ${SETTINGS} }).then(() => ${PRESENTED})`,
+            );
             const png = await captureCanvas(client);
             if (keepFrames.has(frame)) await writeFile(join(outputDirectory, `reference-f${frame}.png`), png);
             const reference = decodePng(png);
@@ -462,7 +458,7 @@ async function main() {
             width,
             height,
             stillClampRelax: relax,
-            settingsOverride,
+            settings: captureSettings,
             frames: sampleFrames,
             ghostThreshold: GHOST_THRESHOLD,
             rows,
@@ -475,12 +471,9 @@ async function main() {
             console.warn(`browser log records:\n${logRecords.join('\n')}`);
     } finally {
         client?.close();
-        if (chrome) {
-            chrome.kill('SIGTERM');
-            await new Promise((resolveWait) => setTimeout(resolveWait, 300));
-        }
-        if (profile) await rm(profile, { recursive: true, force: true });
-        if (server) server.kill('SIGTERM');
+        await stopChild(chrome);
+        await removeTempDirectory(profile, 'Chrome profile');
+        await stopChild(viteServer);
     }
 }
 

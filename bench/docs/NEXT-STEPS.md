@@ -467,7 +467,7 @@ Settings and environment:
 - Apple Metal-3, headless Chrome over CDP;
 - run from a git worktree, which is fine because nothing here is timing.
 
-For relax 0, `alphaRelax` was guarded locally. See the trap below.
+Relax 0 was measured with the `alphaRelax` guard that now ships. See the trap below.
 
 **The detector really is silent.** On Q15 the shading-change view sits at
 0.66 % lit before the ramp (the still-scene block speckle Q1/Q12 also show) and
@@ -531,13 +531,15 @@ Reading it:
   a deliberately slow ramp is not visible as ghosting, and it is a new detector
   with its own tuning.
 
-**Trap found on the way: `STILL_CLAMP_RELAX = 0` divides by zero.** The alpha
-resolve computes `alphaRelax = stillRelax / STILL_CLAMP_RELAX` (item 6). At 0 that is
-0/0 = NaN in the alpha clamp. On Metal the canvas still composited opaque, but
-WGSL leaves the result undefined. Anyone who sets the constant to 0 to disable the
-relax should guard that line, for example by keeping the unscaled weight in its own
-`let`. This was measured with a local `select` guard. The shipped shader is unchanged,
-because `STILL_CLAMP_RELAX` is 8 and its fingerprint is pinned.
+**Trap found on the way, now guarded: `STILL_CLAMP_RELAX = 0` divided by zero.** The
+alpha resolve computed `alphaRelax = stillRelax / STILL_CLAMP_RELAX` (item 6). At 0 that
+is 0/0 = NaN in the alpha clamp. On Metal the canvas still composited opaque, but WGSL
+leaves the result undefined. The divisor is now `max(STILL_CLAMP_RELAX, 1e-6)`, which
+folds to the constant for any positive value, so setting 0 is a valid "relax off".
+Production output is unchanged: Q0 (final + reactivity), Q1 (f23, f119), Q5, Q9 f64,
+Q12, Q13 and Q15 f154 captures are byte-identical before and after the change. The
+accumulate fingerprint moved to `63dbdfad`. Q1 at relax 0 with the guard reads
+0.197 / 0.178, the same as the relax-0 row above.
 
 Reproduce, with the bench on 5199 or `--url`; edit `STILL_CLAMP_RELAX` per run:
 

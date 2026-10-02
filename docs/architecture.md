@@ -68,7 +68,9 @@ veloc ─┘  (dilate +      dilatedDepth   │        Lanczos2 upsample        
    skipped entirely when `detectShadingChanges` is off.
 5. **Accumulate** (`accumulate.ts`): the core. A jitter-aware Lanczos2 upsample of
    the current frame, Catmull-Rom history reprojection, YCoCg variance-clip
-   rectification (relaxed on still, converged pixels), luminance-stability locks,
+   rectification (relaxed on still, converged pixels; its cost under slow lighting
+   drift is measured in [`NEXT-STEPS.md` §8](../bench/docs/NEXT-STEPS.md)),
+   luminance-stability locks,
    reactive and shading-change aging, and the alpha resolve. Blending runs in
    invertible-tonemap space with a per-pixel age stored in history `.a`.
 6. **RCAS** (`rcas.ts`) sharpens the conditioned history and inverts the tonemap and
