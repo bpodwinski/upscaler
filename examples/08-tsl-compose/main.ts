@@ -8,7 +8,7 @@ import { addStudioLighting, createGridFloor } from '../shared/props';
 
 //* Composing FSR3 in a post graph.
 // The reason FSR3 is a node and not just an imperative driver: it slots into a
-// THREE.PostProcessing graph so other TSL effects can sit around it. Here the
+// THREE.RenderPipeline graph so other TSL effects can sit around it. Here the
 // upscaled result feeds a simple vignette before hitting the screen —
 // `post.outputNode = upscale(scene, camera).mul(vignette)`.
 
@@ -31,7 +31,7 @@ camera.position.set(6, 4, 9);
 camera.lookAt(0, 1.6, 0);
 
 //* FSR3 node → vignette → screen, all in the post graph.
-const post = new THREE.PostProcessing(renderer);
+const post = new THREE.RenderPipeline(renderer);
 // upscaleScene() returns a loosely-typed TSL node; cast to reach the node math ops.
 const fsrNode = upscaleScene(scene, camera, { quality: QualityMode.Performance }) as {
     mul(n: unknown): unknown;

@@ -96,7 +96,7 @@ controls.enableDamping = true;
 controls.autoRotate = true;
 controls.autoRotateSpeed = 0.4;
 
-const post = new THREE.PostProcessing(renderer);
+const post = new THREE.RenderPipeline(renderer);
 const state = { ratio: 2.0, reactive: true, jitter: true, debug: DebugView.None };
 let fsrNode: ReturnType<typeof upscale> | null = null;
 

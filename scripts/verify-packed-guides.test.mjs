@@ -50,6 +50,11 @@ test('reports WebGPU, WGSL, console, and runtime browser failures', async () => 
         { channel: 'Runtime.consoleAPICalled', level: 'error', text: 'consumer crashed' },
         { channel: 'Runtime.exceptionThrown', level: 'error', text: 'uncaught exception' },
         { channel: 'Runtime.consoleAPICalled', level: 'warning', text: 'deprecation only' },
+        {
+            channel: 'Runtime.consoleAPICalled',
+            level: 'warning',
+            text: 'THREE.PostProcessing: "PostProcessing" has been renamed to "RenderPipeline".',
+        },
     ];
 
     expect(browserLogFailures).toBeTypeOf('function');
@@ -58,6 +63,7 @@ test('reports WebGPU, WGSL, console, and runtime browser failures', async () => 
         'Parsing WGSL failed',
         'consumer crashed',
         'uncaught exception',
+        'THREE.PostProcessing: "PostProcessing" has been renamed to "RenderPipeline".',
     ]);
 });
 

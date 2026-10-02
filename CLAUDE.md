@@ -123,7 +123,7 @@ src/
   index.ts             — public exports
   Upscaler.ts      — THE low-level API + pass orchestration (start here)
   UpscalePass.ts          — high-level public drop-in (MRT/jitter/present recipe; ex-UpscalePresenter)
-  UpscalerNode.ts          — the same recipe as a TSL node: upscale(scene, camera) for PostProcessing graphs
+  UpscalerNode.ts          — the same recipe as a TSL node: upscale(scene, camera) for RenderPipeline graphs
   types.ts             — QualityMode, DebugView, config/settings/dispatch types
   math/                — halton, jitter sequencing, resolution presets (all unit-tested)
   shaders/
