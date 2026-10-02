@@ -208,11 +208,12 @@ adb forward tcp:9222 localabstract:chrome_devtools_remote   # we drive the devic
 adb reverse tcp:5199 tcp:5199                               # device reaches our bench
 ```
 
-`run-benchmark.mjs` hardcodes `http://127.0.0.1:5199` and binds the dev server to
-loopback. Without the **reverse** mapping the phone loads its own localhost, and
+`run-benchmark.mjs` drives `http://127.0.0.1:5199` by default (`--url` changes
+it — see "Ports and parallel runs") and binds the dev server to loopback.
+Without the **reverse** mapping the phone loads its own localhost, and
 the run dies in a timeout with nothing useful to point at. Check both before
 starting: `curl http://127.0.0.1:9222/json/version` must answer, and
-`adb reverse --list` must show `tcp:5199`.
+`adb reverse --list` must show `tcp:5199` (or whichever port `--url` names).
 
 Expect worse data than a desktop run, for two reasons:
 
@@ -221,6 +222,36 @@ Expect worse data than a desktop run, for two reasons:
   time is available — noisier, and it includes the scene render.
 - Driving a browser you launched yourself gives up the harness's cold-start and
   throttling controls. **Use more blocks than a local run needs.**
+
+---
+
+## Ports and parallel runs
+
+Every GPU harness script talks to two local ports: a **dev server** (the page it
+drives) and **Chrome's DevTools port** (how it drives it). Both are flags, so
+several runs — or several worktrees — can share a machine without colliding.
+
+| script | page (`--url`, default) | CDP port |
+| --- | --- | --- |
+| `run-benchmark.mjs` | bench, `http://127.0.0.1:5199` | `--port` (9333), or `--cdp <url>` for a browser you launched |
+| `measure-convergence.mjs` | bench, `http://127.0.0.1:5199` | `--port` (9333) |
+| `measure-alpha-convergence.mjs` | examples, `http://127.0.0.1:5300` | `--port` (9333) |
+| `verify-packed-guides.mjs` | its own `vite preview` on `--port` (a free port) | `--cdp-port` (a free port) |
+
+```bash
+node scripts/measure-convergence.mjs --scenario Q1 --ratio 2 \
+  --url http://127.0.0.1:5601 --port 9601
+```
+
+`--url` is an origin, not a page. If something already answers there, the script
+**reuses it** — so it must be the right server (this worktree's bench, not
+another checkout's). If nothing answers, the script starts the dev server on
+exactly that host and port with `--strictPort`, so a busy port fails fast instead
+of Vite quietly moving to the next one. The bench and examples configs keep
+separate dep-optimizer caches (`node_modules/.vite-bench`,
+`node_modules/.vite-examples`), so both dev servers can run at once.
+
+Each script prints its full option list with `--help`.
 
 ---
 
