@@ -69,10 +69,10 @@ export interface UpscalerNodeOptions {
      */
     reactive?: TextureNodeLike;
     /**
-     * Optional reduced-res **opaque-only color** texture node. When set (and no
-     * explicit {@link reactive} mask is given), the reactive mask is
-     * auto-generated from the difference between this and the composited
-     * `color` — FSR2's `GenerateReactiveMask`. Render your scene with
+     * Optional reduced-res **opaque-only color** texture node. When set, the
+     * reactive mask is auto-generated from the difference between this and the
+     * composited `color` — FSR2's `GenerateReactiveMask` — and any explicit
+     * {@link reactive} mask is max-merged into it. Render your scene with
      * transparents hidden into this node's chain; it must be jittered like the
      * `color` input (it renders in-pipeline, so it is). Mirrors
      * {@link DispatchInputs.reactiveOpaqueColor}.
@@ -142,9 +142,10 @@ export class UpscalerNode extends TempNode {
     private readonly _color: TextureNodeLike;
     private readonly _depth: TextureNodeLike;
     private readonly _velocity: TextureNodeLike;
-    // Optional reactive inputs — either an explicit mask, or an opaque-color
-    // buffer we auto-diff into one (mutually exclusive; explicit wins). Both
-    // render in-graph like the other inputs (see setup).
+    // Optional reactive inputs — an explicit mask, and/or an opaque-color
+    // buffer we auto-diff into one (with both, the explicit mask max-merges
+    // into the generated one). Both render in-graph like the other inputs
+    // (see setup).
     private readonly _reactive: TextureNodeLike;
     private readonly _reactiveOpaqueColor: TextureNodeLike;
     private readonly _exposureTexture: TextureNodeLike;
@@ -456,7 +457,8 @@ export class UpscalerNode extends TempNode {
  * @param velocity - Reduced-res jitter-free velocity texture node
  * @param camera - Scene camera (perspective or orthographic)
  * @param options - Path (see {@link UpscalerNodeOptions})
- * @returns A TSL node whose value is the upscaled, display-ready texture
+ * @returns A TSL node whose value is the upscaled display-resolution texture
+ *   (linear/HDR — presentation stays with the render pipeline)
  */
 export const upscale = (
     color: TextureNodeLike,
@@ -502,7 +504,8 @@ const SPATIAL_CAMERA = { isCamera: true, near: 0.1, far: 2000, isPerspectiveCame
  *
  * @param color - Reduced-res color texture node to upscale
  * @param options - Only `quality` / `ratio` apply (`path`/`jitter` are forced)
- * @returns A TSL node whose value is the upscaled, display-ready texture
+ * @returns A TSL node whose value is the upscaled display-resolution texture
+ *   (linear/HDR — presentation stays with the render pipeline)
  */
 export const upscaleSpatial = (
     color: TextureNodeLike,
@@ -533,7 +536,8 @@ export const upscaleSpatial = (
  * @param scene - Scene to render at reduced resolution and upscale
  * @param camera - Scene camera
  * @param options - Quality / ratio / path (see {@link UpscalerNodeOptions})
- * @returns A TSL node whose value is the upscaled, display-ready texture
+ * @returns A TSL node whose value is the upscaled display-resolution texture
+ *   (linear/HDR — presentation stays with the render pipeline)
  */
 export const upscaleScene = (
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

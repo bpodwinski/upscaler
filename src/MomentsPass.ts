@@ -25,8 +25,8 @@ export interface MomentsPassConfig {
 }
 
 /**
- * Standalone signal-agnostic moments pass (`MomentPyramid` in
- * TEMPORAL-GUIDES-SPEC §5): per-pixel `(E[x], E[x²])` of a configurable
+ * Standalone signal-agnostic moments pass (contract: docs/temporal-guides.md,
+ * "MomentsPass"): per-pixel `(E[x], E[x²])` of a configurable
  * scalar over any float texture, plus one coarse level of 4×4 block means —
  * the statistics half an SVGF-class denoiser needs, decoupled from any
  * beauty/exposure assumption so it can run on pre-albedo GI irradiance as
