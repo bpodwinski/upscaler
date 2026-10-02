@@ -84,12 +84,19 @@ upscaler.
 `examples/10-ssgi-denoise` is explicitly experimental and compares three SSGI
 paths:
 
+All three paths set `SSGINode.useTemporalFiltering = false`, matching examples
+06 and 09: the rotating pattern requires a real TRAA, and under the upscaler the
+per-frame GI swing inflates the variance clip at silhouettes and ghost-streaks
+off moving edges (see the CLAUDE.md landmine note).
+
 #### `builtin`
 
-Raw, temporally varying SSGI is composited into scene color. The upscaler owns
-all temporal accumulation.
+Static-pattern SSGI is filtered by `DenoiseNode` (spatial-only) and composited
+into scene color — the same recipe as examples 06 and 09. The upscaler owns all
+temporal accumulation.
 
-This is the default path.
+This is the default path. (Before 2026-08 it composited raw, temporally
+rotating SSGI with no denoiser.)
 
 #### `spatial`
 
@@ -152,6 +159,12 @@ This can reduce the amount of spatial filtering required, but it does not
 guarantee that spatial denoising becomes unnecessary. Newly revealed areas,
 moving surfaces, rejected history, and the first frame still have little or no
 usable temporal history.
+
+In practice this upscaler does not satisfy the TRAA contract SSGINode's docs
+require for this mode: the per-frame GI swing inflates the variance clip at
+silhouettes, so stale history ghost-streaks off moving edges (GPU-verified
+2026-08-06, render scale 1 and 2). Examples 06, 09, and 10 therefore set
+`useTemporalFiltering = false` and denoise the static pattern spatially.
 
 
 ## What `RecurrentDenoiseNode` contributes
