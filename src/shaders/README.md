@@ -917,7 +917,7 @@ in f16, and `tonemapInvert` clamps at 0.999, so nothing resolves above
 `(1 + x) / 2048`, and sub-pixel highlights average toward their coverage whatever
 their brightness. At the former cap of 80, a black-background scene clipped every
 highlight at 12.5. At 8 the ceiling is about 125, and every bench scene's metered
-target (≤ 6.8) is unclamped (issue #49, `bench/docs/NEXT-STEPS.md` §9). Fixed and
+target (≤ 6.8) is unclamped (issue #49, `bench/docs/NEXT-STEPS.md` §10). Fixed and
 external exposures bypass the clamp, so a value of 80 there still means a 12.5
 ceiling.
 

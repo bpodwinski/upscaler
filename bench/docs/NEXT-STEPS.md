@@ -750,7 +750,7 @@ The per-frame `firing` / `strong` / mean v series land in `summary.json`
 (`shadingChange.perFrame`) under `bench/results/raw/convergence/`, which is
 git-ignored.
 
-## 9. Auto-exposure ceiling on dark scenes — DONE (2026-10-03, issue #49): `EXPOSURE_MAX` 80 → 8
+## 10. Auto-exposure ceiling on dark scenes — DONE (2026-10-03, issue #49): `EXPOSURE_MAX` 80 → 8
 
 PR #48's probe found that a dark scene saturates temporal history near linear
 12.5. On a mostly-black frame the log-average sits at its 1e-4 floor, so

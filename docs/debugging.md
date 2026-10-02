@@ -108,7 +108,7 @@ WebGPU:
   rgba16float output back exactly. The scene is emissive 0.25–64 squares in three
   sizes on a dark background, compared against native, for each conditioning exposure
   (`auto` or fixed values). See
-  [`NEXT-STEPS.md` §9](../bench/docs/NEXT-STEPS.md).
+  [`NEXT-STEPS.md` §10](../bench/docs/NEXT-STEPS.md).
 - **Alpha convergence:** `node scripts/measure-alpha-convergence.mjs --ratio 3` reads
   the output texture back on `examples/15-transparent-canvas` (frozen, still camera).
 - **Packaged TSL guides:** `npm run verify:packed-guides:gpu` builds and packs the

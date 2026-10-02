@@ -555,7 +555,7 @@ describe('E00 benchmark foundation', () => {
 
 describe('auto-exposure clamp', () => {
     // EXPOSURE_MAX is the dark-scene highlight ceiling: history resolves at most
-    // 999 / exposure (issue #49, bench/docs/NEXT-STEPS.md §9). 80 clipped at 12.5.
+    // 999 / exposure (issue #49, bench/docs/NEXT-STEPS.md §10). 80 clipped at 12.5.
     it('caps brightening at 8 and still clamps the auto target', () => {
         expect(LUMINANCE_PYRAMID_SHADER).toContain('const EXPOSURE_MAX : f32 = 8.0;');
         expect(LUMINANCE_PYRAMID_SHADER).toContain(
