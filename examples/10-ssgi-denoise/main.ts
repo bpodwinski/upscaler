@@ -29,14 +29,23 @@ import { addRenderScale, basePercent } from '../shared/ui';
 //* options here is production-ready; this exists to document the tradeoffs. The
 //* FSR3 library (src/) is untouched by any of it.
 //*
-//* SSGI is genuinely noisy: SSGINode's `useTemporalFiltering` only *rotates* the
-//* sampling noise each frame for a downstream temporal resolver to average — it
-//* is not a denoiser, so on its own the GI stays grainy. The `SSGI denoiser`
-//* toggle A/Bs three approaches; GPU-observed results (2026-07):
+//* SSGI is genuinely noisy, and SSGINode is not a denoiser. Its default
+//* `useTemporalFiltering = true` rotates the sampling pattern on a 6-frame cycle
+//* and, per three's own docs, requires a real TRAA to resolve it. FSR3 does NOT
+//* satisfy that contract: the per-frame GI swing inflates FSR3's variance clip
+//* at silhouettes, so stale history ghost-streaks off moving edges (GPU-verified
+//* 2026-08-06, examples 06/09 — see CLAUDE.md "Related landmine"). So, like
+//* 06/09, every path here turns it OFF and denoises the static pattern instead
+//* (three's documented no-TRAA recipe). The `SSGI denoiser` toggle A/Bs what
+//* does that denoising. The `spatial`/`recurrent` observations below date from
+//* 2026-07, when the pattern still rotated and `builtin` was raw SSGI; the
+//* failure modes they record (à-trous artifacts, jitter-blind reprojection)
+//* belong to the denoisers themselves, not to the SSGI pattern:
 //*
-//* - `builtin`  — raw SSGI, FSR3 resolves it. Stable, but soft/weak.
+//* - `builtin`  — DenoiseNode (spatial), FSR3 owns temporal: the 06/09 recipe.
+//*                The A/B baseline.
 //* - `spatial`  — recurrentDenoise as SPATIAL-ONLY à-trous, FSR3 owns temporal
-//*                (no jitter conflict). Cleaner than builtin, BUT shows à-trous
+//*                (no jitter conflict). Cleaner than raw SSGI, BUT shows à-trous
 //*                edge halos + faint step-lines on flat walls, and a frame-skip
 //*                cadence from the node's own render-target update. Tuning those
 //*                means tuning a third-party node we don't own — not worth it.
@@ -155,6 +164,11 @@ function configure(): void {
         const giPass = ssgi(beauty, depth, normal, camera);
         giPass.sliceCount.value = state.ssgiSlices;
         giPass.stepCount.value = state.ssgiSteps;
+        // SSGI's rotating temporal pattern requires a true TRAA to resolve;
+        // under FSR3 it ghost-streaks off moving silhouettes. Static pattern +
+        // a denoiser is three's documented recipe for the no-TRAA case — the
+        // same setting as examples 06/09, applied to every denoiser path.
+        giPass.useTemporalFiltering = false;
         const ao = sw(giPass.getAONode());
         const giRaw = giPass.getGINode();
 
@@ -191,9 +205,10 @@ function configure(): void {
             giReproj.setHistoryTexture(giDenoise as never);
             gi = sw(giDenoise);
         } else {
-            //* Raw built-in path (SSGINode's own output) — grainy, resolved only
-            //* by FSR3's accumulation. The A/B baseline.
-            gi = sw(giRaw);
+            //* Built-in path — three's spatial DenoiseNode on the static pattern,
+            //* FSR3 owns all temporal work. Exactly what 06/09 ship; the A/B
+            //* baseline the two experiments are measured against.
+            gi = sw(denoise(giRaw as never, depth, normal, camera));
         }
 
         // beauty * AO  +  albedo * indirect-bounce
@@ -226,7 +241,7 @@ const gui = new GUI({ title: 'SSGI denoise A/B → FSR3' });
 gui.add(state, 'ssgi').name('SSGI (indirect)').onChange(configure);
 gui.add(state, 'ssgiDenoiser', {
     'spatial (FSR owns temporal)': 'spatial',
-    'built-in (raw)': 'builtin',
+    'built-in (DenoiseNode)': 'builtin',
     'recurrent (⚠ fights jitter)': 'recurrent',
 })
     .name('SSGI denoiser')
