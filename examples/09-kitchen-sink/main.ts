@@ -217,6 +217,8 @@ window.addEventListener('resize', () => {
     configure();
 });
 
+let orbitTime = 0;
+
 // Headless-verification handle (CDP harness), like examples 12/13.
 (window as unknown as Record<string, unknown>).__kitchenSinkExample = {
     renderer,
@@ -225,6 +227,13 @@ window.addEventListener('resize', () => {
     state,
     get upscaler() {
         return (fsrNode as unknown as { upscaler?: Upscaler } | null)?.upscaler ?? null;
+    },
+    // Deterministic camera drive for the harness (pose = orbit time).
+    get orbitTime() {
+        return orbitTime;
+    },
+    set orbitTime(value: number) {
+        orbitTime = value;
     },
 };
 
@@ -245,7 +254,6 @@ function updateHud(): void {
 //* Loop — the node graph renders the reduced-res scene + effects and runs FSR3
 //* internally; we just orbit and render the post graph.
 const timer = new THREE.Timer();
-let orbitTime = 0;
 renderer.setAnimationLoop(() => {
     // Gentle front-facing orbit so the camera stays *inside* the room (a full
     // 360° would swing it behind the walls into darkness) — and the slow motion
