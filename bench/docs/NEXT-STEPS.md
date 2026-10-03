@@ -1038,12 +1038,30 @@ Q9 (AE off) with the hold: integrated error after the step at 60 rises 2 %, afte
 5 % on the lit knots. The decay curve is uniformly higher, with no new trail. Q15 lag rises
 under 1 %.
 
+**Re-measured after #52 (§9) and #53 (§10) landed** — the clip fix rebased onto both,
+same settings. #52's two-sided `cv` floor took shading change on the emitters to 0 %
+of frames everywhere (black included). #53's `EXPOSURE_MAX` 8 lifted the 2 % ceiling, but
+auto-exposure still pins at the new cap on this mostly-black frame, so a radiance-1
+emitter conditions to 8 and the invertible tonemap's averaging bias still dominates:
+
+| Q17, rebased (retention / flicker) | black decal 0.5 px | black decal 1 px | black decal 1.5 px | black decal line | textured decal 1 px | black floating 0.5 px |
+| --- | --- | --- | --- | --- | --- | --- |
+| AE off | 0.02 / 0.05 | 0.06 / 0.05 | 0.76 / 0.01 | 0.03 / 0.04 | 0.28 / 0.04 | 0.08 / 0.19 |
+| **AE on (canonical)** | **0.005 / 0.01** | **0.01 / 0.01** | **0.28 / 0.005** | **0.007 / 0.008** | **0.12 / 0.02** | **0.02 / 0.04** |
+
+With #52's false fires gone, black-background sub-pixel retention drops further (decal
+0.5 px 0.05 → 0.02, AE off): the false fires had been aging history, which raised the
+blend weight on hit frames and so let more of each hit through. Over texture it rises
+(decal 1 px 0.23 → 0.28). What is left is the clip on the miss phase plus #54's
+disocclusion on floating emitters, so the hold below is now the binding question. With AE on, the
+resolved 1.5 px disc reads 0.28 against 0.76 with AE off; that gap is conditioning, not
+history loss (flicker is 0.005).
+
 **Decision.** Ship the clip fix: it is a real bug, it costs nothing, and it is neutral on
 every lighting and convergence metric. Record the hold as the next candidate, to be
 re-measured after [#54](https://github.com/pmndrs/upscaler/issues/54) (reconstruct
-disocclusion on sub-pixel depth) and [#22](https://github.com/pmndrs/upscaler/issues/22)
-(shading change over empty backgrounds) land, because until then they erase the same
-emitters independently. When it comes back it needs two answers: a lock-formation rule
+disocclusion on sub-pixel depth) lands. [#22](https://github.com/pmndrs/upscaler/issues/22)'s
+shading-change false positives, the other independent eraser, are gone since #52. When it comes back it needs two answers: a lock-formation rule
 that is spatially consistent along sub-pixel slivers (or a hold limited to genuinely
 isolated points), and an explicit ghost budget. A hold that bridges a full jitter period
 (32 frames at ratio 2) would cover the sparsest emitters (a 0.3 px disc averages ~13
