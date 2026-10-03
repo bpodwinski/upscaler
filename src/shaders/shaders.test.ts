@@ -86,7 +86,7 @@ const BASELINE_FINGERPRINTS: Record<string, string> = {
     // 2026-10-02: alphaRelax guarded against STILL_CLAMP_RELAX = 0 (NEXT-STEPS
     // §8) — GPU captures byte-identical at the shipped 8.
     accumulate: '63dbdfad',
-    luminancePyramid: '32cf3854',
+    luminancePyramid: 'b74eee0d',
     // Updated 2026-07-22: reactive merge-not-overwrite (guides spec M3) — the
     // generator max-merges an incoming mask instead of being suppressed by it.
     generateReactive: '9d0739e5',

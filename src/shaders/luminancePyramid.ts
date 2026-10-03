@@ -109,8 +109,9 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
 
     // App-supplied exposure wins over both: a pipeline that already computes
     // exposure (its own metering pass) feeds it here, and every downstream
-    // pass keeps reading this one 1×1 value. avgLum stays our own measurement
-    // so the shading-change detector still has a neighbourhood reference.
+    // pass keeps reading this one 1×1 value. That includes the shading-change
+    // detector, which scales both frames by this conditioning exposure (.r).
+    // avgLum (.g) stays our own measurement, but no shader reads it.
     let ext = textureLoad(externalExposure, vec2i(0), 0).r;
     exposure = select(exposure, ext, hasFlag(FLAG_EXTERNAL_EXPOSURE));
 
