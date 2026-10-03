@@ -589,6 +589,9 @@ and replace them only inside the coordinated parity resolver tested on
   workgroup-local. Current and jitter-aligned reprojected previous luma are averaged
   per block and the *means* are compared per scale, gated by a base + contrast-scaled
   (coefficient-of-variation) noise floor; disoccluded texels are neutralized. The
+  coefficient of variation pools both frames' within-block spread: from the current
+  frame alone the gate was one-sided, and a block fired whenever the jitter phase
+  missed a sub-texel feature (issue #22, `bench/docs/NEXT-STEPS.md` §9). The
   strongest gated scale is the response consumed by accumulate's `SHADING_AGE` path.
   The pass also maintains the 1-frame luma history it compares against.
 - **FSR 3.1.5 behavior:** Builds a signed-difference SPD from corrected
@@ -914,7 +917,9 @@ noise floor, non-locked history is aged by `SHADING_AGE` in `accumulate.ts`; loc
 pixels suppress this aging (locks must never break on shading change — see CLAUDE.md).
 Ghosting after a lighting change → lower the `SHADING_FLOOR_*` constants (top of
 `shadingChange.ts`); flat steadily-lit surfaces shimmering → raise them, or raise
-`SHADING_FLOOR_CV` if the noise sits on textured regions.
+`SHADING_FLOOR_CV` if the noise sits on textured regions. The `cv` in that floor is
+the within-block spread of **both** frames over their joint mean; keep it two-sided
+(see `bench/docs/NEXT-STEPS.md` §9 before changing it).
 
 Toggle `settings.detectShadingChanges` (`FLAG_SHADING_CHANGE`) and inspect
 `DebugView.ShadingChange`. When off, the pass is not dispatched at all.

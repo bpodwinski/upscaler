@@ -13,6 +13,8 @@ export interface BenchScene {
     cornellScene: THREE.Scene;
     /** Q14: SSGI-lit room with 1px wireframe features (issue #17). */
     wireRoomScene: THREE.Scene;
+    /** Q16: sub-texel full-contrast bars over an empty black background (issue #22). */
+    sparseWireScene: THREE.Scene;
     reactiveScene: THREE.Scene;
     /**
      * Q13 transparents the auto-generator must see: hidden while the
@@ -263,6 +265,49 @@ export function createBenchScene(): BenchScene {
     wireKnot.position.set(1.6, 2.9, -1.2);
     wireRoomScene.add(wireLattice, wireSphere, wireKnot);
 
+    //* Sparse Wires Over Nothing (Q16) ======================================
+    // Issue #22's repro: full-contrast geometry thinner than a render texel
+    // over an EMPTY (black) background, still camera. Whether a bar lands in a
+    // texel is decided by the jitter phase, so 4×4 / 8×8 block-mean luma swings
+    // between "the bar" and "nothing" although nothing changed. Bar widths are
+    // 0.012 / 0.018 / 0.024 units at ~8.8 units from the camera — about 0.5 /
+    // 0.8 / 1.05 render px at ratio 2 and 0.35 / 0.5 / 0.7 at ratio 3 (1280×720,
+    // fov 50) — in near-vertical, near-horizontal and diagonal fans, so both
+    // block axes and every wire-to-block-edge offset are covered. A solid knot
+    // gives a full-coverage silhouette control on the same black. Its light
+    // follows `directionalIntensity`, so the scenario's light step (a genuine
+    // change ON the sparse geometry) can be measured with measure-drift-lag.
+    const sparseWireScene = new THREE.Scene();
+    sparseWireScene.background = new THREE.Color(0x000000);
+    const sparseLight = new THREE.DirectionalLight(0xfff2df, 3.2);
+    sparseLight.position.set(4, 6, 9);
+    sparseWireScene.add(sparseLight, new THREE.AmbientLight(0x8090b0, 0.6));
+    const sparseMaterial = new THREE.MeshStandardMaterial({ color: 0xe8edf4, roughness: 0.5 });
+    const sparseWidths = [0.012, 0.018, 0.024];
+    for (let i = 0; i < 9; i++) {
+        const width = sparseWidths[i % 3];
+        // Near-vertical fan (right of centre).
+        const upright = new THREE.Mesh(new THREE.BoxGeometry(width, 3.6, width), sparseMaterial);
+        upright.position.set(0.6 + i * 0.32, 2.6, 0);
+        upright.rotation.z = (i - 4) * 0.045;
+        // Near-horizontal fan (top band).
+        const level = new THREE.Mesh(new THREE.BoxGeometry(3.4, width, width), sparseMaterial);
+        level.position.set(-2.4, 3.3 + i * 0.16, 0);
+        level.rotation.z = (i - 4) * 0.03;
+        // Diagonal fan (bottom band).
+        const slant = new THREE.Mesh(new THREE.BoxGeometry(2.6, width, width), sparseMaterial);
+        slant.position.set(-2.6 + i * 0.12, 1.4 - i * 0.07, 0);
+        slant.rotation.z = 0.6 + (i - 4) * 0.05;
+        sparseWireScene.add(upright, level, slant);
+    }
+    const sparseKnot = new THREE.Mesh(
+        new THREE.TorusKnotGeometry(0.62, 0.17, 160, 20),
+        new THREE.MeshStandardMaterial({ color: 0xff7a3d, metalness: 0.35, roughness: 0.3 }),
+    );
+    sparseKnot.position.set(-2.5, 1.05, -0.6);
+    sparseKnot.rotation.set(0.6, 0.9, 0);
+    sparseWireScene.add(sparseKnot);
+
     //* Floor
     const floor = new THREE.Mesh(
         new THREE.PlaneGeometry(120, 120),
@@ -498,6 +543,7 @@ export function createBenchScene(): BenchScene {
         mergeGroup.visible = frame.reactiveMerge === true;
         mergeCoverage.visible = frame.reactiveMerge === true;
         sun.intensity = frame.directionalIntensity;
+        sparseLight.intensity = frame.directionalIntensity;
         // The Q11 host pre-exposure multiplier lives in the MRT output node,
         // which the background never passes through — scale it here so the
         // whole frame is uniformly pre-exposed like a real app's render.
@@ -511,6 +557,7 @@ export function createBenchScene(): BenchScene {
         roomScene,
         cornellScene,
         wireRoomScene,
+        sparseWireScene,
         reactiveScene,
         autoReactiveObjects: [overlapPanel, diffOnlyPanel],
         update,

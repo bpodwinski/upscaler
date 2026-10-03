@@ -151,6 +151,19 @@ function q15(frame: number): BenchmarkFrameState {
     return { ...state(frame), directionalIntensity };
 }
 
+/** Q16's light step: a genuine change on the sparse geometry, after convergence. */
+const Q16_STEP_FRAME = 300;
+
+function q16(frame: number): BenchmarkFrameState {
+    // Issue #22: sub-texel full-contrast bars over an empty black background,
+    // still camera. Up to the step the only per-frame variation is the
+    // upscaler's jitter, so any shading-change response before frame 300 is a
+    // false positive. At 300 the light drops to a quarter — a real change on
+    // exactly the content the detector struggles with, for measure-drift-lag.
+    const directionalIntensity = frame >= Q16_STEP_FRAME ? 0.8 : 3.2;
+    return { ...state(frame, [0, 2.6, 8.8], [0, 2.6, 0]), scene: 'sparse-wires', directionalIntensity };
+}
+
 const SCENARIOS: Record<BenchmarkScenarioId, BenchmarkScenarioDefinition> = {
     Q0: {
         id: 'Q0',
@@ -433,6 +446,22 @@ const SCENARIOS: Record<BenchmarkScenarioId, BenchmarkScenarioDefinition> = {
         subruns: [],
         unsupported: null,
         frame: q15,
+    },
+    Q16: {
+        id: 'Q16',
+        name: 'sparse-wires-empty-background',
+        endFrame: 399,
+        captures: ['0', 'P-1', 'P', '2*P-1', '239', '299', '300', '301', '302', '304', '308', '316', '332', '399'],
+        debugViews: ['final', 'disocclusion', 'accumulation-age', 'locks', 'shading-change'],
+        rois: {
+            full: [0, 0, 1, 1],
+            upright_fan: [0.5, 0.15, 0.3, 0.7],
+            level_fan: [0.12, 0.08, 0.36, 0.3],
+            slant_fan: [0.12, 0.5, 0.36, 0.42],
+        },
+        subruns: [],
+        unsupported: null,
+        frame: q16,
     },
 };
 

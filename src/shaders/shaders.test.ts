@@ -76,8 +76,10 @@ const BASELINE_FINGERPRINTS: Record<string, string> = {
     // (no all-taps veto), jitter-delta-compensated reprojection, and a
     // neighborhood-relief-widened separation tolerance (grazing-angle planes).
     reconstruct: '669ee05e',
-    // Added 2026-07-21: multi-scale shading-change detector (NEXT-STEPS item 4).
-    shadingChange: '41ed97fa',
+    // Added 2026-07-21: multi-scale shading-change detector (NEXT-STEPS item 4);
+    // 2026-10-03: the contrast floor reads both frames' spread, not just the
+    // current frame's (issue #22, NEXT-STEPS §9).
+    shadingChange: '061f55cd',
     // Updated 2026-07-21: DeltaPreExposure history correction (NEXT-STEPS item 2);
     // 2026-08-25: alpha resolved alongside color into the locks buffer's .a;
     // 2026-10-02: the alpha clamp takes the color path's still-scene relax;

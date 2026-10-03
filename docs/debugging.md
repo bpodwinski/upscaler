@@ -58,6 +58,7 @@ afterwards. The pipeline picks the change up on its next `render()`
 | Frame edges fade to transparent | A post graph scales the upscaled `vec4` (alpha included) by a scalar; multiply by `vec4(vec3(v), 1)`. |
 | Brightness lags or trails for a moment after your app steps its own exposure | The host exposure baked into `color` isn't declared. Pass it as `preExposureTexture` (not `exposureTexture`) so history is corrected across the step. |
 | Still image shimmers | Measure before tuning; see [Verifying on a real GPU](#verifying-on-a-real-gpu). Check `ShadingChange`, then `Disocclusion`. |
+| `ShadingChange` lights up in blocks along thin bright features over an empty background on a still camera | Fixed for issue [#22](https://github.com/pmndrs/upscaler/issues/22): the detector's contrast floor used to read only the current frame, so a block fired whenever the jitter phase missed a sub-texel wire. If you still see it, measure it on bench scenario Q16 (`measure-convergence.mjs --scenario Q16 --shading-frames 32`). The same wires also show short `Disocclusion` dashes on a still camera; that is a known, separate effect. |
 | No sub-pixel reconstruction from `upscale()` | Another node owns the camera view offset (warns once); or the node was built outside a `RenderPipeline` output graph (warns once). |
 
 ## Console warnings
@@ -95,7 +96,8 @@ WebGPU:
 - **Still-scene convergence:** `node scripts/measure-convergence.mjs --scenario Q12
   --ratio 2` reports consecutive and same-jitter-phase frame differences plus
   debug-view PNGs on a deterministic bench scenario. Q1 and Q12 are the reference
-  scenarios.
+  scenarios. Add `--shading-frames 32` to also report how much of the frame the
+  shading-change detector fires on (Q16 is its sparse-geometry stress case).
 - **Lighting-drift lag:** `node scripts/measure-drift-lag.mjs --scenario Q15
   --settings '{"autoExposure":false}'` reports how many frames the output trails a
   slow, sub-detector lighting ramp against a held-light reference. This is the other
@@ -106,7 +108,7 @@ WebGPU:
 - **Packaged TSL guides:** `npm run verify:packed-guides:gpu` builds and packs the
   library, then runs `examples/13-guides-node` against the packed artifact on a real
   GPU.
-- **Benchmarks:** how to run and read A/B timing runs, the Q0–Q15 scenario catalogue,
+- **Benchmarks:** how to run and read A/B timing runs, the Q0–Q16 scenario catalogue,
   and device setup are in [`bench/docs/BENCHMARKING.md`](../bench/docs/BENCHMARKING.md).
 
 Output from all of these lands under `bench/results/raw/`, which is gitignored.

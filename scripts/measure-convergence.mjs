@@ -14,7 +14,7 @@
  *     [--settle 180] [--pairs 12] [--width 1280] [--height 720]
  *     [--views final,accumulation-age] [--label baseline] [--port 9333]
  *     [--url http://127.0.0.1:5199] [--subrun static]
- *     [--settings '{"detectShadingChanges":false}']
+ *     [--settings '{"detectShadingChanges":false}'] [--shading-frames 32]
  *
  * --url is the bench origin to drive; if nothing answers there, the bench dev
  * server is started on exactly that host + port. --port is Chrome's DevTools
@@ -46,6 +46,11 @@ import {
 
 const ROOT = resolve(import.meta.dirname, '..');
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+/** sRGB byte → linear value: undoes the output encoding a debug present keeps. */
+const SRGB_TO_LINEAR = Float64Array.from({ length: 256 }, (_, byte) => {
+    const c = byte / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+});
 
 //* CLI
 function parseArguments(argv) {
@@ -81,6 +86,10 @@ if (cli.help || cli.h) {
   --settings <json>      capture-setting overrides for an A/B, e.g.
                          '{"lockThinFeatures":false}' (also detectShadingChanges,
                          autoExposure, rcasDenoise, maxAccumulation)
+  --shading-frames <n>   also replay frames settle..settle+n-1 through the
+                         shading-change debug view and report the share of
+                         pixels whose response v exceeds 0.1 / 0.5 (sRGB-decoded)
+                         and the mean v, per frame and averaged (default 0 = off)
 Writes to bench/results/raw/convergence/<label>-<scenario>[-<subrun>]-<ratio>x/.`);
     process.exit(0);
 }
@@ -95,6 +104,7 @@ const label = cli.label ?? 'baseline';
 const port = parsePort(cli.port, '--port') ?? 9333;
 const views = (cli.views ?? 'final,accumulation-age').split(',').filter(Boolean);
 const subrun = typeof cli.subrun === 'string' ? cli.subrun : null;
+const shadingFrames = Number(cli['shading-frames'] ?? 0);
 const captureSettings = typeof cli.settings === 'string' ? JSON.parse(cli.settings) : {};
 const outputDirectory = join(
     ROOT,
@@ -155,13 +165,18 @@ function decodePng(bytes) {
     return { width: pngWidth, height: pngHeight, bytesPerPixel, stride, raw };
 }
 
-/** Mean absolute RGB difference (0–255) between two decoded canvases. */
-function meanAbsDiff(a, b) {
+/**
+ * Mean absolute RGB difference (0–255) between two decoded canvases, over
+ * every pixel or only those a mask selects.
+ */
+function meanAbsDiff(a, b, mask = null) {
     if (a.width !== b.width || a.height !== b.height)
         throw new Error(`Size mismatch: ${a.width}x${a.height} vs ${b.width}x${b.height}`);
     let sum = 0;
-    const pixels = a.width * a.height;
-    for (let p = 0; p < pixels; p++) {
+    let pixels = 0;
+    for (let p = 0; p < a.width * a.height; p++) {
+        if (mask && !mask[p]) continue;
+        pixels++;
         const ia = p * a.bytesPerPixel;
         const ib = p * b.bytesPerPixel;
         sum +=
@@ -169,7 +184,23 @@ function meanAbsDiff(a, b) {
             Math.abs(a.raw[ia + 1] - b.raw[ib + 1]) +
             Math.abs(a.raw[ia + 2] - b.raw[ib + 2]);
     }
-    return sum / (pixels * 3);
+    return sum / (Math.max(pixels, 1) * 3);
+}
+
+/**
+ * Content mask: pixels whose brightest channel exceeds 40/255 in the settle
+ * frame. On a sparse scene (Q16's wires over black) the full-frame mean is
+ * mostly empty background, so churn is also reported over this mask. The
+ * threshold sits above the dark page strip (~26/255) that the canvas clip
+ * picks up below the headless viewport, which never churns.
+ */
+function contentMask(image) {
+    const mask = new Uint8Array(image.width * image.height);
+    for (let p = 0; p < mask.length; p++) {
+        const i = p * image.bytesPerPixel;
+        mask[p] = Math.max(image.raw[i], image.raw[i + 1], image.raw[i + 2]) > 40 ? 1 : 0;
+    }
+    return mask;
 }
 
 //* CDP plumbing (subset of run-benchmark.mjs)
@@ -347,6 +378,8 @@ async function main() {
         //* Consecutive-frame churn
         const frames = [];
         let previous = decodePng(await captureCanvas(client));
+        const mask = contentMask(previous);
+        const maskPixels = mask.reduce((total, value) => total + value, 0);
         await writeFile(join(outputDirectory, `final-f${settle}.png`), await captureCanvas(client));
         const diffs = [];
         for (let index = 1; index <= pairs; index++) {
@@ -358,7 +391,7 @@ async function main() {
             const png = await captureCanvas(client);
             const decoded = decodePng(png);
             const diff = meanAbsDiff(previous, decoded);
-            diffs.push({ frame, meanAbsDiff: diff });
+            diffs.push({ frame, meanAbsDiff: diff, contentMeanAbsDiff: meanAbsDiff(previous, decoded, mask) });
             console.log(`frame ${frame - 1} -> ${frame}: meanAbsDiff ${diff.toFixed(4)}`);
             frames.push({ frame, decoded });
             previous = decoded;
@@ -374,9 +407,77 @@ async function main() {
             phaseLocked = {
                 frames: [a.frame, b.frame],
                 meanAbsDiff: meanAbsDiff(a.decoded, b.decoded),
+                contentMeanAbsDiff: meanAbsDiff(a.decoded, b.decoded, mask),
             };
             console.log(
-                `phase-locked ${a.frame} vs ${b.frame} (period ${jitterPeriod}): meanAbsDiff ${phaseLocked.meanAbsDiff.toFixed(4)}`,
+                `phase-locked ${a.frame} vs ${b.frame} (period ${jitterPeriod}): meanAbsDiff ${phaseLocked.meanAbsDiff.toFixed(4)}` +
+                    ` (content ${phaseLocked.contentMeanAbsDiff.toFixed(4)})`,
+            );
+        }
+
+        //* Shading-change coverage: how much of a still frame the detector
+        // fires on, averaged over --shading-frames consecutive frames (one
+        // frame alone samples a single jitter phase). Debug views present
+        // untone-mapped but sRGB-encoded (BenchPipeline.present), so the red
+        // byte is decoded back to the response value v before thresholding:
+        // `firing` = v > 0.1 (ages history by ≥ 7.5 % via SHADING_AGE), `strong`
+        // = v > 0.5, `any` = red byte > 10 (v > 0.003, measure-drift-lag's
+        // threshold). `mean` is the mean v over the frame.
+        let shadingChange = null;
+        if (shadingFrames > 0) {
+            await evaluate(
+                client,
+                `window.__UPSCALER_BENCH__.capture({ frame: ${settle}, debugView: 'shading-change', settings: ${JSON.stringify(captureSettings)} })`,
+            );
+            const perFrame = [];
+            for (let index = 0; index < shadingFrames; index++) {
+                const frame = settle + index;
+                if (index > 0)
+                    await evaluate(
+                        client,
+                        `window.__UPSCALER_BENCH__.step(${frame}).then(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))`,
+                    );
+                const png = await captureCanvas(client);
+                if (index === 0) await writeFile(join(outputDirectory, `shading-change-f${frame}.png`), png);
+                const image = decodePng(png);
+                let any = 0;
+                let firing = 0;
+                let strong = 0;
+                let sum = 0;
+                const pixels = image.width * image.height;
+                for (let p = 0; p < pixels; p++) {
+                    const byte = image.raw[p * image.bytesPerPixel];
+                    const value = SRGB_TO_LINEAR[byte];
+                    if (byte > 10) any++;
+                    if (value > 0.1) firing++;
+                    if (value > 0.5) strong++;
+                    sum += value;
+                }
+                perFrame.push({
+                    frame,
+                    anyFraction: any / pixels,
+                    firingFraction: firing / pixels,
+                    firingPixels: firing,
+                    strongFraction: strong / pixels,
+                    mean: sum / pixels,
+                });
+            }
+            const mean = (key) => perFrame.reduce((total, entry) => total + entry[key], 0) / perFrame.length;
+            shadingChange = {
+                frames: shadingFrames,
+                anyFraction: mean('anyFraction'),
+                firingFraction: mean('firingFraction'),
+                firingPixels: mean('firingPixels'),
+                maxFiringFraction: Math.max(...perFrame.map((entry) => entry.firingFraction)),
+                strongFraction: mean('strongFraction'),
+                mean: mean('mean'),
+                perFrame,
+            };
+            console.log(
+                `shading-change over ${shadingFrames} frames: firing (v>0.1) ${(100 * shadingChange.firingFraction).toFixed(4)}% ` +
+                    `(${shadingChange.firingPixels.toFixed(0)} px, max ${(100 * shadingChange.maxFiringFraction).toFixed(4)}%), ` +
+                    `strong (v>0.5) ${(100 * shadingChange.strongFraction).toFixed(4)}%, any ${(100 * shadingChange.anyFraction).toFixed(4)}%, ` +
+                    `mean v ${shadingChange.mean.toFixed(6)}`,
             );
         }
 
@@ -395,6 +496,7 @@ async function main() {
         }
 
         const values = diffs.map((entry) => entry.meanAbsDiff);
+        const contentValues = diffs.map((entry) => entry.contentMeanAbsDiff);
         const summary = {
             scenario,
             subrun,
@@ -407,7 +509,10 @@ async function main() {
             jitterPeriod,
             diffs,
             phaseLocked,
+            shadingChange,
             mean: values.reduce((total, value) => total + value, 0) / values.length,
+            contentPixels: maskPixels,
+            contentMean: contentValues.reduce((total, value) => total + value, 0) / contentValues.length,
             min: Math.min(...values),
             max: Math.max(...values),
             logRecords,
@@ -416,7 +521,8 @@ async function main() {
         console.log(
             `\n${label} ${scenario} ${ratio}x: mean ${summary.mean.toFixed(4)}, ` +
                 `min ${summary.min.toFixed(4)}, max ${summary.max.toFixed(4)} ` +
-                `(over ${pairs} consecutive pairs after ${settle} settle frames)`,
+                `(over ${pairs} consecutive pairs after ${settle} settle frames); ` +
+                `content mask (${maskPixels} px) mean ${summary.contentMean.toFixed(4)}`,
         );
         console.log(`artifacts: ${outputDirectory}`);
         if (logRecords.some((record) => /error|exception|validation/i.test(record)))
