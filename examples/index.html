@@ -93,6 +93,42 @@
                 border-radius: 999px;
                 padding: 2px 8px;
             }
+            .section-head {
+                font-size: 13px;
+                color: var(--text);
+                margin: 0 0 4px;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+            }
+            .section-sub {
+                color: var(--muted);
+                font-size: 12px;
+                line-height: 1.6;
+                margin: 0 0 16px;
+            }
+            section {
+                margin-bottom: 44px;
+            }
+            /* Showcases land one PR at a time; an empty section stays hidden. */
+            section.showcases:not(:has(.card)) {
+                display: none;
+            }
+            .showcases .grid {
+                grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+            }
+            .showcases a.card {
+                border-color: rgba(125, 211, 252, 0.35);
+                background: linear-gradient(160deg, rgba(125, 211, 252, 0.08), var(--card) 60%);
+                padding: 22px 22px 24px;
+            }
+            .showcases .title {
+                font-size: 17px;
+            }
+            @media (max-width: 480px) {
+                .showcases .grid {
+                    grid-template-columns: 1fr;
+                }
+            }
             .foot {
                 margin-top: 44px;
                 padding-top: 20px;
@@ -120,6 +156,17 @@
                 WebGPU-only — open in Chrome/Edge 113+ (or a browser with WebGPU enabled). Each
                 demo renders the scene at a lower resolution and upscales it back to full size.
             </p>
+            <section class="showcases">
+                <h2 class="section-head">Showcases</h2>
+                <p class="section-sub">
+                    What the upscaler buys you, made visible — bigger scenes built to be looked at
+                    rather than to test one feature.
+                </p>
+                <div class="grid">
+                </div>
+            </section>
+            <h2 class="section-head">Examples</h2>
+            <p class="section-sub">Single-purpose demos — one feature or integration each.</p>
             <div class="grid">
                 <a class="card" href="01-hello/">
                     <div class="num">01</div>

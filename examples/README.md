@@ -12,6 +12,15 @@ npm run examples     # http://localhost:5300  (landing page links every demo)
 The library is consumed straight from `../src` (aliased as `@pmndrs/upscaler`), so
 shader/pipeline edits hot-reload here just like in the bench.
 
+## Showcases
+
+Bigger scenes built to be looked at — what the upscaler buys you, made visible —
+listed first on the landing page. Their directories use an `sN-` prefix instead of a
+number so they sort apart from the single-purpose demos.
+
+| # | Showcase | Shows |
+|---|----------|-------|
+
 ## The demos
 
 | # | Demo | Shows |
