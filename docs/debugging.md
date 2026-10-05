@@ -51,8 +51,8 @@ afterwards. The pipeline picks the change up on its next `render()`
 | --- | --- |
 | Black output | MRT attachment count doesn't match the MRT outputs (a `count: 2` target rendered without the `velocity` output); attachments not named `'output'`/`'velocity'`; or a temporal `upscale()` node with no depth/velocity, which warns once. |
 | Smearing or trails under camera motion | Velocity not jitter-free, or jitter applied to an input that wasn't re-rendered under it (use `jitter: false` for such inputs). Check `MotionVectors` first. |
-| Ghost streaks off moving edges in an effect (SSGI) | The effect rotates its own sampling pattern per frame expecting a TRAA. Disable it (`SSGINode.useTemporalFiltering = false`). |
-| Thin features (wires) boil on a still camera over a noisy effect, and toggling `lockThinFeatures` / `detectShadingChanges` barely helps | The effect input is re-noised every frame (a denoiser whose kernel rotates per frame, such as `recurrentDenoise({ accumulate: false })`, or SSGI's rotating pattern), so accumulation can only average it down. Use a fixed-pattern denoiser (`DenoiseNode`) with `useTemporalFiltering = false`, or raise `maxAccumulation`. A reactive mask makes it worse. See issue [#17](https://github.com/pmndrs/upscaler/issues/17) and bench scenario Q14. |
+| Ghost streaks off moving silhouettes over an SSGI-lit surface | A known cost of SSGI's rotating sample pattern (`useTemporalFiltering`, on by default and in examples 06/09), shelved for the fused GI work ([#7](https://github.com/pmndrs/upscaler/issues/7)). `useTemporalFiltering = false` trades it for a fixed hatch that accumulation can't remove; see [Jitter](inputs-and-contracts.md#jitter). |
+| Thin features (wires) boil on a still camera over a noisy effect, and toggling `lockThinFeatures` / `detectShadingChanges` barely helps | The effect input is re-noised every frame (a denoiser whose kernel rotates aperiodically, such as `recurrentDenoise({ accumulate: false })`), so accumulation can only average it down. Use a fixed-kernel denoiser (`DenoiseNode`; issue #17 measured it converging on SSGI's static pattern), or raise `maxAccumulation`. A reactive mask makes it worse. See issue [#17](https://github.com/pmndrs/upscaler/issues/17) and bench scenario Q14. |
 | Transparent objects or particles ghost | No reactive mask; see [Reactive masks](inputs-and-contracts.md#reactive-masks). |
 | Page shows through empty regions | Expected since alpha passthrough: set `scene.background` or an opaque clear color; see [Alpha](inputs-and-contracts.md#alpha). |
 | Frame edges fade to transparent | A post graph scales the upscaled `vec4` (alpha included) by a scalar; multiply by `vec4(vec3(v), 1)`. |
@@ -109,12 +109,16 @@ WebGPU:
   sizes on a dark background, compared against native, for each conditioning exposure
   (`auto` or fixed values). See
   [`NEXT-STEPS.md` §10](../bench/docs/NEXT-STEPS.md).
+- **Sub-pixel emitter retention:** `node scripts/measure-emitter-retention.mjs
+  --settings '{"autoExposure":false}'` drives bench scenario Q17 and reports whether
+  emitters smaller than a render pixel converge to their coverage, plus flicker and a
+  switch-off ghost. See [`NEXT-STEPS.md` §11](../bench/docs/NEXT-STEPS.md).
 - **Alpha convergence:** `node scripts/measure-alpha-convergence.mjs --ratio 3` reads
   the output texture back on `examples/15-transparent-canvas` (frozen, still camera).
 - **Packaged TSL guides:** `npm run verify:packed-guides:gpu` builds and packs the
   library, then runs `examples/13-guides-node` against the packed artifact on a real
   GPU.
-- **Benchmarks:** how to run and read A/B timing runs, the Q0–Q16 scenario catalogue,
+- **Benchmarks:** how to run and read A/B timing runs, the Q0–Q17 scenario catalogue,
   and device setup are in [`bench/docs/BENCHMARKING.md`](../bench/docs/BENCHMARKING.md).
 
 Output from all of these lands under `bench/results/raw/`, which is gitignored.

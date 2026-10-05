@@ -84,10 +84,14 @@ upscaler.
 `examples/10-ssgi-denoise` is explicitly experimental and compares three SSGI
 paths:
 
-All three paths set `SSGINode.useTemporalFiltering = false`, matching examples
-06 and 09: the rotating pattern requires a real TRAA, and under the upscaler the
-per-frame GI swing inflates the variance clip at silhouettes and ghost-streaks
-off moving edges (see the CLAUDE.md landmine note).
+All three paths set `SSGINode.useTemporalFiltering = false`, as examples 06 and
+09 did until 2026-10-03: the rotating pattern requires a real TRAA, and under the
+upscaler the per-frame GI swing inflated the variance clip at silhouettes and
+ghost-streaked off moving edges. (Since #58, examples 06/09 keep the rotating
+pattern on: the shading-change footprint clamp and the viewport-edge disocclusion
+fix cut its detector noise to ~0.05% of pixels, and it integrates to cleaner shading
+than the static pattern's fixed hatch. Some ghosting off silhouettes in motion
+remains, shelved for issue #7. See CLAUDE.md.)
 
 #### `builtin`
 
@@ -164,7 +168,9 @@ In practice this upscaler does not satisfy the TRAA contract SSGINode's docs
 require for this mode: the per-frame GI swing inflates the variance clip at
 silhouettes, so stale history ghost-streaks off moving edges (GPU-verified
 2026-08-06, render scale 1 and 2). Examples 06, 09, and 10 therefore set
-`useTemporalFiltering = false` and denoise the static pattern spatially.
+`useTemporalFiltering = false` and denoised the static pattern spatially.
+**Revised 2026-10-03 (#58):** examples 06/09 now keep the rotating pattern on (see
+above); example 10 stays on the static pattern.
 
 
 ## What `RecurrentDenoiseNode` contributes

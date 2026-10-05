@@ -418,7 +418,8 @@ const SCENARIOS: Record<BenchmarkScenarioId, BenchmarkScenarioDefinition> = {
         // SSGI static pattern + spatial-only recurrentDenoise (accumulate:
         // false) — the issue's configuration; `rotating` = the same with SSGI's
         // default 6-frame rotating pattern; `builtin` = static pattern +
-        // DenoiseNode (the 06/09 recipe). Capture-only: measure with
+        // DenoiseNode (the static-pattern recipe examples 06/09 used until #58;
+        // they now keep the rotating pattern). Capture-only: measure with
         // measure-convergence.mjs (not part of the run-benchmark manifest).
         endFrame: 479,
         captures: ['0', '1', '23', 'P-1', 'P', '2*P-1', '119', '239', '479'],

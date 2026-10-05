@@ -95,7 +95,11 @@ export class UpscalePass {
         return this.upscaler.outputTexture;
     }
 
-    /** (Re)builds the pipeline + render target for a size/path/quality. */
+    /**
+     * (Re)builds the pipeline + render target for a size/path/quality and
+     * resets history. Call on resize and on quality or path changes.
+     * @param config - Display size, path and quality/ratio
+     */
     configure(config: UpscalePassConfig): void {
         if (config.path === 'guides') {
             throw new Error(
@@ -195,7 +199,12 @@ export class UpscalePass {
         }
     }
 
-    /** Convenience: {@link draw} then {@link present}. */
+    /**
+     * Convenience: {@link draw} then {@link present}.
+     * @param scene - Scene to render
+     * @param camera - Scene camera
+     * @param deltaTime - Seconds since the previous frame
+     */
     renderScene(
         scene: THREE.Scene,
         camera: THREE.PerspectiveCamera | THREE.OrthographicCamera,
@@ -205,7 +214,10 @@ export class UpscalePass {
         this.present();
     }
 
-    /** Applies runtime settings (sharpness / accumulation / exposure / locks / debug). */
+    /**
+     * Merges runtime settings into `upscaler.settings`.
+     * @param settings - Any subset of {@link RuntimeSettings}
+     */
     applySettings(settings: Partial<RuntimeSettings>): void {
         Object.assign(this.upscaler.settings, settings);
     }
@@ -230,6 +242,7 @@ export class UpscalePass {
         this._reactiveOpaque = texture;
     }
 
+    /** Releases the render target and the upscaler's GPU resources. */
     dispose(): void {
         this._rt?.dispose();
         this.upscaler.dispose();

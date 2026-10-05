@@ -32,9 +32,13 @@ let warnedNoPipeline = false;
 export interface UpscalerNodeOptions {
     /** Which FSR path to run. Defaults to `'temporal'`. */
     path?: UpscalePath;
-    /** Quality preset — only used by {@link upscaleScene} to size its scene pass. */
+    /**
+     * Quality preset — sizes {@link upscaleScene}'s scene pass. The other
+     * factories read their input's actual size, so for them it only seeds the
+     * first allocation.
+     */
     quality?: QualityMode;
-    /** Explicit upscale ratio — only used by {@link upscaleScene} (overrides quality). */
+    /** Explicit upscale ratio (overrides quality) — see {@link quality}. */
     ratio?: number;
     /**
      * Apply the sub-pixel camera jitter (temporal path). Jitter is what buys
@@ -456,7 +460,7 @@ export class UpscalerNode extends TempNode {
  * @param depth - Reduced-res depth texture node (e.g. `pass.getTextureNode('depth')`)
  * @param velocity - Reduced-res jitter-free velocity texture node
  * @param camera - Scene camera (perspective or orthographic)
- * @param options - Path (see {@link UpscalerNodeOptions})
+ * @param options - Path, jitter and the optional inputs (see {@link UpscalerNodeOptions})
  * @returns A TSL node whose value is the upscaled display-resolution texture
  *   (linear/HDR — presentation stays with the render pipeline)
  */
@@ -503,7 +507,8 @@ const SPATIAL_CAMERA = { isCamera: true, near: 0.1, far: 2000, isPerspectiveCame
  * ```
  *
  * @param color - Reduced-res color texture node to upscale
- * @param options - Only `quality` / `ratio` apply (`path`/`jitter` are forced)
+ * @param options - `path`/`jitter` are forced. The node sizes itself from the
+ *   color texture it receives; `quality` / `ratio` only seed the first allocation.
  * @returns A TSL node whose value is the upscaled display-resolution texture
  *   (linear/HDR — presentation stays with the render pipeline)
  */

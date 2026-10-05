@@ -33,8 +33,10 @@ repetitions, so one bad block cannot carry the result.
 That is why **you cannot get a trustworthy number by running the benchmark
 twice and comparing.** Two separate invocations differ in browser launch, GPU
 power state, and page warmup, none of which the numbers separate from your
-change. (This mistake is recorded in `NEXT-STEPS.md` §6: a two-run comparison
-reported +2.6% for a change that an interleaved run measured at +5.1%.)
+change. (This mistake is recorded in `NEXT-STEPS.md` §6: a first pass reported
++2.6% for a change that an interleaved run against production measured at +5.1%.
+It compared two separate invocations and, the larger error, used the wrong
+baseline variant — so pick `--variant`/`--comparison` deliberately too.)
 
 ### The vocabulary
 
@@ -80,9 +82,10 @@ Three edits, all small:
 3. Map it to a resolver factory in `bench/src/benchmark/variants.ts`, and give
    it a `name` in `metadata()`.
 
-`createAlphaVariantResolver` is a good template — both of its ids are the same
-production pipeline differing by one constructor flag, which is the shape you
-want for a clean single-variable comparison.
+`createRcasExperimentResolver` (in `BenchmarkResolver.ts`) is a good template — its
+ids are the same production pipeline differing only in the RCAS shader handed to
+the constructor, which is the shape you want for a clean single-variable
+comparison.
 
 ### Which RCAS each mode runs
 
@@ -134,7 +137,9 @@ The file to open is **`abba-analysis.json`**. It is an array with one entry per
 
 - `meanA` / `meanB` — mean of the two A legs and the two B legs, in milliseconds.
   A is `--variant`, B is `--comparison`.
-- `comparisonDelta` — the A-vs-B difference for that repetition, as a fraction.
+- `comparisonDelta` — the unsigned A-vs-B difference for that repetition,
+  relative to the pair mean (`|A − B| / mean(A, B)`). Read the direction from
+  `meanA` vs `meanB`.
 - **`noiseFloor`** — the harness's own A-vs-A disagreement. This is the number
   that decides whether you believe the result.
 
@@ -165,11 +170,14 @@ work did not change, the rest of the frame got cheaper.
 
 Scripted camera and scene animations, defined in
 `bench/src/benchmark/scenarios.ts`. Performance runs use the default; capture
-runs select them with `--scenarios`.
+runs select Q0–Q11 (the E00 manifest's set) with `--scenarios`. Q12–Q17 are
+capture-only through the `measure-*` scripts (`measure-convergence.mjs
+--scenario <id>` and the scripts named in their rows); `run-benchmark.mjs` drops
+them from `--scenarios` without an error.
 
 | id | name | what it exercises |
 | --- | --- | --- |
-| Q0 | `input-debug-validation` | Animated baseline captured through **all eight debug views**. The first thing to run when something looks wrong. |
+| Q0 | `input-debug-validation` | Animated baseline captured as the final image plus every debug view except depth. The first thing to run when something looks wrong. |
 | Q1 | `static-convergence` | Still camera, 240 frames. The convergence scenario — does a still image stop moving? |
 | Q2 | `slow-aliasing-dolly` | Slow dolly across the grid floor and fence. Sub-pixel motion, worst case for aliasing. |
 | Q3 | `object-motion-disocclusion` | Moving objects, so history is invalidated behind them. Disocclusion trails. |
@@ -178,14 +186,14 @@ runs select them with `--scenarios`.
 | Q6 | `isolated-screenspace-effects` | GTAO / SSR / SSGI as separate subruns, each in isolation. |
 | Q7 | `in-graph-screenspace-composition` | The same effects composed in one post graph, camera moving through a room. |
 | Q8 | `recurrent-denoiser-characterization` | Subruns `builtin` / `spatial` / `recurrent` — the denoiser comparison behind `DENOISING-DIRECTION.md`. |
-| Q9 | `exposure-transition` | Directional light steps 3.2 → 8 at frame 60, ramps back over 120–179. Auto-exposure and the shading-change detector. |
+| Q9 | `exposure-transition` | Directional light steps 3.2 → 8 at frame 60, ramps 8 → 2 over 120–179, then returns to 3.2 at 180. Auto-exposure and the shading-change detector. |
 | Q10 | `reset-cut-resize` | Hard camera cut at 60, history resets, and resizes to 1280×720 then back to 1920×1080. Lifecycle correctness. |
 | Q11 | `host-pre-exposure` | Host pre-exposure steps 2.5× at 60 and ramps back. With DeltaPreExposure correct, the shading-change view stays black throughout. |
 | Q12 | `cornell-still-convergence` | A consumer's Cornell-box repro: still camera, point-light shadow dither. The hardest convergence case we have. |
 | Q13 | `merged-reactive-masks` | Explicit reactive mask **and** the `reactiveOpaqueColor` auto-generator at once, on three still panels: explicit-only (reads 1.0), overlap (explicit 0.5 under a generated ramp, so it reads as a flat 0.5 floor rising to the 0.9 cap), diff-only. The `reactivity` capture is the per-pixel `max` from `generateReactive.ts`. A merge that overwrites, takes the min or sums the masks changes a panel. |
-| Q14 | `ssgi-thin-feature-locks` | Issue #17: still camera into an SSGI-lit box holding 1px wireframe meshes. Subruns `off` (no SSGI, clean control) / `static` (SSGI static pattern + spatial `recurrentDenoise`, the issue's config) / `rotating` (SSGI's default rotating pattern) / `builtin` (static pattern + `DenoiseNode`, the 06/09 recipe). Measure with `measure-convergence.mjs --scenario Q14 --subrun <s> --pairs 40`. |
+| Q14 | `ssgi-thin-feature-locks` | Issue #17: still camera into an SSGI-lit box holding 1px wireframe meshes. Subruns `off` (no SSGI, clean control) / `static` (SSGI static pattern + spatial `recurrentDenoise`, the issue's config) / `rotating` (SSGI's default rotating pattern) / `builtin` (static pattern + `DenoiseNode`: the recipe examples 06/09 used until #58; they now keep SSGI's rotating pattern). Measure with `measure-convergence.mjs --scenario Q14 --subrun <s> --pairs 40`. |
 | Q15 | `sub-detector-lighting-drift` | Still camera, sun ramps 8 → 2 (120–188) and back 2 → 8 (240–308), exponentially at ~2 %/frame: half the shading detector's flattest floor, so the detector stays silent and only the variance clip limits lag. Measure with `scripts/measure-drift-lag.mjs`. |
-| Q16 | `sparse-wires-empty-background` | Issue #22: fans of sub-texel bars (about 0.5–1 render px at ratio 2, 0.35–0.7 at ratio 3) over an opaque black background, still camera, plus a solid knot as a control. The jitter phase decides whether a bar lands in a texel, so block means swing although nothing changed: the shading-change view must stay black until the fans' light drops to a quarter at frame 300. Measure with `measure-convergence.mjs --shading-frames 32` (and `measure-drift-lag.mjs --frames 296:356:2` for the step). |
+| Q16 | `sparse-wires-empty-background` | Issue #22: fans of sub-texel bars (about 0.5–1 render px at ratio 2, 0.35–0.7 at ratio 3) over an opaque black background, still camera, plus a solid knot as a control. The jitter phase decides whether a bar lands in a texel, so block means swing although nothing changed: the shading-change view must stay black until the fans' light drops to a quarter at frame 300. Measure with `measure-convergence.mjs --scenario Q16 --shading-frames 32` (and `measure-drift-lag.mjs --frames 296:356:2` for the step). |
 | Q17 | `subpixel-emitter-retention` | Issue #51: still camera onto unlit discs of 0.3–1.5 render-px diameter and 0.5 px lines, over black and over a textured backdrop, each floating (depth edge) or as a decal (no depth edge). Measure with `scripts/measure-emitter-retention.mjs` (per-emitter retention vs input coverage, flicker, switch-off ghost) and `measure-convergence.mjs --scenario Q17`. |
 
 ---
@@ -196,7 +204,7 @@ Timing is only half of it. Capture mode renders fixed frames and diffs the PNGs,
 which is how you prove a change is *visually* identical rather than merely fast.
 
 ```bash
-node scripts/run-benchmark.mjs --mode capture \
+node scripts/run-benchmark.mjs --mode capture --smoke \
   --scenarios Q0,Q1,Q3 --reloads 1 --allow-differences --review-all
 ```
 
@@ -283,6 +291,9 @@ several runs — or several worktrees — can share a machine without colliding.
 | `run-benchmark.mjs` | bench, `http://127.0.0.1:5199` | `--port` (9333), or `--cdp <url>` for a browser you launched |
 | `measure-convergence.mjs` | bench, `http://127.0.0.1:5199` | `--port` (9333) |
 | `measure-alpha-convergence.mjs` | examples, `http://127.0.0.1:5300` | `--port` (9333) |
+| `measure-drift-lag.mjs` | bench, `http://127.0.0.1:5199` | `--port` (9333) |
+| `measure-exposure-ceiling.mjs` | bench, `http://127.0.0.1:5199` | `--port` (9333) |
+| `measure-emitter-retention.mjs` | bench, `http://127.0.0.1:5199` | `--port` (9333) |
 | `verify-packed-guides.mjs` | its own `vite preview` on `--port` (a free port) | `--cdp-port` (a free port) |
 
 ```bash
@@ -298,7 +309,9 @@ of Vite quietly moving to the next one. The bench and examples configs keep
 separate dep-optimizer caches (`node_modules/.vite-bench`,
 `node_modules/.vite-examples`), so both dev servers can run at once.
 
-Each script prints its full option list with `--help`.
+Most scripts print their full option list with `--help`. `measure-drift-lag.mjs`
+and `measure-exposure-ceiling.mjs` have no help handler (`--help` starts a run);
+their usage is in the header comment.
 
 ---
 

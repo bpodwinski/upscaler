@@ -1,6 +1,6 @@
 # WGSL passes
 
-Every pass is a WGSL compute module assembled from shared chunks (`common.ts` + pass body) by `wgsl.ts` — WGSL has no `#include`, so chunks are TS strings deduplicated by the assembler. All passes bind the same `FsrConstants` UBO at `@group(0) @binding(0)` (layout mirrored by `internal/ConstantsBuffer.ts`), run as 8×8 workgroups, and write storage textures. The UBO is a 96-byte struct in a 256-byte buffer (`ConstantsBuffer.SIZE`). Entry point is always `main`.
+Every pass is a WGSL compute module assembled from shared chunks (`common.ts` + pass body) by `wgsl.ts` — WGSL has no `#include`, so chunks are TS strings deduplicated by the assembler. All pipeline passes bind the same `FsrConstants` UBO at `@group(0) @binding(0)` (layout mirrored by `internal/ConstantsBuffer.ts`), run as 8×8 workgroups, and write storage textures. The UBO is a 96-byte struct in a 256-byte buffer (`ConstantsBuffer.SIZE`). Entry point is always `main`. `moments.ts` (`MomentsPass`) is a standalone primitive outside the pipeline: it uses the same struct layout in its own buffer.
 
 ## Conventions
 
@@ -286,7 +286,11 @@ coverage only if RCAS performance becomes material.
   edges now sharpen, and a flat 1.0 stays exactly 1.0. On the example scene, SDR-only
   neighborhoods moved by a mean of 0.0007 linear and 0.13/255 after ACES, because
   conditioned space gives bright SDR edges slightly more lobe headroom. The frozen
-  per-tap/legacy forms still sharpen in linear space.
+  per-tap/legacy forms still sharpen in linear space. Since #47 the bench's default
+  `baseline` identity runs this production RCAS in FSR1 mode (through the bench-only
+  `_spatialRcasShader`); its temporal mode keeps the frozen legacy RCAS, and
+  `?variant=local-baseline-5d6a65e` is the explicit legacy FSR1 A/B
+  (see `bench/docs/BENCHMARKING.md`).
 
 #### RCAS color domain
 
@@ -319,8 +323,8 @@ when drawing to the screen; library users may instead continue linear post-proce
   AMD's viewport/depth-scaled tolerance
   (`1.37e-5 · halfViewportWidth · max(depth)` — `ffx_fsr2_depth_clip.h`
   `ComputeDepthClip`, taken from the GPU-verified candidate port). Because the
-  comparison is cross-frame (no same-frame scatter), three stabilizers apply
-  (2026-07-22, the first amended 2026-07-24): taps at/behind the current surface
+  comparison is cross-frame (no same-frame scatter), four stabilizers apply
+  (2026-07-22, the first amended 2026-07-24, the fourth added 2026-10-03): taps at/behind the current surface
   never veto the pixel — every valid tap votes (at/behind = full confidence) and the
   **best tap wins** (max aggregation), because the first form, which *skipped*
   agreeing taps, let one tap straddling the previous frame's texel-quantized
@@ -328,7 +332,10 @@ when drawing to the screen; library users may instead continue linear post-proce
   is jitter-delta-compensated (same derivation as `shadingChange.ts`); and the
   tolerance is widened by the 3×3 ring's own depth relief (free from the dilation
   loop), so a slope's legitimate per-texel depth change is not read as
-  separation. Without these, grazing-incidence planes (a ground plane near the
+  separation; and the off-screen test uses the motion-only reprojection, before
+  the jitter-delta shift, so the shift can't push border texels past the edge
+  (a still camera's viewport border read disoccluded on 14.4% of frames → 0.02%,
+  #58). Without these, grazing-incidence planes (a ground plane near the
   horizon) flickered fully disoccluded per jitter phase — measured 12–14% of
   disocclusion-view pixels flipping >32/255 per frame in example 12, ~1.5%
   (moving-content baseline) after.
@@ -346,7 +353,8 @@ when drawing to the screen; library users may instead continue linear post-proce
 #### Farthest depth and motion divergence
 
 - **Current status:** Missing.
-- **Local implementation:** Provides neither farthest depth nor motion-divergence state.
+- **Local implementation:** Computes the 3×3 farthest depth only internally, as tolerance
+  relief. It publishes neither farthest depth nor motion-divergence state.
 - **FSR 3.1.5 behavior:** Prepares farthest depth and motion divergence for confidence,
   reactivity, and later temporal decisions.
 - **Why it differs / evidence confidence — Unclear:** The local graph is reduced to color,
@@ -548,7 +556,11 @@ incompatible alpha/state semantics.
 
 - **Current status:** Custom replacement.
 - **Local implementation:** Uses an unweighted fixed-gamma YCoCg box, widened strongly by
-  custom locks.
+  custom locks (×13 at a full lock) and by the still-scene relax (`STILL_CLAMP_RELAX`,
+  ×9 on still, converged, quiet pixels). `clipToAABB` puts its epsilon on the box
+  extents as well as the offset, so a zero-extent axis (an exactly achromatic 3×3:
+  black or empty backgrounds, greyscale content) no longer snaps history to the box
+  mean every frame (issue #51, fixed in #55; `bench/docs/NEXT-STEPS.md` §11).
 - **FSR 3.1.5 behavior:** Uses a weighted, dynamically scaled box driven by motion, depth,
   accumulation, reactivity, shading, locks, and luma instability.
 - **Why it differs / evidence confidence — Unclear:** The local variance clip is compact,
@@ -590,8 +602,10 @@ resolver variant, with debug visualization for every signal that scales the box.
   `preExposureTexture` both texels publish 1.0 and captures are **byte-identical** to
   the pre-change build — the correction is free for existing users.
 - **Still divergent:** Conditioning (auto/fixed/external) exposure changes are not
-  ratio-corrected; adaptation is eased slowly (`ADAPT_SPEED`) so the per-frame mismatch
-  stays below the shading detector's threshold. Correcting it would change output for
+  ratio-corrected; adaptation is eased slowly (`ADAPT_SPEED`) to keep the per-frame
+  mismatch between history conditioned under last frame's exposure and the current
+  frame small. (The shading-change detector is unaffected: it scales both frames by the
+  current conditioning exposure.) Correcting it would change output for
   all auto-exposure users and needs its own captures — revisit only with evidence of
   pumping on real content.
 
@@ -637,7 +651,13 @@ and replace them only inside the coordinated parity resolver tested on
   frame alone the gate was one-sided, and a block fired whenever the jitter phase
   missed a sub-texel feature (issue #22, `bench/docs/NEXT-STEPS.md` §9). The
   strongest gated scale is the response consumed by accumulate's `SHADING_AGE` path.
-  The pass also maintains the 1-frame luma history it compares against.
+  The pass also maintains the 1-frame luma history it compares against. Per texel, the
+  previous value compared is the closest value in the reprojected bilinear footprint's
+  four-tap range (the current luma clamped to the taps' min/max), so a difference that
+  jitter alone explains reads 0; interpolating instead left ~0.7% still-scene firing on
+  edges and ~2% under SSGI's rotating pattern (#58). The interpolated value survives
+  only in the spread term, and the off-screen test uses the motion-only reprojection
+  (as in reconstruct).
 - **FSR 3.1.5 behavior:** Builds a signed-difference SPD from corrected
   current/previous luma over multiple mips, in two passes with dedicated mip
   resources.
@@ -649,8 +669,9 @@ and replace them only inside the coordinated parity resolver tested on
   the old detector's baseline, camera-orbit false positives *below* the old 3×3
   heuristic (Q4 worst 3.6 vs 4.9), light steps fire as clean single-frame spikes
   (137/255 vs the old 84 with a 20-frame decay tail), and a host pre-exposure step
-  stays quiet. Finals differ ≤ 1.6/255 RMSE. Cost: 0.044 ms at ratio 2 (the
-  candidate's two-pass form measured 0.231 ms), zero when
+  stays quiet. Finals differ ≤ 1.6/255 RMSE. Cost: 0.044 ms at ratio 2 (measured
+  2026-07-21, before #52 and #58, which were not re-timed; the candidate's two-pass
+  form measured 0.231 ms), zero when
   `settings.detectShadingChanges` is off — the pass is simply not dispatched.
 
 #### Luma instability
@@ -962,12 +983,16 @@ their brightness. At the former cap of 80, a black-background scene clipped ever
 highlight at 12.5. At 8 the ceiling is about 125, and every bench scene's metered
 target (≤ 6.8) is unclamped (issue #49, `bench/docs/NEXT-STEPS.md` §10). Fixed and
 external exposures bypass the clamp, so a value of 80 there still means a 12.5
-ceiling.
+ceiling. The cost of the lower cap: a scene whose log-average is below 0.18 / 8 ≈ 0.0225
+conditions darker than mid-grey, so `DebugView.Exposure` reads dark there by design,
+and because the lock contrast thresholds are absolute in conditioned luma, dim thin
+features lock less.
 
 ### Shading-change detector
 
 `shadingChange.ts` compares block-mean luma (4×4 and 8×8 render blocks) against the
-previous frame's jitter-aligned reprojected luma; where a scale's mean moved beyond its
+previous frame's jitter-aligned reprojected luma, taken per texel as the closest value
+in the reprojected bilinear footprint's tap range (#58); where a scale's mean moved beyond its
 noise floor, non-locked history is aged by `SHADING_AGE` in `accumulate.ts`; locked
 pixels suppress this aging (locks must never break on shading change — see CLAUDE.md).
 Ghosting after a lighting change → lower the `SHADING_FLOOR_*` constants (top of
@@ -998,7 +1023,7 @@ prepare-reactivity, T&C, or motion-divergence behavior.
 
 ## Debugging
 
-Set `settings.debugView` (`DebugView`) to render pipeline internals instead of the final image (temporal path only): motion vectors, disocclusion mask, linearized depth, accumulation age, locks, auto-exposed luminance, the shading-change factor, or the reactive mask. When integrating a new scene, check in this order:
+Set `settings.debugView` (`DebugView`) to render pipeline internals instead of the final image (temporal path only): motion vectors, disocclusion mask, linearized depth, accumulation age, locks, auto-exposed luminance, the shading-change factor, or the reactive mask. Values are written in `[0, 1]`; the bench and `UpscalePass.present()` draw them with `renderer.toneMapping = NoToneMapping` for that draw (#45), so a value `v` lands as its sRGB encoding (0.5 → 188/255). `WebGPURenderer` ignores `material.toneMapped`, so a custom present or a TSL pipeline must switch the renderer's tone mapping off itself, or every view comes out tone-mapped. When integrating a new scene, check in this order:
 
 1. **Motion vectors** — a static scene with a moving camera should produce smooth
    gradients and no per-object noise. Per-object flashing often points to previous-model
@@ -1017,7 +1042,9 @@ Set `settings.debugView` (`DebugView`) to render pipeline internals instead of t
 
 5. **Exposure** — shows clamped exposed luma, not the exposure scalar. Under auto
    exposure, the metered geometric-mean reference should trend toward mid-grey; individual
-   pixels are not expected to. All-black or all-white can indicate view saturation,
+   pixels are not expected to. A dim scene (log-average below ~0.02) reads darker by
+   design, because auto-exposure brightens at most 8× to keep HDR highlight headroom
+   (#53). All-black or all-white can indicate view saturation,
    invalid luma input, or a metering-range mismatch, but does not show that a fixed or
    external exposure value was clamped.
 
