@@ -32,19 +32,18 @@ import { matchPassResolution } from '../shared/matchPassResolution';
 //*
 //* SSGI is genuinely noisy, and SSGINode is not a denoiser. Its default
 //* `useTemporalFiltering = true` rotates the sampling pattern on a 6-frame cycle
-//* and, per three's own docs, requires a real TRAA to resolve it. FSR3 does NOT
-//* satisfy that contract: the per-frame GI swing inflates FSR3's variance clip
-//* at silhouettes, so stale history ghost-streaks off moving edges (GPU-verified
-//* 2026-08-06, examples 06/09 — see CLAUDE.md "Related landmine"). So, like
-//* 06/09, every path here turns it OFF and denoises the static pattern instead
-//* (three's documented no-TRAA recipe). The `SSGI denoiser` toggle A/Bs what
-//* does that denoising. The `spatial`/`recurrent` observations below date from
-//* 2026-07, when the pattern still rotated and `builtin` was raw SSGI; the
-//* failure modes they record (à-trous artifacts, jitter-blind reprojection)
-//* belong to the denoisers themselves, not to the SSGI pattern:
+//* for a temporal resolver to integrate. Examples 06/09 keep that rotating
+//* pattern and let FSR3 integrate it (since 2026-10-03 — see CLAUDE.md "SSGI
+//* rotating pattern"). This example does NOT follow them: every path here turns
+//* it OFF and denoises the static pattern (three's documented no-TRAA recipe),
+//* so the `SSGI denoiser` toggle A/Bs only what does the denoising. The
+//* `spatial`/`recurrent` observations below date from 2026-07, when the pattern
+//* still rotated and `builtin` was raw SSGI; the failure modes they record
+//* (à-trous artifacts, jitter-blind reprojection) belong to the denoisers
+//* themselves, not to the SSGI pattern:
 //*
-//* - `builtin`  — DenoiseNode (spatial), FSR3 owns temporal: the 06/09 recipe.
-//*                The A/B baseline.
+//* - `builtin`  — DenoiseNode (spatial), FSR3 owns temporal: 06/09's denoiser,
+//*                but on the static pattern. The A/B baseline.
 //* - `spatial`  — recurrentDenoise as SPATIAL-ONLY à-trous, FSR3 owns temporal
 //*                (no jitter conflict). Cleaner than raw SSGI, BUT shows à-trous
 //*                edge halos + faint step-lines on flat walls, and a frame-skip
@@ -168,10 +167,9 @@ function configure(): void {
         const giPass = matchPassResolution(ssgi(beauty, depth, normal, camera), scenePass);
         giPass.sliceCount.value = state.ssgiSlices;
         giPass.stepCount.value = state.ssgiSteps;
-        // SSGI's rotating temporal pattern requires a true TRAA to resolve;
-        // under FSR3 it ghost-streaks off moving silhouettes. Static pattern +
-        // a denoiser is three's documented recipe for the no-TRAA case — the
-        // same setting as examples 06/09, applied to every denoiser path.
+        // Static pattern on every denoiser path, so the A/B compares denoisers
+        // on identical input. (Examples 06/09 keep SSGI's rotating pattern
+        // and let FSR3 integrate it; this experiment deliberately does not.)
         giPass.useTemporalFiltering = false;
         const ao = sw(giPass.getAONode());
         const giRaw = giPass.getGINode();
@@ -219,8 +217,9 @@ function configure(): void {
             gi = sw(giDenoise);
         } else {
             //* Built-in path — three's spatial DenoiseNode on the static pattern,
-            //* FSR3 owns all temporal work. Exactly what 06/09 ship; the A/B
-            //* baseline the two experiments are measured against.
+            //* FSR3 owns all temporal work. The denoiser 06/09 ship (they feed
+            //* it the rotating pattern instead); the A/B baseline the two
+            //* experiments are measured against.
             gi = sw(denoise(giRaw as never, depth, normal, camera));
         }
 
