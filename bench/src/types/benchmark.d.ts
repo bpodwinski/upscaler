@@ -11,7 +11,14 @@ declare type BenchmarkVariantId =
     | 'reconstruct-camera-v1'
     | 'source-filter-bundle-v1'
     | 'source-structural-bundle-v1'
-    | 'source-spd-resolver-bundle-v1';
+    | 'source-spd-resolver-bundle-v1'
+    | 'shading-memory-range4'
+    | 'shading-memory-range8'
+    | 'shading-memory-nearest8'
+    | 'shading-memory-ema'
+    | 'shading-frame-pair-v1'
+    | 'shading-memory-gated8-k1'
+    | 'shading-memory-gated4';
 declare type BenchmarkScenarioId =
     | 'Q0'
     | 'Q1'
@@ -31,7 +38,8 @@ declare type BenchmarkScenarioId =
     | 'Q15'
     | 'Q16'
     | 'Q17'
-    | 'Q18';
+    | 'Q18'
+    | 'Q19';
 declare type BenchmarkDebugView =
     | 'final'
     | 'motion-vectors'
@@ -216,12 +224,12 @@ declare interface BenchmarkFrameState {
     particlesVisible: boolean;
     /** App-baked exposure factor driven into the scene color + resolver (Q11). */
     hostPreExposure?: number;
-    /** Q18: world translation of the main scene root (object motion in depth). */
+    /** Q19: world translation of the main scene root (object motion in depth). */
     sceneOffset?: readonly [number, number, number];
-    /** Q18: show the frontal backdrop wall behind the props. */
+    /** Q19: show the frontal backdrop wall behind the props. */
     backdrop?: boolean;
     /** Scene rendered as the upscaler input; defaults to the main torture scene. */
-    scene?: 'main' | 'cornell' | 'sparse-wires' | 'emitters';
+    scene?: 'main' | 'cornell' | 'sparse-wires' | 'emitters' | 'chart';
     /**
      * Q13: show the merged-reactive panels, render the opaque-only color for
      * the auto-generator, and render the explicit coverage alongside it.

@@ -68,7 +68,7 @@ behind moving silhouettes. Production now runs the scatter; with the clear
 folded into the depth clip (ping-pong buffers) it costs ~0.012 ms per frame,
 almost all of it pass-split overhead, not atomics. The "−22–30%" was a
 per-pass figure on a ~0.035 ms pass; the self-referencing property is worth
-far more than it. Evidence: `bench/docs/NEXT-STEPS.md` §14, bench Q18 +
+far more than it. Evidence: `bench/docs/NEXT-STEPS.md` §15, bench Q19 +
 `scripts/measure-receding-disocclusion.mjs`.
 
 **Evidence:** commit `b16274a`; [`src/shaders/reconstruct.ts`](../../src/shaders/reconstruct.ts)
@@ -315,6 +315,47 @@ for the before column, set `clipToAABB` in `src/shaders/accumulate.ts` back to
   (the shading-change ones, #22, already are since #52), to separate what is
   inherent from what is pipeline-specific;
 - a second device and ratios other than 2.
+
+## 10. A recurrence test against recent values needs a jump gate, or it hides steps after ramps
+
+**Claim:** past the render Nyquist, a block-mean change detector fails on a
+still camera for a reason no spatial floor can fix. A line pair near one render
+pixel folds into moiré much larger than a block, and a jitter offset δ moves the
+moiré by roughly δ / |1 − p| for period p. So a whole 4×4 or 8×8 block flips
+between bright and dark from one phase to the next. Every texel in it agrees, so
+the block's own contrast is ~0. The cue that does exist is temporal: the block
+keeps returning to values it has already taken. Keeping its last 8 means and
+treating a mean inside their range as no change (FSR 3.1's luma-instability
+idea at block scale) removes 96 % of the false positives on a resolution chart.
+
+The surprise is the failure mode of that fix. Any "inside the recent range"
+or "close to a recent value" test also swallows a genuine step that follows a
+ramp, because the ramp's own history spans the step's target. On Q9's step
+after a ramp the response fell to a third. Gating the range on the frame's jump
+restores it: the range applies only when the jump from the newest value is no
+larger than 1.5× the largest jump among the stored values. Alias flicker
+repeats jumps of its own size, while a ramp's jumps are small. With the gate the
+step keeps 99.4 % of its response and the chart's false positives stay at 4 %
+of the frame-pair detector's. At a gain of 1.0, a sixth of them return: the
+newest of 8 jumps is the largest about one time in eight.
+
+**Evidence:** [`bench/docs/NEXT-STEPS.md`](../../bench/docs/NEXT-STEPS.md) §14
+(candidate table: range 4/8, nearest, EMA, gated at gain 1.0/1.5, 4/8 slots;
+steps, motion, drift lag, cost); scenario **Q18** `fine-line-chart` in
+[`bench/src/benchmark/scenarios.ts`](../../bench/src/benchmark/scenarios.ts);
+[`src/shaders/shadingChange.ts`](../../src/shaders/shadingChange.ts)
+(`memoryDistance`). `bench/results/raw/convergence/*` and `drift-lag/*` are
+local-only. To regenerate them, run
+`node scripts/measure-convergence.mjs --scenario Q18 --ratio <2|3> --shading-frames 32 --views final,accumulation-age`
+and `node scripts/measure-convergence.mjs --scenario Q9 --settle 56 --pairs 1 --shading-frames 128`,
+adding `--variant <shading-frame-pair-v1|shading-memory-*>` for the other columns.
+
+**Still needs:**
+- the moiré-displacement argument checked against captures (the shift per
+  phase versus period);
+- a natural-content scene (foliage, fabric, distant fences), not just a chart;
+- a ramp-then-step sweep to see where gain 1.5 breaks;
+- a second device.
 
 ## 3. Source-faithful pass graphs measured against fused re-derivations
 

@@ -331,8 +331,8 @@ when drawing to the screen; library users may instead continue linear post-proce
   with atomics, then evaluates reconstructed samples with the same viewport- and
   depth-scaled thresholds in a separate pass (weighted mean of positive separations).
 - **Evidence — Measured:** +30 µs per frame in a worktree at ratio 2 (~0.012 ms at
-  repo clocks); the pass split is ≈ all of it, atomics ~free (NEXT-STEPS §14). Bench
-  Q18 interior disocclusion: dolly-back 1.03% → 0.33%, scene receding 1.31% → 0.24%,
+  repo clocks); the pass split is ≈ all of it, atomics ~free (NEXT-STEPS §15). Bench
+  Q19 interior disocclusion: dolly-back 1.03% → 0.33%, scene receding 1.31% → 0.24%,
   still 0.029% → 0.000%. Q1/Q12 convergence unchanged; Q3 outlines rotating knots the
   cross-frame form missed; #54's emitter false disocclusion 7–34% → 0% of frames.
 - **Superseded form:** the fused cross-frame gather (2026-07-21 → 10-05) compared
@@ -649,7 +649,15 @@ and replace them only inside the coordinated parity resolver tested on
   jitter alone explains reads 0; interpolating instead left ~0.7% still-scene firing on
   edges and ~2% under SSGI's rotating pattern (#58). The interpolated value survives
   only in the spread term, and the off-screen test uses the motion-only reprojection
-  (as in reconstruct).
+  (as in reconstruct). Each 4×4 and 8×8 block also keeps its last 8 raw means
+  (f16, packed into one rgba32uint texel, ping-ponged); a block mean inside their
+  [min, max] reads as no change unless this frame's jump from the previous mean exceeds
+  1.5× the largest jump the memory holds. Content past the render Nyquist aliases into
+  patterns larger than a block, so on a still camera a whole block mean swings between
+  values it has already taken; the frame pair alone could not tell that from a change
+  (bench Q18: 3.3% / 5.6% of the frame firing at ratio 2 / 3 → 0.12% / 0.20%). Blocks
+  with motion, disocclusion or a reset restart their memory, so under motion the
+  detector is unchanged (`bench/docs/NEXT-STEPS.md` §14).
 - **FSR 3.1.5 behavior:** Builds a signed-difference SPD from corrected
   current/previous luma over multiple mips, in two passes with dedicated mip
   resources.
@@ -664,13 +672,22 @@ and replace them only inside the coordinated parity resolver tested on
   stays quiet. Finals differ ≤ 1.6/255 RMSE. Cost: 0.044 ms at ratio 2 (measured
   2026-07-21, before #52 and #58, which were not re-timed; the candidate's two-pass
   form measured 0.231 ms), zero when
-  `settings.detectShadingChanges` is off — the pass is simply not dispatched.
+  `settings.detectShadingChanges` is off — the pass is simply not dispatched. The
+  block memory measured +8–14% of this pass in an interleaved A/B (every repetition
+  positive; +5–24 µs in a slow worktree environment, within noise of the whole
+  compute sum; NEXT-STEPS §14).
 
 #### Luma instability
 
-- **Current status:** Missing.
-- **Local implementation:** Has no equivalent persistent signal; custom locks overlap with
-  only some symptoms.
+- **Current status:** Partially adopted, at block scale inside the shading-change pass
+  (2026-10-05, NEXT-STEPS §14).
+- **Local implementation:** No per-texel signal. The shading-change detector keeps the
+  last 8 means of every 4×4 / 8×8 block and treats a mean inside their range as
+  recurring flicker, not change (jump-gated, so a step after a ramp still fires). That
+  is the recurrence idea of this pass, applied to the detector's false positives on
+  aliasing content; it does not protect recurring sub-pixel luma in the blend the way
+  the source's per-texel history does, and custom locks still cover only some of those
+  symptoms.
 - **FSR 3.1.5 behavior:** Maintains a separate four-frame render-resolution luma history to
   protect recurring subpixel luminance.
 - **Why it differs / evidence confidence — Unclear:** No verified platform or performance
@@ -991,7 +1008,11 @@ Ghosting after a lighting change → lower the `SHADING_FLOOR_*` constants (top 
 `shadingChange.ts`); flat steadily-lit surfaces shimmering → raise them, or raise
 `SHADING_FLOOR_CV` if the noise sits on textured regions. The `cv` in that floor is
 the within-block spread of **both** frames over their joint mean; keep it two-sided
-(see `bench/docs/NEXT-STEPS.md` §9 before changing it).
+(see `bench/docs/NEXT-STEPS.md` §9 before changing it). Each block also remembers its
+last 8 means, and a mean inside their range is not a change unless the frame's jump
+outgrows the jumps in that memory (`SHADING_MEMORY_*`, §14). Fine bars or a star
+centre firing on a still camera → check the memory first (bench Q18); a genuine step
+right after a ramp not firing → `SHADING_MEMORY_JUMP_GAIN`.
 
 Toggle `settings.detectShadingChanges` (`FLAG_SHADING_CHANGE`) and inspect
 `DebugView.ShadingChange`. When off, the pass is not dispatched at all.

@@ -12,12 +12,20 @@ const VARIANTS = [
     'source-filter-bundle-v1',
     'source-structural-bundle-v1',
     'source-spd-resolver-bundle-v1',
+    'shading-memory-range4',
+    'shading-memory-range8',
+    'shading-memory-nearest8',
+    'shading-memory-ema',
+    'shading-frame-pair-v1',
+    'shading-memory-gated8-k1',
+    'shading-memory-gated4',
 ] as const;
 const SCENARIOS = [
     'Q0', 'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6', 'Q7', 'Q8', 'Q9', 'Q10', 'Q11', 'Q12', 'Q13', 'Q14', 'Q15',
     'Q16',
     'Q17',
     'Q18',
+    'Q19',
 ] as const;
 
 function numberParam(params: URLSearchParams, name: string, fallback: number): number {

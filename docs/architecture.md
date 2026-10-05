@@ -72,8 +72,9 @@ veloc ─┘  (dilate +      dilatedDepth   │        Lanczos2 upsample        
    comparing block-mean luma at 4×4 and 8×8 against a one-frame luma history. Per texel
    the previous value is the closest one in the reprojected bilinear footprint's tap
    range, so differences jitter alone explains read 0, and the noise floor pools both
-   frames' within-block contrast. It is skipped entirely when `detectShadingChanges`
-   is off.
+   frames' within-block contrast. Each block also keeps its last 8 means, so a mean
+   that aliasing keeps returning to on a still camera is not read as a change. It is
+   skipped entirely when `detectShadingChanges` is off.
 5. **Accumulate** (`accumulate.ts`): the core. A jitter-aware Lanczos2 upsample of
    the current frame, Catmull-Rom history reprojection, YCoCg variance-clip
    rectification (relaxed on still, converged pixels; its cost under slow lighting

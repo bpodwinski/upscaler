@@ -16,6 +16,7 @@ import {
     hashWorkingTreeEntries,
     reviewStorageKey,
 } from './benchmark-contract.mjs';
+import { loadScenarioRegistry, scenarioSubruns, selectScenarios } from './benchmark-scenarios.mjs';
 import {
     DEFAULT_BENCH_URL,
     parsePort,
@@ -728,12 +729,6 @@ async function performanceRun(client, context) {
     return { runs: allResults, analysis: analyses };
 }
 
-function scenarioSubruns(scenario) {
-    if (scenario.id === 'Q6') return ['gtao', 'ssr', 'ssgi'];
-    if (scenario.id === 'Q8') return ['builtin', 'spatial', 'recurrent'];
-    return [null];
-}
-
 function captureFrames(expressions, period) {
     return [...new Set(expressions.map((expression) => {
         if (/^\d+$/.test(expression)) return Number(expression);
@@ -1012,14 +1007,20 @@ async function validateReviewerRubric(template, rubricPath, outputDirectory, man
     return { recordCount: reviewedRubric.length, reviewerCount, median, passes: true };
 }
 
-async function captureRun(client, context, manifest) {
+async function captureRun(client, context, manifest, registryScenarios) {
     const { options, outputDirectory, logRecords, binding } = context;
     const ratios = list(options.ratios, '1,1.5,2,3').map(Number);
     const acceptanceMatrix = manifest.capture_protocol.harness_acceptance_matrix.scenarios;
     const acceptanceScenarioIds = Object.keys(acceptanceMatrix);
     const requiredScenarioIds = manifest.scenarios.required.map((scenario) => scenario.id);
     const defaultScenarios = options.smoke ? requiredScenarioIds : acceptanceScenarioIds;
-    const requested = new Set(list(options.scenarios, defaultScenarios.join(',')));
+    // The registry, not the frozen manifest, decides what exists — so Q12+
+    // are selectable and an unknown id fails instead of being dropped.
+    const selectedScenarios = selectScenarios(
+        registryScenarios,
+        list(options.scenarios, defaultScenarios.join(',')),
+    );
+    const requested = new Set(selectedScenarios.map((scenario) => scenario.id));
     const variants = [
         ['A', options.variant],
         ['B', options.comparison],
@@ -1041,7 +1042,7 @@ async function captureRun(client, context, manifest) {
             `Authoritative capture requires ${acceptanceScenarioIds.join(',')}, all manifest ratios, the frozen E00 acceptance frames/views, and five reloads.`,
         );
 
-    for (const scenario of manifest.scenarios.required.filter((entry) => requested.has(entry.id))) {
+    for (const scenario of selectedScenarios) {
         const captureSpec = options.smoke ? scenario.captures : acceptanceMatrix[scenario.id];
         if (!captureSpec)
             throw new Error(`${scenario.id} is not part of the authoritative E00 capture matrix.`);
@@ -1320,9 +1321,6 @@ async function captureRun(client, context, manifest) {
         }
     }
     const expectedPairsPerTuple = reloads === 5 ? 45 : reloads * (reloads - 1) + reloads ** 2;
-    const selectedScenarios = manifest.scenarios.required.filter((scenario) =>
-        requested.has(scenario.id),
-    );
     const expectedTupleCount = selectedScenarios.reduce(
         (total, scenario) => {
             const captureSpec = options.smoke ? scenario.captures : acceptanceMatrix[scenario.id];
@@ -1568,6 +1566,7 @@ async function main() {
   --variant <id> --comparison <id>   A/B variant ids (see bench/src/benchmark/variants.ts)
   --ratios 1,1.5,2,3  --blocks N  --warmup N  --samples N     timing shape
   --scenarios Q0,..  --frames 0,..  --views final,..  --reloads N  --allow-differences  --review-all   capture shape
+                               (--scenarios takes any id in bench/src/benchmark/scenarios.ts; unknown ids are an error)
   --output <dir>               results directory (default bench/results/raw/E00/<timestamp>)
   --chrome <path> | --cdp <url>   browser selection
   --port <n>                   CDP port for the Chrome this script launches (default 9333; ignored with --cdp)
@@ -1578,6 +1577,9 @@ Without --smoke this runs the strict E00 baseline acceptance protocol (64 runs, 
     }
     const manifestBytes = await readFile(MANIFEST_PATH);
     const manifest = JSON.parse(manifestBytes);
+    const registryScenarios = await loadScenarioRegistry(ROOT);
+    // Fail on a typo before any browser or output directory exists.
+    if (cli.scenarios !== undefined) selectScenarios(registryScenarios, list(cli.scenarios, ''));
     const mode = cli.mode ?? 'performance';
     const smoke = cli.smoke === true || cli.smoke === 'true';
     const baselineRoleA = manifest.timing_protocol.variant_mapping.A;
@@ -1711,7 +1713,7 @@ Without --smoke this runs the strict E00 baseline acceptance protocol (64 runs, 
         };
         const results =
             mode === 'capture'
-                ? await captureRun(runtime.client, context, manifest)
+                ? await captureRun(runtime.client, context, manifest, registryScenarios)
                 : await performanceRun(runtime.client, context);
         await writeFile(join(outputDirectory, 'results.json'), JSON.stringify(results, null, 2));
         console.log(outputDirectory);

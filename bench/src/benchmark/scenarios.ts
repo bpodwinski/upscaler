@@ -174,12 +174,27 @@ function q17(frame: number): BenchmarkFrameState {
     return { ...state(frame, [0, 0, EMITTER_DISTANCE], [0, 0, 0]), scene: 'emitters' };
 }
 
+/** Q18: camera distance to the chart wall (BenchScene sizes the chart from it). */
+export const CHART_DISTANCE = 10;
+/** Q18's light step: a genuine change on the chart, after convergence. */
+const Q18_STEP_FRAME = 300;
+
+function q18(frame: number): BenchmarkFrameState {
+    // Still camera square-on to a resolution chart whose finest bars sit past
+    // the render Nyquist. Up to the step the only per-frame variation is the
+    // upscaler's jitter, so any shading-change response before frame 300 is a
+    // false positive; at 300 the light drops to a quarter (as Q16's), a real
+    // change on the same content.
+    const directionalIntensity = frame >= Q18_STEP_FRAME ? 0.8 : 3.2;
+    return { ...state(frame, [0, 0, CHART_DISTANCE], [0, 0, 0]), scene: 'chart', directionalIntensity };
+}
+
 /**
- * Q18 (issue #67): converge, then one motion type per 60-frame segment, each
+ * Q19 (issue #67): converge, then one motion type per 60-frame segment, each
  * followed by a 60-frame hold. Segment starts are exported for the measuring
  * script (scripts/measure-receding-disocclusion.mjs).
  */
-export const Q18_SEGMENTS = [
+export const Q19_SEGMENTS = [
     { name: 'still', start: 0, end: 119 },
     { name: 'dolly-back', start: 120, end: 179 },
     { name: 'hold-1', start: 180, end: 239 },
@@ -196,12 +211,12 @@ export const Q18_SEGMENTS = [
     { name: 'scene-approach', start: 840, end: 899 },
     { name: 'hold-7', start: 900, end: 959 },
 ] as const;
-/** Q18 per-frame speeds: 0.1 world units/frame (6 u/s) along the view axis. */
-const Q18_DOLLY_STEP = 0.1;
-const Q18_ORBIT_STEP = (0.5 * Math.PI) / 180;
-const Q18_SLIDE_STEP = 0.05;
+/** Q19 per-frame speeds: 0.1 world units/frame (6 u/s) along the view axis. */
+const Q19_DOLLY_STEP = 0.1;
+const Q19_ORBIT_STEP = (0.5 * Math.PI) / 180;
+const Q19_SLIDE_STEP = 0.05;
 
-function q18(frame: number): BenchmarkFrameState {
+function q19(frame: number): BenchmarkFrameState {
     const ramp = (start: number) => Math.min(Math.max(frame - start + 1, 0), 60);
     const target = BASE_TARGET;
     const offset = [
@@ -213,9 +228,9 @@ function q18(frame: number): BenchmarkFrameState {
     const back = offset.map((value) => value / distance);
 
     // Dolly back then forward: net zero after frame 299.
-    const dolly = Q18_DOLLY_STEP * (ramp(120) - ramp(240));
+    const dolly = Q19_DOLLY_STEP * (ramp(120) - ramp(240));
     // Orbit left then right about the target's vertical axis: net zero after 539.
-    const yaw = Q18_ORBIT_STEP * (ramp(360) - ramp(480));
+    const yaw = Q19_ORBIT_STEP * (ramp(360) - ramp(480));
     const cos = Math.cos(yaw);
     const sin = Math.sin(yaw);
     const ox = offset[0] + back[0] * dolly;
@@ -225,7 +240,7 @@ function q18(frame: number): BenchmarkFrameState {
     // Slide: camera and target translate together, perpendicular to the view.
     const side = [back[2], 0, -back[0]];
     const sideNorm = Math.hypot(side[0], side[2]);
-    const slide = Q18_SLIDE_STEP * ramp(600);
+    const slide = Q19_SLIDE_STEP * ramp(600);
     const shift = [(side[0] / sideNorm) * slide, 0, (side[2] / sideNorm) * slide];
     const cameraTarget = [target[0] + shift[0], target[1], target[2] + shift[2]] as const;
     const cameraPosition = [
@@ -235,7 +250,7 @@ function q18(frame: number): BenchmarkFrameState {
     ] as const;
     // Scene recedes then returns with the camera still: the same image motion
     // as a dolly, but carried by object velocity instead of the camera.
-    const recede = Q18_DOLLY_STEP * (ramp(720) - ramp(840));
+    const recede = Q19_DOLLY_STEP * (ramp(720) - ramp(840));
     const sceneOffset = [-back[0] * recede, -back[1] * recede, -back[2] * recede] as const;
     return { ...state(frame, cameraPosition, cameraTarget), sceneOffset, backdrop: true };
 }
@@ -567,6 +582,28 @@ const SCENARIOS: Record<BenchmarkScenarioId, BenchmarkScenarioDefinition> = {
     },
     Q18: {
         id: 'Q18',
+        name: 'fine-line-chart',
+        // Capture-only: measure with measure-convergence.mjs --shading-frames
+        // and measure-drift-lag.mjs (NEXT-STEPS §14). ROIs are the chart
+        // regions laid out in BenchScene (render px at ratio 2 / 640×360),
+        // kept above y = 0.93: below it a headless capture shows page, not canvas.
+        endFrame: 399,
+        captures: ['0', 'P-1', 'P', '2*P-1', '239', '299', '300', '301', '302', '304', '308', '316', '332', '399'],
+        debugViews: ['final', 'disocclusion', 'accumulation-age', 'locks', 'shading-change'],
+        rois: {
+            full: [0, 0, 1, 1],
+            bars_vertical: [0.031, 0.067, 0.953, 0.167],
+            bars_horizontal: [0.031, 0.278, 0.953, 0.144],
+            siemens_star: [0.041, 0.494, 0.2625, 0.43],
+            flat_swatches: [0.375, 0.528, 0.594, 0.194],
+            hairlines: [0.375, 0.778, 0.281, 0.15],
+        },
+        subruns: [],
+        unsupported: null,
+        frame: q18,
+    },
+    Q19: {
+        id: 'Q19',
         name: 'receding-disocclusion',
         // Capture-only: measure with scripts/measure-receding-disocclusion.mjs.
         endFrame: 959,
@@ -575,7 +612,7 @@ const SCENARIOS: Record<BenchmarkScenarioId, BenchmarkScenarioDefinition> = {
         rois: { full: [0, 0, 1, 1] },
         subruns: [],
         unsupported: null,
-        frame: q18,
+        frame: q19,
     },
 };
 

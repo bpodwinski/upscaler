@@ -146,7 +146,7 @@ export interface UpscalerNodeOptions {
  * render pipeline applies the renderer's configured tone mapping and output
  * color-space transform; it can also feed later linear post-processing.
  */
-export class UpscalerNode extends TempNode {
+export class UpscalerNode extends TempNode<'vec4'> {
     readonly isFSR3Node = true;
 
     private readonly _color: TextureNodeLike;
@@ -478,7 +478,7 @@ export const upscale = (
     velocityNode: TextureNodeLike,
     camera: CameraLike,
     options: UpscalerNodeOptions = {},
-): ReturnType<typeof nodeObject> =>
+): UpscalerNode =>
     // Materialize the (possibly composited) color into a texture — same as
     // FSR1/TAAU do with their beauty input. depth/velocity are already pass
     // texture nodes, so they pass through untouched (matching TAAUNode). The
@@ -523,7 +523,7 @@ const SPATIAL_CAMERA = { isCamera: true, near: 0.1, far: 2000, isPerspectiveCame
 export const upscaleSpatial = (
     color: TextureNodeLike,
     options: Omit<UpscalerNodeOptions, 'path' | 'jitter'> = {},
-): ReturnType<typeof nodeObject> =>
+): UpscalerNode =>
     nodeObject(
         new UpscalerNode(convertToTexture(color), null, null, SPATIAL_CAMERA, {
             ...options,
@@ -557,7 +557,7 @@ export const upscaleScene = (
     scene: any,
     camera: CameraLike,
     options: UpscalerNodeOptions = {},
-): ReturnType<typeof nodeObject> => {
+): UpscalerNode => {
     const ratio = options.ratio ?? getQualityModeRatio(options.quality ?? QualityMode.Quality);
 
     //* Render the scene at 1/ratio with a color + velocity MRT — the two inputs

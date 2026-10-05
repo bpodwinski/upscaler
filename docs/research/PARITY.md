@@ -67,7 +67,7 @@ so each depth-clip texel empties its own slot of next frame's buffer — no clea
 Two measured divergences from upstream's vote are kept from the earlier form: the
 tolerance is widened by the 3×3 depth relief (grazing planes), and the best tap wins.
 
-**Measured (issue #67, `bench/docs/NEXT-STEPS.md` §14):** the scatter costs ~0.012 ms
+**Measured (issue #67, `bench/docs/NEXT-STEPS.md` §15):** the scatter costs ~0.012 ms
 per frame at ratio 2 (+30 µs in a worktree, ~2% of upscaler compute). Nearly all of it
 is the pass split itself; the atomics are close to free, and folding the clear into the
 depth clip removed a 24 µs pass. In return:
@@ -75,12 +75,12 @@ depth clip removed a 24 µs pass. In return:
 - **Camera and object motion along the view axis cancel.** The fused cross-frame form
   this replaced compared this frame's depth with last frame's — two different cameras —
   so a dolly-out disoccluded 97% of a frontal wall, and any object receding from a still
-  camera lost its history. Interior disocclusion on bench Q18: dolly-back 1.03% → 0.33%,
+  camera lost its history. Interior disocclusion on bench Q19: dolly-back 1.03% → 0.33%,
   scene receding under a still camera 1.31% → 0.24%.
 - **Still scenes read exactly zero** (0.029% → 0.000%): the cross-frame form's sub-texel
   sampling residue is gone. Q1/Q12 convergence unchanged or slightly better.
 - **Genuine reveals behind moving silhouettes are found.** Q3's rotating knots and
-  Q18's lateral slide now get continuous trailing outlines; the cross-frame best-tap
+  Q19's lateral slide now get continuous trailing outlines; the cross-frame best-tap
   vote let ~1 px/frame reveals through (one tap always landed on the old background).
 - **Sub-pixel floating emitters no longer false-disocclude** on jitter miss phases
   (issue #54: 7–34% of frames → 0%).
@@ -156,6 +156,15 @@ Two findings from GPU tuning (five documented iterations):
   disoccluded texels neutralized. Since #58 the previous luma is taken per texel as
   the closest value in its reprojected bilinear footprint's tap range, so a difference
   that jitter alone explains reads 0.
+- **One frame of history is not enough past the render Nyquist.** Fine line pairs and a
+  Siemens star centre alias into moiré larger than a block, so a whole block mean flips
+  between values on successive jitter phases with no change in the scene. Each block
+  now remembers its last 8 means and a mean inside their range is not a change (the
+  idea of FSR 3.1's luma-instability pass, at block scale), unless this frame's jump is
+  larger than the jumps the memory holds, which keeps a step right after a ramp
+  detectable. Still-scene firing on the resolution-chart scenario fell from 3.3% to
+  0.12% of the frame with light steps unchanged within 1% (`bench/docs/NEXT-STEPS.md`
+  §14).
 
 **Measured (2026-07-21; #52's pooled spread and #58's footprint clamp were not
 re-timed):** 0.044 ms at ratio 2 vs 0.231 ms for the source-style two-pass candidate

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Receding-camera disocclusion meter (issue #67) — steps the Q18 scenario
+ * Receding-camera disocclusion meter (issue #67) — steps the Q19 scenario
  * (converge, then dolly back / forward, orbit left / right, slide, and the
  * scene receding / approaching under a still camera, each followed by a hold)
  * through the disocclusion and accumulation-age debug views, per bench
@@ -13,9 +13,9 @@
  *
  * Usage:
  *   node scripts/measure-receding-disocclusion.mjs
- *     [--variants baseline,reconstruct-camera-v1,reconstruct-scatter-v1]
+ *     [--variants baseline,reconstruct-cross-frame-v1,reconstruct-camera-v1]
  *     [--ratio 2] [--width 1280] [--height 720] [--stride 1]
- *     [--label q18] [--url http://127.0.0.1:5199] [--port 9333]
+ *     [--label q19] [--url http://127.0.0.1:5199] [--port 9333]
  *
  * Per variant: per-frame mean disocclusion v (whole frame and an interior
  * crop that excludes the border strips), share with v > 0.5, mean
@@ -30,6 +30,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { inflateSync } from 'node:zlib';
 
+import { parseCliOrExit } from './cli-flags.mjs';
 import {
     DEFAULT_BENCH_URL,
     parsePort,
@@ -48,7 +49,7 @@ const SRGB_TO_LINEAR = Float64Array.from({ length: 256 }, (_, byte) => {
     return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
 });
 
-// Mirrors Q18_SEGMENTS in bench/src/benchmark/scenarios.ts.
+// Mirrors Q19_SEGMENTS in bench/src/benchmark/scenarios.ts.
 const SEGMENTS = [
     { name: 'still', start: 0, end: 119 },
     { name: 'dolly-back', start: 120, end: 179 },
@@ -74,45 +75,30 @@ const SNAPSHOT_FRAMES = SEGMENTS.filter((segment) => !/^(still|hold)/.test(segme
 );
 
 //* CLI
-function parseArguments(argv) {
-    const options = {};
-    for (let index = 0; index < argv.length; index++) {
-        const value = argv[index];
-        if (!value.startsWith('--')) continue;
-        const key = value.slice(2);
-        const next = argv[index + 1];
-        if (next === undefined || next.startsWith('--')) options[key] = true;
-        else {
-            options[key] = next;
-            index++;
-        }
-    }
-    return options;
-}
-
-const cli = parseArguments(process.argv.slice(2));
-if (cli.help || cli.h) {
-    console.log(`Usage: node scripts/measure-receding-disocclusion.mjs [options]
-  --variants <list>      bench variants (default baseline,reconstruct-camera-v1,reconstruct-scatter-v1)
+const USAGE = `Usage: node scripts/measure-receding-disocclusion.mjs [options]
+  --variants <list>      bench variants (default baseline,reconstruct-cross-frame-v1,reconstruct-camera-v1)
   --ratio <n>            upscale ratio (default 2)
   --width <px> --height <px>   canvas size (default 1280x720)
   --stride <n>           measure every n-th frame (default 1)
-  --label <name>         output folder prefix (default q18)
+  --label <name>         output folder prefix (default q19)
   --url <origin>         bench origin (default ${DEFAULT_BENCH_URL}); if nothing answers,
                          the bench dev server is started on that host + port (--strictPort)
   --port <n>             Chrome DevTools (CDP) port (default 9333)
-Writes to bench/results/raw/receding/<label>-<ratio>x/.`);
-    process.exit(0);
-}
+Writes to bench/results/raw/receding/<label>-<ratio>x/.`;
+const cli = parseCliOrExit(
+    process.argv.slice(2),
+    ['variants', 'ratio', 'width', 'height', 'stride', 'label', 'url', 'port'],
+    USAGE,
+);
 const server = resolveServerUrl(cli.url, DEFAULT_BENCH_URL);
-const variants = (cli.variants ?? 'baseline,reconstruct-camera-v1,reconstruct-scatter-v1')
+const variants = (cli.variants ?? 'baseline,reconstruct-cross-frame-v1,reconstruct-camera-v1')
     .split(',')
     .filter(Boolean);
 const ratio = Number(cli.ratio ?? 2);
 const width = Number(cli.width ?? 1280);
 const height = Number(cli.height ?? 720);
 const stride = Math.max(1, Number(cli.stride ?? 1));
-const label = cli.label ?? 'q18';
+const label = cli.label ?? 'q19';
 const port = parsePort(cli.port, '--port') ?? 9333;
 const outputDirectory = join(
     ROOT,
@@ -321,7 +307,7 @@ async function stepTo(client, frame) {
     );
 }
 
-/** Replays Q18 through one debug view, measuring every stride-th frame. */
+/** Replays Q19 through one debug view, measuring every stride-th frame. */
 async function replay(client, view, variantDirectory, measure) {
     await evaluate(client, `window.__UPSCALER_BENCH__.capture({ frame: ${FIRST_MEASURED}, debugView: '${view}' })`);
     const perFrame = [];
@@ -406,7 +392,7 @@ async function main() {
             await mkdir(variantDirectory, { recursive: true });
             const url = new URL(server.origin);
             url.searchParams.set('benchMode', 'capture');
-            url.searchParams.set('scenario', 'Q18');
+            url.searchParams.set('scenario', 'Q19');
             url.searchParams.set('variant', variant);
             url.searchParams.set('ratio', String(ratio));
             url.searchParams.set('width', String(width));

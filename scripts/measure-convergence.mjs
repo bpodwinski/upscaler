@@ -15,7 +15,7 @@
  *     [--views final,accumulation-age] [--label baseline] [--port 9333]
  *     [--url http://127.0.0.1:5199] [--subrun static]
  *     [--settings '{"detectShadingChanges":false}'] [--shading-frames 32]
- *     [--variant reconstruct-cross-frame-v1]
+ *     [--variant shading-memory-range8]
  *
  * --url is the bench origin to drive; if nothing answers there, the bench dev
  * server is started on exactly that host + port. --port is Chrome's DevTools
@@ -80,12 +80,12 @@ if (cli.help || cli.h) {
   --width <px> --height <px>   canvas size (default 1280x720)
   --views <list>         debug views to capture (default final,accumulation-age)
   --label <name>         output folder prefix (default baseline)
-  --variant <id>         bench variant to drive (default baseline = production),
-                         e.g. reconstruct-cross-frame-v1 for an A/B
   --url <origin>         bench origin (default ${DEFAULT_BENCH_URL}); if nothing answers,
                          the bench dev server is started on that host + port (--strictPort)
   --port <n>             Chrome DevTools (CDP) port (default 9333)
   --subrun <name>        scenario subrun, e.g. Q14 off|static|rotating|builtin
+  --variant <id>         bench variant (default: the page default, baseline); see
+                         bench/src/benchmark/variants.ts
   --settings <json>      capture-setting overrides for an A/B, e.g.
                          '{"lockThinFeatures":false}' (also detectShadingChanges,
                          autoExposure, rcasDenoise, maxAccumulation)
@@ -205,6 +205,26 @@ function contentMask(image) {
         mask[p] = Math.max(image.raw[i], image.raw[i + 1], image.raw[i + 2]) > 40 ? 1 : 0;
     }
     return mask;
+}
+
+/**
+ * Mean of `metric(v)` over a normalized [x, y, w, h] region of a debug-view
+ * capture, where v is the sRGB-decoded red byte (the view's scalar).
+ */
+function regionStats(image, roi, metric) {
+    const [rx, ry, rw, rh] = roi;
+    const x0 = Math.floor(rx * image.width);
+    const y0 = Math.floor(ry * image.height);
+    const x1 = Math.min(image.width, Math.ceil((rx + rw) * image.width));
+    const y1 = Math.min(image.height, Math.ceil((ry + rh) * image.height));
+    let sum = 0;
+    let pixels = 0;
+    for (let y = y0; y < y1; y++)
+        for (let x = x0; x < x1; x++) {
+            sum += metric(SRGB_TO_LINEAR[image.raw[(y * image.width + x) * image.bytesPerPixel]]);
+            pixels++;
+        }
+    return { mean: sum / Math.max(pixels, 1), pixels };
 }
 
 //* CDP plumbing (subset of run-benchmark.mjs)
@@ -372,6 +392,11 @@ async function main() {
             await new Promise((resolveWait) => setTimeout(resolveWait, 100));
         }
 
+        // Scenario ROIs (kept on the bench's TS-private context, as
+        // measure-drift-lag.mjs reads them): shading-change firing and the
+        // accumulation-age summary are also reported per region.
+        const rois = await evaluate(client, 'window.__UPSCALER_BENCH__._context.scenario.rois');
+
         // Settle: canonical capture settings + deterministic reset + step to
         // the settle frame (capture() also drains the GPU queue).
         const settleInfo = await evaluate(
@@ -458,6 +483,9 @@ async function main() {
                     if (value > 0.5) strong++;
                     sum += value;
                 }
+                const regionFiring = {};
+                for (const [name, roi] of Object.entries(rois ?? {}))
+                    regionFiring[name] = regionStats(image, roi, (value) => (value > 0.1 ? 1 : 0)).mean;
                 perFrame.push({
                     frame,
                     anyFraction: any / pixels,
@@ -465,11 +493,17 @@ async function main() {
                     firingPixels: firing,
                     strongFraction: strong / pixels,
                     mean: sum / pixels,
+                    regionFiring,
                 });
             }
             const mean = (key) => perFrame.reduce((total, entry) => total + entry[key], 0) / perFrame.length;
+            const regionFiring = {};
+            for (const name of Object.keys(rois ?? {}))
+                regionFiring[name] =
+                    perFrame.reduce((total, entry) => total + entry.regionFiring[name], 0) / perFrame.length;
             shadingChange = {
                 frames: shadingFrames,
+                regionFiring,
                 anyFraction: mean('anyFraction'),
                 firingFraction: mean('firingFraction'),
                 firingPixels: mean('firingPixels'),
@@ -484,9 +518,15 @@ async function main() {
                     `strong (v>0.5) ${(100 * shadingChange.strongFraction).toFixed(4)}%, any ${(100 * shadingChange.anyFraction).toFixed(4)}%, ` +
                     `mean v ${shadingChange.mean.toFixed(6)}`,
             );
+            console.log(
+                `  firing per ROI: ${Object.entries(regionFiring)
+                    .map(([name, value]) => `${name} ${(100 * value).toFixed(4)}%`)
+                    .join(', ')}`,
+            );
         }
 
         //* Debug views at the end of the run
+        let accumulationAge = null;
         for (const view of views) {
             if (view === 'final') continue;
             try {
@@ -494,7 +534,26 @@ async function main() {
                     client,
                     `window.__UPSCALER_BENCH__.capture({ frame: ${settle + pairs}, debugView: '${view}', settings: ${JSON.stringify(captureSettings)} })`,
                 );
-                await writeFile(join(outputDirectory, `${view}-f${settle + pairs}.png`), await captureCanvas(client));
+                const viewPng = await captureCanvas(client);
+                await writeFile(join(outputDirectory, `${view}-f${settle + pairs}.png`), viewPng);
+                // Accumulation age (history .a = samples / maxAccumulation,
+                // sRGB-decoded like the shading view): mean age, and the share
+                // of pixels still under half the cap this long after settle —
+                // history that something keeps aging.
+                if (view === 'accumulation-age') {
+                    const image = decodePng(viewPng);
+                    accumulationAge = {};
+                    for (const [name, roi] of Object.entries(rois ?? { full: [0, 0, 1, 1] }))
+                        accumulationAge[name] = {
+                            mean: regionStats(image, roi, (value) => value).mean,
+                            youngFraction: regionStats(image, roi, (value) => (value < 0.5 ? 1 : 0)).mean,
+                        };
+                    console.log(
+                        `accumulation age at f${settle + pairs}: ${Object.entries(accumulationAge)
+                            .map(([name, entry]) => `${name} mean ${entry.mean.toFixed(3)} young(<0.5) ${(100 * entry.youngFraction).toFixed(3)}%`)
+                            .join(', ')}`,
+                    );
+                }
             } catch (error) {
                 console.warn(`debug view ${view} skipped: ${error.message}`);
             }
@@ -505,7 +564,7 @@ async function main() {
         const summary = {
             scenario,
             subrun,
-            variant: variant ?? 'baseline',
+            variant,
             settings: captureSettings,
             ratio,
             settle,
@@ -516,6 +575,7 @@ async function main() {
             diffs,
             phaseLocked,
             shadingChange,
+            accumulationAge,
             mean: values.reduce((total, value) => total + value, 0) / values.length,
             contentPixels: maskPixels,
             contentMean: contentValues.reduce((total, value) => total + value, 0) / contentValues.length,

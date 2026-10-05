@@ -59,7 +59,8 @@ const BASELINE_BINDING_COUNTS: Record<string, number> = {
     reconstruct: 6,
     depthClip: 6,
     reconstructCrossFrame: 7,
-    shadingChange: 9,
+    // 11 since 2026-10-05: per-block memory in/out (NEXT-STEPS §14).
+    shadingChange: 11,
     accumulate: 13,
     luminancePyramid: 7,
     // 5 since 2026-07-22: incoming-mask binding for merge-not-overwrite.
@@ -94,8 +95,11 @@ const BASELINE_FINGERPRINTS: Record<string, string> = {
     // Added 2026-07-21: multi-scale shading-change detector (NEXT-STEPS item 4);
     // 2026-10-03: the contrast floor reads both frames' spread, not just the
     // current frame's (issue #22, NEXT-STEPS §9); 2026-10-03: the compared
-    // previous value is clamped into the bilinear footprint's tap range.
-    shadingChange: '353acc93',
+    // previous value is clamped into the bilinear footprint's tap range;
+    // 2026-10-05: per-block memory of the last 8 means, jump-gated range test
+    // (fine-line aliasing on a still camera, NEXT-STEPS §14); 2026-10-05: an
+    // all-zero (empty) memory restarts instead of pushing (NEXT-STEPS §14).
+    shadingChange: 'fba11623',
     // Updated 2026-07-21: DeltaPreExposure history correction (NEXT-STEPS item 2);
     // 2026-08-25: alpha resolved alongside color into the locks buffer's .a;
     // 2026-10-02: the alpha clamp takes the color path's still-scene relax;
@@ -103,8 +107,10 @@ const BASELINE_FINGERPRINTS: Record<string, string> = {
     // §8) — GPU captures byte-identical at the shipped 8;
     // 2026-10-03: clipToAABB's epsilon moved onto the extents too, so a
     // zero-extent (achromatic) axis no longer collapses the clip (issue #51,
-    // NEXT-STEPS §11).
-    accumulate: '76b5017b',
+    // NEXT-STEPS §11);
+    // 2026-10-05: pre-exposure read guarded with max(…, 1e-4) like RCAS/blit,
+    // so a fixed/external exposure of 0 no longer blacks out accumulation.
+    accumulate: '1505bcb5',
     luminancePyramid: 'b74eee0d',
     // Updated 2026-07-22: reactive merge-not-overwrite (guides spec M3) — the
     // generator max-merges an incoming mask instead of being suppressed by it.
@@ -602,6 +608,57 @@ describe('auto-exposure clamp', () => {
         expect(LUMINANCE_PYRAMID_SHADER).toContain(
             'clamp(EXPOSURE_KEY / max(avgLum, 1.0e-4), EXPOSURE_MIN, EXPOSURE_MAX)',
         );
+    });
+});
+
+describe('shading-change block memory', () => {
+    // Fine-line aliasing on a still camera (bench Q18, NEXT-STEPS §14): a block
+    // mean inside the range of its last 8 means reads as no change, unless the
+    // frame's jump exceeds the jumps the memory holds (a step after a ramp).
+    it('ping-pongs a packed memory of 8 means per block', () => {
+        expect(SHADING_CHANGE_SHADER).toContain(
+            '@group(0) @binding(9) var blockMemoryIn : texture_2d<u32>;',
+        );
+        expect(SHADING_CHANGE_SHADER).toContain(
+            '@group(0) @binding(10) var blockMemoryOut : texture_storage_2d<rgba32uint, write>;',
+        );
+        expect(SHADING_CHANGE_SHADER).toContain('const SHADING_MEMORY_SLOTS : u32 = 8u;');
+        expect(SHADING_CHANGE_SHADER).toContain('const SHADING_MEMORY_JUMP_GAIN : f32 = 1.5;');
+    });
+
+    it('gates the range on the jump and only ever lowers the difference', () => {
+        expect(SHADING_CHANGE_SHADER).toContain(
+            '> SHADING_MEMORY_JUMP_GAIN * flicker) {\n        return 1.0;',
+        );
+        expect(SHADING_CHANGE_SHADER).toContain(
+            'let relative = min(1.0 - min(sums.x, sums.y) / maximum, memory);',
+        );
+        expect(SHADING_CHANGE_SHADER).toContain(
+            'scaleResponse(sums1, 16.0, SHADING_FLOOR_MID, midMemory)',
+        );
+        expect(SHADING_CHANGE_SHADER).toContain(
+            'scaleResponse(sums2, 64.0, SHADING_FLOOR_COARSE, coarseMemory)',
+        );
+    });
+
+    it('restarts the memory of blocks that moved, disoccluded or reset', () => {
+        expect(SHADING_CHANGE_SHADER).toContain('var moving = select(0.0, 1.0, hasFlag(FLAG_RESET));');
+        expect(SHADING_CHANGE_SHADER).toContain(
+            'select(memoryDistance(midWords, midMean), 1.0, moving1 > 0.5)',
+        );
+        expect(SHADING_CHANGE_SHADER).toContain(
+            'memoryUpdate(coarseWords, coarseMean, moving2 > 0.5)',
+        );
+        // One writer per block: its top-left thread.
+        expect(SHADING_CHANGE_SHADER).toContain('if (all((lid.xy & vec2u(1u)) == vec2u(0u))) {');
+        expect(SHADING_CHANGE_SHADER).toContain('if (all((lid.xy & vec2u(3u)) == vec2u(0u))) {');
+    });
+
+    it('restarts an empty (all-zero) memory instead of pushing into it', () => {
+        // Pushed, the zeros stay in the range for 8 frames with a stored jump of 1,
+        // so the gate never trips and a darkening step is hidden — e.g. right
+        // after the detector is re-enabled, when Upscaler zeroes the memory.
+        expect(SHADING_CHANGE_SHADER).toContain('if (restart || all(words == vec4u(0u))) {');
     });
 });
 

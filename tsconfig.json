@@ -21,6 +21,6 @@
             "@pmndrs/upscaler": ["src/index.ts"]
         }
     },
-    "include": ["src", "bench/src", "examples"],
+    "include": ["src", "bench/src", "examples", "test"],
     "exclude": ["node_modules", "dist", "examples/vite.config.ts"]
 }

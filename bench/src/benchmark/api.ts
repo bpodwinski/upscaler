@@ -217,11 +217,12 @@ class BrowserBenchmarkApi implements UpscalerBenchmarkApi {
         this._clock.seek(frame + 1);
     }
 
-    /** Scene rendered as upscaler input for a frame (Q12 cornell, Q16 sparse wires, Q17 emitters). */
+    /** Scene rendered as upscaler input for a frame (Q12 cornell, Q16 sparse wires, Q17 emitters, Q18 chart). */
     private _inputScene(frame: BenchmarkFrameState): THREE.Scene {
         if (frame.scene === 'cornell') return this._context.bench.cornellScene;
         if (frame.scene === 'sparse-wires') return this._context.bench.sparseWireScene;
         if (frame.scene === 'emitters') return this._context.bench.emitterScene;
+        if (frame.scene === 'chart') return this._context.bench.chartScene;
         return this._context.bench.scene;
     }
 

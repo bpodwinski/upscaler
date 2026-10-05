@@ -39,6 +39,7 @@
  *   node scripts/measure-drift-lag.mjs [--scenario Q15] [--ratio 2]
  *     [--frames 116:379:4] [--width 1280] [--height 720] [--label relax8]
  *     [--settings '{"autoExposure":false}'] [--port 9333]
+ *     [--variant shading-memory-range8]
  *     [--url http://127.0.0.1:5199]
  *
  * --settings is passed to every capture() as its settings override (the same
@@ -58,6 +59,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { inflateSync } from 'node:zlib';
 
+import { parseCliOrExit } from './cli-flags.mjs';
 import {
     DEFAULT_BENCH_URL,
     parsePort,
@@ -73,28 +75,30 @@ const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0
 const GHOST_THRESHOLD = 4;
 
 //* CLI
-function parseArguments(argv) {
-    const options = {};
-    for (let index = 0; index < argv.length; index++) {
-        const value = argv[index];
-        if (!value.startsWith('--')) continue;
-        const key = value.slice(2);
-        const next = argv[index + 1];
-        if (next === undefined || next.startsWith('--')) options[key] = true;
-        else {
-            options[key] = next;
-            index++;
-        }
-    }
-    return options;
-}
-
-const cli = parseArguments(process.argv.slice(2));
+const USAGE = `Usage: node scripts/measure-drift-lag.mjs [options]
+  --scenario <id>        bench scenario with a lighting ramp (default Q15; Q9 also works)
+  --ratio <n>            upscale ratio (default 2)
+  --frames <a:b:step>    sampled frames, inclusive (default 116:379:4)
+  --keep <list>          frames whose ramp/reference/shading-change PNGs are kept, e.g. 154,206
+  --width <px> --height <px>   canvas size (default 1280x720)
+  --label <name>         output folder prefix (default baseline)
+  --settings <json>      capture-setting overrides, e.g. '{"autoExposure":false}'
+  --variant <id>         bench variant identity, e.g. shading-frame-pair-v1 (default: production)
+  --url <origin>         bench origin (default ${DEFAULT_BENCH_URL}); if nothing answers,
+                         the bench dev server is started on that host + port (--strictPort)
+  --port <n>             Chrome DevTools (CDP) port (default 9333)
+Writes to bench/results/raw/drift-lag/<label>-<scenario>-<ratio>x/.`;
+const cli = parseCliOrExit(
+    process.argv.slice(2),
+    ['scenario', 'ratio', 'frames', 'keep', 'width', 'height', 'label', 'settings', 'variant', 'url', 'port'],
+    USAGE,
+);
 const scenario = cli.scenario ?? 'Q15';
 const ratio = Number(cli.ratio ?? 2);
 const width = Number(cli.width ?? 1280);
 const height = Number(cli.height ?? 720);
 const label = cli.label ?? 'baseline';
+const variant = typeof cli.variant === 'string' ? cli.variant : null;
 const captureSettings = typeof cli.settings === 'string' ? JSON.parse(cli.settings) : {};
 const port = parsePort(cli.port, '--port') ?? 9333;
 const server = resolveServerUrl(cli.url, DEFAULT_BENCH_URL);
@@ -375,6 +379,7 @@ async function main() {
         url.searchParams.set('ratio', String(ratio));
         url.searchParams.set('width', String(width));
         url.searchParams.set('height', String(height));
+        if (variant) url.searchParams.set('variant', variant);
         await client.call('Page.navigate', { url: url.href });
         for (let attempt = 0; ; attempt++) {
             const ready = await evaluate(client, 'window.__UPSCALER_BENCH__?.ready === true').catch(() => false);
@@ -458,6 +463,7 @@ async function main() {
             width,
             height,
             stillClampRelax: relax,
+            variant,
             settings: captureSettings,
             frames: sampleFrames,
             ghostThreshold: GHOST_THRESHOLD,

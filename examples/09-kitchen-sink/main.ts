@@ -16,7 +16,7 @@ import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
 import { denoise } from 'three/addons/tsl/display/DenoiseNode.js';
 import GUI from 'lil-gui';
 
-import { DebugView, upscale, type Upscaler } from '@pmndrs/upscaler';
+import { DebugView, upscale } from '@pmndrs/upscaler';
 
 import { bootRenderer, displaySize } from '../shared/boot';
 import { addStudioLighting } from '../shared/props';
@@ -178,13 +178,13 @@ function configure(): void {
     const colorTex = convertToTexture(composite, rw, rh);
 
     // Dispose the previous node's upscaler before replacing the graph.
-    (fsrNode as unknown as { dispose?(): void } | null)?.dispose?.();
+    fsrNode?.dispose();
     // The whole scene renders in-graph under this node, so jitter is safe here
     // (the reduced pass IS re-rendered under the jittered projection each frame)
     // and buys sub-pixel reconstruction — on by default for exactly this reason.
     // The toggle lets you A/B it against a non-jittered (reproject-only) upscale.
     fsrNode = upscale(colorTex, depth, vel, camera, { path: 'temporal', ratio, jitter: state.jitter });
-    post.outputNode = fsrNode as unknown as THREE.Node;
+    post.outputNode = fsrNode;
     post.needsUpdate = true;
 }
 configure();
@@ -232,7 +232,7 @@ let orbitTime = 0;
     camera,
     state,
     get upscaler() {
-        return (fsrNode as unknown as { upscaler?: Upscaler } | null)?.upscaler ?? null;
+        return fsrNode?.upscaler ?? null;
     },
     // Deterministic camera drive for the harness (pose = orbit time).
     get orbitTime() {
@@ -245,7 +245,7 @@ let orbitTime = 0;
 
 const hud = document.getElementById('hud')!;
 function updateHud(): void {
-    const u = (fsrNode as unknown as { upscaler?: Upscaler }).upscaler;
+    const u = fsrNode?.upscaler;
     const fx = [state.ssgi && 'SSGI', state.ssr && 'SSR'].filter(Boolean).join(' + ') || 'none';
     hud.innerHTML =
         `<b>@pmndrs/upscaler</b>  kitchen sink (node graph)\n` +
@@ -270,7 +270,7 @@ renderer.setAnimationLoop(() => {
     camera.position.set(Math.sin(t * 0.15) * 7, 4, 9 + Math.cos(t * 0.15) * 1.5);
     camera.lookAt(0, 3, -5);
 
-    const u = (fsrNode as unknown as { upscaler?: Upscaler }).upscaler;
+    const u = fsrNode?.upscaler;
     if (u) {
         u.settings.rcasDenoise = state.rcasDenoise;
         u.settings.debugView = state.debug;
