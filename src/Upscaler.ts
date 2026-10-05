@@ -46,6 +46,7 @@ import {
     type UpscalerConfig,
     type DispatchInputs,
     type GuideDispatchInputs,
+    type JitterOffset,
     type RuntimeSettings,
     type TemporalGuides,
     type UpscalePath,
@@ -171,6 +172,9 @@ export class Upscaler {
 
     private _jitter!: JitterSequence;
     private _jitterEnabled = true;
+    // Stable objects behind the public jitter getters (no per-read allocation).
+    private readonly _jitterOut = { x: 0, y: 0 };
+    private readonly _jitterPreviousOut = { x: 0, y: 0 };
     // The camera's view state from before this frame's jitter, held while the
     // jitter is applied (beginFrame → endFrame). Restoring from it, rather
     // than clearing, keeps an app-set view offset (tiled/multi-screen) intact.
@@ -393,6 +397,58 @@ export class Upscaler {
     /** Number of jitter phases at the current ratio. */
     get jitterPhaseCount(): number {
         return this._jitter.phaseCount;
+    }
+
+    /**
+     * This frame's sub-pixel jitter, in render pixels (`[-0.5, 0.5]` per axis).
+     * x right, y down: the sample for render texel `(i, j)` sits at
+     * `(i + 0.5 + x, j + 0.5 + y)` in the unjittered image's pixels, so a UV
+     * offset is `(x / renderWidth, y / renderHeight)` and an NDC offset is
+     * `(2x / renderWidth, −2y / renderHeight)`. It is exactly the offset
+     * {@link beginFrame} applies to the camera's view (before scaling into an
+     * app-set view offset's units) and the value the shaders reconcile history
+     * against. `(0, 0)` when jitter is disabled or the path isn't `temporal`.
+     * Valid from `beginFrame()` until the next one. The object is reused across
+     * reads; copy it to keep a value.
+     */
+    get jitter(): JitterOffset {
+        return this._readJitter(this._jitterOut, false);
+    }
+
+    /**
+     * The previous frame's jitter, same convention as {@link jitter}: the
+     * offset reprojection compensates against. On the first frame after a
+     * reset history is discarded, so nothing uses it there.
+     */
+    get jitterPrevious(): JitterOffset {
+        return this._readJitter(this._jitterPreviousOut, true);
+    }
+
+    /**
+     * Index of this frame's {@link jitter} in
+     * `generateJitterSequence(jitterPhaseCount)`, `0 … jitterPhaseCount − 1`.
+     * `beginFrame()` advances before applying, so the first frame after
+     * `configure()` or `resetHistory()` is phase 1, and phase 0 ends the cycle.
+     * `0` when jitter is disabled or the path isn't `temporal`.
+     */
+    get jitterPhase(): number {
+        return this._jittering ? this._jitter.phaseIndex : 0;
+    }
+
+    private get _jittering(): boolean {
+        return this._initialized && this._path === 'temporal' && this._jitterEnabled;
+    }
+
+    private _readJitter(out: { x: number; y: number }, previous: boolean): JitterOffset {
+        if (!this._jittering) {
+            out.x = 0;
+            out.y = 0;
+            return out;
+        }
+        const [x, y] = previous ? this._jitter.previous : this._jitter.current;
+        out.x = x;
+        out.y = y;
+        return out;
     }
 
     /**
@@ -1169,13 +1225,11 @@ export class Upscaler {
         c.setRenderSize(this._renderWidth, this._renderHeight);
         c.setDisplaySize(this._displayWidth, this._displayHeight);
 
-        if (this._path === 'temporal' && this._jitterEnabled) {
-            const [jx, jy] = this._jitter.current;
-            const [px, py] = this._jitter.previous;
-            c.setJitter(jx, jy, px, py);
-        } else {
-            c.setJitter(0, 0, 0, 0);
-        }
+        // The public getters are the single source, so what an app reads and
+        // what the shaders reconcile against cannot disagree.
+        const jitter = this.jitter;
+        const previous = this.jitterPrevious;
+        c.setJitter(jitter.x, jitter.y, previous.x, previous.y);
 
         // NDC delta -> UV delta: u = 0.5 + ndc.x/2, v = 0.5 - ndc.y/2.
         c.setMotionScale(0.5, -0.5);

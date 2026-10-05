@@ -1,6 +1,15 @@
 import { Vector2, type Texture } from 'three';
-import { NodeUpdateType, TSL, TempNode, type WebGPURenderer } from 'three/webgpu';
-import { convertToTexture, mrt, nodeObject, output, pass, passTexture, velocity } from 'three/tsl';
+import { NodeUpdateType, TSL, TempNode, type UniformNode, type WebGPURenderer } from 'three/webgpu';
+import {
+    convertToTexture,
+    mrt,
+    nodeObject,
+    output,
+    pass,
+    passTexture,
+    uniform,
+    velocity,
+} from 'three/tsl';
 
 import { Upscaler } from './Upscaler';
 import type { TemporalGuidesNode } from './TemporalGuidesNode';
@@ -185,6 +194,9 @@ export class UpscalerNode extends TempNode<'vec4'> {
 
     private readonly _output = new Vector2();
     private readonly _input = new Vector2();
+    // `_`-prefixed on purpose: three walks a node's own public properties as
+    // graph children, and this uniform belongs to whoever reads it.
+    private readonly _jitterUniform = uniform(new Vector2());
 
     private _upscaler: Upscaler | null = null;
     private _configured = false;
@@ -216,6 +228,19 @@ export class UpscalerNode extends TempNode<'vec4'> {
     /** The underlying upscaler — inspect `.settings`, `.gpuTimings`, etc. */
     get upscaler(): Upscaler | null {
         return this._upscaler;
+    }
+
+    /**
+     * This frame's jitter as a TSL `vec2` uniform, in render pixels, with
+     * {@link Upscaler.jitter}'s convention (x right, y down; UV offset =
+     * `jitterNode / renderSize`). Refreshed when the render pipeline frame
+     * begins, before any in-graph input renders, so effects in the same graph
+     * read this frame's value without a CPU round trip. `(0, 0)` while the node
+     * runs unjittered (`jitter: false`, another node owns the view offset, or
+     * the spatial path). The node instance is stable.
+     */
+    get jitterNode(): UniformNode<'vec2', Vector2> {
+        return this._jitterUniform;
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -334,6 +359,7 @@ export class UpscalerNode extends TempNode<'vec4'> {
         // The view-offset owner manages the shared velocity projection itself
         // (TRAA/TAAU set and clear it per frame); only pin it while we own jitter.
         velocity.setProjectionMatrix(active ? this._upscaler!.unjitteredProjectionMatrix : null);
+        if (!active) this._jitterUniform.value.set(0, 0);
         if (this._configured) this._configureUpscaler();
     }
 
@@ -344,6 +370,8 @@ export class UpscalerNode extends TempNode<'vec4'> {
             if (this._frameOpen || !this._configured) return;
             this._frameOpen = true;
             this._upscaler!.beginFrame(this._camera as never);
+            const jitter = this._upscaler!.jitter;
+            this._jitterUniform.value.set(jitter.x, jitter.y);
         },
         after: (): void => {
             if (!this._frameOpen) return;

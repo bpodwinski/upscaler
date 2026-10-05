@@ -9,6 +9,7 @@ export {
     type UpscalerConfig,
     type DispatchInputs,
     type GuideDispatchInputs,
+    type JitterOffset,
     type RuntimeSettings,
     type TemporalGuides,
     type UpscalePath,

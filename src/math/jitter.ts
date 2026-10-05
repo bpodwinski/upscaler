@@ -36,6 +36,15 @@ export class JitterSequence {
         return this._sequence.length;
     }
 
+    /**
+     * Index of {@link current} in `generateJitterSequence(phaseCount)`,
+     * `0 … phaseCount − 1`. {@link advance} moves it on before a frame reads
+     * it, so the first frame after a {@link reset} uses phase 1.
+     */
+    get phaseIndex(): number {
+        return this._index;
+    }
+
     /** The current offset in pixels, `[-0.5, 0.5]²`. */
     get current(): [number, number] {
         return this._sequence[this._index % this._sequence.length];
