@@ -150,7 +150,7 @@ live:
 ```ts
 const guides = temporalGuides(depth, velocity, camera);
 const effected = myEffect(color, guides.getTextureNode('disocclusion'));
-pipeline.outputNode = upscale(effected, depth, velocity, camera, { guides }) as unknown as THREE.Node;
+pipeline.outputNode = upscale(effected, depth, velocity, camera, { guides });
 ```
 
 - Hand the guides node the **same** depth, velocity and camera as `upscale()`.

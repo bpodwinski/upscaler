@@ -54,7 +54,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 scene.background = new THREE.Color(0x10141a); // opaque output; see "Alpha"
 
 const pipeline = new THREE.RenderPipeline(renderer);
-pipeline.outputNode = upscaleScene(scene, camera, { quality: QualityMode.Quality }) as unknown as THREE.Node;
+pipeline.outputNode = upscaleScene(scene, camera, { quality: QualityMode.Quality });
 
 renderer.setAnimationLoop(() => pipeline.render());
 ```
@@ -96,7 +96,7 @@ pipeline.outputNode = upscale(
     scenePass.getTextureNode('depth'),
     scenePass.getTextureNode('velocity'),
     camera,
-) as unknown as THREE.Node;
+);
 ```
 
 - **The caller controls input resolution.** The node reads the input texture's actual
@@ -128,7 +128,7 @@ import * as THREE from 'three/webgpu';
 import { pass } from 'three/tsl';
 import { upscaleSpatial } from '@pmndrs/upscaler';
 
-pipeline.outputNode = upscaleSpatial(pass(scene, camera).getTextureNode('output')) as unknown as THREE.Node;
+pipeline.outputNode = upscaleSpatial(pass(scene, camera).getTextureNode('output'));
 ```
 
 `upscaleSpatial()` runs the single-frame FSR1 path: EASU, then RCAS. It needs no depth,

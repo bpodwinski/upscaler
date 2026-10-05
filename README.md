@@ -84,8 +84,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 scene.background = new THREE.Color(0x10141a); // or empty regions stay transparent (see Alpha)
 
 const pipeline = new THREE.RenderPipeline(renderer);
-// The factories' declared return type needs a cast to `THREE.Node` in TypeScript.
-pipeline.outputNode = upscaleScene(scene, camera, { quality: QualityMode.Quality }) as unknown as THREE.Node;
+pipeline.outputNode = upscaleScene(scene, camera, { quality: QualityMode.Quality });
 
 renderer.setAnimationLoop(() => pipeline.render());
 ```
