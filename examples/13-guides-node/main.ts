@@ -12,7 +12,7 @@ import { addStudioLighting, createGridFloor } from '../shared/props';
 // wherever `disocclusion` fires (orange trailing silhouettes), and
 // `upscale(..., { guides })` SHARES the guides node's upscaler — the frame
 // runs split (guides dispatch → effect renders → late upscale), so the
-// reconstruct pass runs once and serves both. The imperative twin of this
+// early stage (reconstruct + depth clip) runs once and serves both. The imperative twin of this
 // wiring is `examples/12-temporal-guides`.
 
 const { renderer, dpr } = await bootRenderer();
