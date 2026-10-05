@@ -244,9 +244,15 @@ export class UpscalePass {
         this._reactiveOpaque = texture;
     }
 
-    /** Releases the render target and the upscaler's GPU resources. */
+    /**
+     * Releases the render target, the present material and the upscaler's GPU
+     * resources. The quad's geometry is three's module-level shared quad, owned
+     * by every `QuadMesh`, so it is deliberately left alone.
+     */
     dispose(): void {
         this._rt?.dispose();
+        this._rt = null;
+        this._quadMaterial.dispose();
         this.upscaler.dispose();
     }
 }
