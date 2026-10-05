@@ -32,16 +32,13 @@ camera.lookAt(0, 1.6, 0);
 
 //* FSR3 node → vignette → screen, all in the post graph.
 const post = new THREE.RenderPipeline(renderer);
-// upscaleScene() returns a loosely-typed TSL node; cast to reach the node math ops.
-const fsrNode = upscaleScene(scene, camera, { quality: QualityMode.Performance }) as {
-    mul(n: unknown): unknown;
-};
+const fsrNode = upscaleScene(scene, camera, { quality: QualityMode.Performance });
 // Darken toward the frame edges (1 at centre, ~0.35 at the corners). Color
 // only: the upscale carries alpha, so multiplying the vec4 by a bare float
 // would fade the edges to *transparent* on three's default (alpha: true)
 // canvas instead of darkening them.
 const vignette = vec4(vec3(smoothstep(0.85, 0.25, screenUV.sub(0.5).length())), 1);
-post.outputNode = fsrNode.mul(vignette) as unknown as THREE.Node;
+post.outputNode = fsrNode.mul(vignette);
 
 const badge = document.getElementById('badge')!;
 badge.innerHTML =

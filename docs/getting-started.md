@@ -71,10 +71,9 @@ Options: `quality` (a `QualityMode`, default `Quality` = 1.5×) or `ratio` (over
 `upscale()` below.
 
 `THREE.PostProcessing` is the pre-r183 name of `RenderPipeline`. It still works, with
-a deprecation warning from three; the examples all use `RenderPipeline`. The factories'
-declared return type doesn't narrow to `THREE.Node`, so in TypeScript the snippets here
-and the examples cast when assigning to `outputNode` (`node as unknown as THREE.Node`).
-Plain JavaScript needs no cast.
+a deprecation warning from three; the examples all use `RenderPipeline`. The factories return
+an `UpscalerNode` (a `vec4` node, typed like three's own `fsr1()`/`traa()`), so it
+assigns to `outputNode` and composes (`.mul(…)`) without a cast.
 
 ## `upscale()`: the composable node
 

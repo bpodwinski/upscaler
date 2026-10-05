@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 
-import { upscaleScene, QualityMode, type Upscaler } from '@pmndrs/upscaler';
+import { upscaleScene, QualityMode } from '@pmndrs/upscaler';
 
 import { bootRenderer } from '../shared/boot';
 import { addStudioLighting, createGridFloor } from '../shared/props';
@@ -48,11 +48,11 @@ camera.lookAt(0, 1.6, 0);
 //* The whole upscaler, as one post-processing node.
 const post = new THREE.RenderPipeline(renderer);
 const fsrNode = upscaleScene(scene, camera, { quality: QualityMode.Performance }); // 2.0x
-post.outputNode = fsrNode as unknown as THREE.Node;
+post.outputNode = fsrNode;
 
 const badge = document.getElementById('badge')!;
 function updateBadge(): void {
-    const u = (fsrNode as unknown as { upscaler?: Upscaler }).upscaler;
+    const u = fsrNode.upscaler;
     badge.innerHTML =
         `<b>@pmndrs/upscaler</b>  upscaleScene() TSL node\n` +
         `post.outputNode = upscaleScene(scene, camera)\n` +

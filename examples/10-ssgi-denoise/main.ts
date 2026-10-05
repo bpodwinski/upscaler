@@ -18,7 +18,7 @@ import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNod
 import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 import GUI from 'lil-gui';
 
-import { upscale, type Upscaler } from '@pmndrs/upscaler';
+import { upscale } from '@pmndrs/upscaler';
 
 import { bootRenderer, displaySize } from '../shared/boot';
 import { addStudioLighting } from '../shared/props';
@@ -248,9 +248,9 @@ function configure(): void {
     const colorTex = convertToTexture(composite, rw, rh);
 
     // Dispose the previous node's upscaler before replacing the graph.
-    (fsrNode as unknown as { dispose?(): void } | null)?.dispose?.();
+    fsrNode?.dispose();
     fsrNode = upscale(colorTex, depth, vel, camera, { path: 'temporal', ratio, jitter: state.jitter });
-    post.outputNode = fsrNode as unknown as THREE.Node;
+    post.outputNode = fsrNode;
     post.needsUpdate = true;
 }
 configure();
@@ -280,7 +280,7 @@ window.addEventListener('resize', () => {
 
 const hud = document.getElementById('hud')!;
 function updateHud(): void {
-    const u = (fsrNode as unknown as { upscaler?: Upscaler }).upscaler;
+    const u = fsrNode?.upscaler;
     const fx = [state.ssgi && 'SSGI', state.ssr && 'SSR'].filter(Boolean).join(' + ') || 'none';
     hud.innerHTML =
         `<b>@pmndrs/upscaler</b>  SSGI denoise A/B  ⚠ experimental\n` +
@@ -301,7 +301,7 @@ renderer.setAnimationLoop(() => {
     camera.position.set(Math.sin(t * 0.15) * 7, 4, 9 + Math.cos(t * 0.15) * 1.5);
     camera.lookAt(0, 3, -5);
 
-    const u = (fsrNode as unknown as { upscaler?: Upscaler }).upscaler;
+    const u = fsrNode?.upscaler;
     if (u) u.settings.rcasDenoise = state.rcasDenoise;
     post.render();
     updateHud();
