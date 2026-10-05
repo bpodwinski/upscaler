@@ -137,17 +137,17 @@ function configure(): void {
         input = texture(externalTarget.texture);
     }
 
-    (spatialNode as unknown as { dispose?(): void } | null)?.dispose?.();
+    spatialNode?.dispose();
     // `ratio` only seeds the first configure; the node then sizes itself from
     // the input texture it actually receives.
     spatialNode = upscaleSpatial(input, { ratio, gpuTiming: true });
-    pipeline.outputNode = spatialNode as unknown as THREE.Node;
+    pipeline.outputNode = spatialNode;
     pipeline.needsUpdate = true;
 }
 configure();
 
 const upscaler = (): Upscaler | null =>
-    (spatialNode as unknown as { upscaler?: Upscaler | null } | null)?.upscaler ?? null;
+    spatialNode?.upscaler ?? null;
 
 const gui = new GUI({ title: 'upscaleSpatial()' });
 gui.add(state, 'source', { 'pass() in-graph': 'pass', 'texture() external': 'texture' })

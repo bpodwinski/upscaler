@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { convertToTexture, mix, mrt, output, pass, texture, vec3, vec4, velocity } from 'three/tsl';
 
-import { temporalGuides, upscale, type TemporalGuidesNode, type Upscaler } from '@pmndrs/upscaler';
+import { temporalGuides, upscale, type TemporalGuidesNode } from '@pmndrs/upscaler';
 
 import { bootRenderer, displaySize } from '../shared/boot';
 import { addStudioLighting, createGridFloor } from '../shared/props';
@@ -65,8 +65,8 @@ function configure(): void {
 
     // Dispose the previous graph's upscaler before replacing it. The linked
     // guides node shares the upscale node's upscaler, so fsrNode owns it.
-    (fsrNode as unknown as { dispose?(): void } | null)?.dispose?.();
-    (guidesNode as unknown as { dispose?(): void } | null)?.dispose?.();
+    fsrNode?.dispose();
+    guidesNode?.dispose();
 
     //* The guides node — same depth/velocity/camera as the upscale below.
     guidesNode = temporalGuides(depth, vel, camera, { gpuTiming: true });
@@ -81,14 +81,14 @@ function configure(): void {
     // render it full-res — see 09), then upscale with the SHARED computation.
     const colorTex = convertToTexture(vec4(tinted, beauty.a), rw, rh);
     fsrNode = upscale(colorTex, depth, vel, camera, { ratio: RATIO, guides: guidesNode });
-    post.outputNode = fsrNode as unknown as THREE.Node;
+    post.outputNode = fsrNode;
     post.needsUpdate = true;
 }
 configure();
 
 const badge = document.getElementById('badge')!;
 function updateBadge(): void {
-    const u = (fsrNode as unknown as { upscaler?: Upscaler | null })?.upscaler;
+    const u = fsrNode?.upscaler;
     const shared = u !== null && u !== undefined && guidesNode?.upscaler === u;
     const reconstruct = u?.gpuTimings.get('reconstruct');
     badge.innerHTML =

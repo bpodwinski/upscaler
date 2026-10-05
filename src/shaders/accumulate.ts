@@ -177,7 +177,7 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     // Pre-exposure for this frame (auto or manual) — divided back out at output.
     // .b carries the app's host pre-exposure (1.0 when none is supplied).
     let frameInfo = textureLoad(exposureTex, vec2i(0), 0);
-    let exposure = frameInfo.r;
+    let exposure = max(frameInfo.r, 1.0e-4);
     // Reactive mask: pixels the caller flags (particles, transparents) should
     // lean on the current frame instead of ghosting through history.
     var reactivity = 0.0;

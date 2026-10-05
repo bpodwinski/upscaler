@@ -96,8 +96,10 @@ const BASELINE_FINGERPRINTS: Record<string, string> = {
     // §8) — GPU captures byte-identical at the shipped 8;
     // 2026-10-03: clipToAABB's epsilon moved onto the extents too, so a
     // zero-extent (achromatic) axis no longer collapses the clip (issue #51,
-    // NEXT-STEPS §11).
-    accumulate: '76b5017b',
+    // NEXT-STEPS §11);
+    // 2026-10-05: pre-exposure read guarded with max(…, 1e-4) like RCAS/blit,
+    // so a fixed/external exposure of 0 no longer blacks out accumulation.
+    accumulate: '1505bcb5',
     luminancePyramid: 'b74eee0d',
     // Updated 2026-07-22: reactive merge-not-overwrite (guides spec M3) — the
     // generator max-merges an incoming mask instead of being suppressed by it.
