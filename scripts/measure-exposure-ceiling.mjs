@@ -35,6 +35,7 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
+import { parseCliOrExit } from './cli-flags.mjs';
 import {
     DEFAULT_BENCH_URL,
     parsePort,
@@ -48,23 +49,23 @@ import {
 const ROOT = resolve(import.meta.dirname, '..');
 
 //* CLI
-function parseArguments(argv) {
-    const options = {};
-    for (let index = 0; index < argv.length; index++) {
-        const value = argv[index];
-        if (!value.startsWith('--')) continue;
-        const key = value.slice(2);
-        const next = argv[index + 1];
-        if (next === undefined || next.startsWith('--')) options[key] = true;
-        else {
-            options[key] = next;
-            index++;
-        }
-    }
-    return options;
-}
-
-const cli = parseArguments(process.argv.slice(2));
+const USAGE = `Usage: node scripts/measure-exposure-ceiling.mjs [options]
+  --exposures <list>     conditioning exposures, 'auto' or fixed values (default auto,80,32,16,8,4,2,1)
+  --background <v>       linear background level (default 0)
+  --sharpness <v>        RCAS sharpness (default 0.8)
+  --frames <n>           frames to run per condition (default 128)
+  --average <n>          trailing frames averaged per emitter (default 32)
+  --hide <list>          emitter sizes to hide, e.g. large,medium (default none)
+  --label <name>         output folder (default baseline)
+  --url <origin>         bench origin (default ${DEFAULT_BENCH_URL}); if nothing answers,
+                         the bench dev server is started on that host + port (--strictPort)
+  --port <n>             Chrome DevTools (CDP) port (default 9333)
+Writes bench/results/raw/exposure-ceiling/<label>/summary.json.`;
+const cli = parseCliOrExit(
+    process.argv.slice(2),
+    ['exposures', 'background', 'sharpness', 'frames', 'average', 'hide', 'label', 'url', 'port'],
+    USAGE,
+);
 const exposures = String(cli.exposures ?? 'auto,80,32,16,8,4,2,1').split(',');
 const background = Number(cli.background ?? 0);
 const sharpness = Number(cli.sharpness ?? 0.8);
