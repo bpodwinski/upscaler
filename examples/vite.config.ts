@@ -55,6 +55,7 @@ export default defineConfig(({ mode }) => {
                           transparentcanvas: resolve(root, '15-transparent-canvas/index.html'),
                           spatialnode: resolve(root, '16-spatial-node/index.html'),
                           s3howlow: resolve(root, 's3-how-low/index.html'),
+                          s4convergence: resolve(root, 's4-convergence/index.html'),
                       },
             },
         },
