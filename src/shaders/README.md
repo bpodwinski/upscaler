@@ -237,7 +237,10 @@ coverage only if RCAS performance becomes material.
     1.22× / 1.64× against 1.04× / 1.09× / 1.31× for linear RCAS. At the default 0.8 it
     goes from 1.41–1.58× to 1.08–1.32× (linear 1.03–1.15×). 2 and 8 plateaus at
     sharpness 1 drop from 2.1–2.5× to 1.6–2.1×. That remainder is what the same
-    lobe produces in linear space against the darkest neighbour.
+    lobe produces in linear space against the darkest neighbour. On the history after
+    #53/#55 (re-measured 2026-10-05), the 64 plateau reads 1.98× → 1.61–1.73× at
+    sharpness 1 (linear 1.27–1.36×) and 1.38–1.48× → 1.30–1.31× at 0.8 (linear
+    1.14–1.15×).
   - **SDR (0.5) plateau column:** byte-identical.
   - **Bench Q0/Q1/Q2/Q12, auto-exposure, sharpness 0.8:** 35–2745 of 921,600 pixels
     change per frame, and every other pixel is bit-exact. Presented (ACES + sRGB), the

@@ -1144,6 +1144,20 @@ result at the conditioned lobe applied in linear space against the darkest ring 
 | spatial, sharpness 0.8, P=64 | 1.33–1.38 | 1.30–1.33 | 1.13–1.15 |
 | P=0.5 (SDR) column, every configuration | — | **byte-identical** | — |
 
+**Re-measured after §9–§11 landed (2026-10-05, same probe).** #55's variance-clip
+fix and #53's exposure ceiling change the converged history itself, and linear RCAS
+moves with it. With exposure 1, temporal, P=64 on 0.05 / 1 / 16:
+
+- **Sharpness 1:** main 1.98 / 1.98 / 1.98, fix **1.61 / 1.73 / 1.73**, linear
+  1.27 / 1.32 / 1.36.
+- **Sharpness 0.8:** main 1.48 / 1.45 / 1.38, fix **1.30 / 1.31 / 1.31**, linear
+  1.14–1.15.
+- **Auto-exposure, sharpness 1:** main 1.83–1.96, fix 1.50–1.73.
+- **Spatial:** unchanged.
+- **SDR column:** still byte-identical in every configuration.
+
+The bench pixel counts below were taken before §9–§11 and were not re-run.
+
 **What remains.** The residual is what the same lobe produces in linear space
 against the darkest neighbour, ~1.6–2.1× at sharpness 1 on moderate-contrast 2–8
 plateaus. Tightening it means binding ordinary SDR edges too, because conditioned
