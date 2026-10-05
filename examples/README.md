@@ -21,6 +21,7 @@ number so they sort apart from the single-purpose demos.
 | # | Showcase | Shows |
 |---|----------|-------|
 | S3 | **How low can you go** (`s3-how-low`) | One log slider takes the render resolution from native to 1/8 per axis (1.6% of the pixels). The wipe is FSR temporal vs bilinear *from the same render resolution* (or vs native), so the difference is reconstruction, not render size; a nearest-neighbour loupe shows both sides pixel for pixel. Pause the orbit to watch it converge, and see where it stops holding up. |
+| S4 | **Watch it converge** (`s4-convergence`) | An interactive explainer on the real temporal pipeline, paused by default: step frames, flip between the jittered input, the output and every debug buffer of the *same* frame (read from `upscaler.guides`), watch the Halton jitter fill a pixel, and compare input vs output in a magnifier. A narrated walk through one frame, in dispatch order. |
 
 ## The demos
 
