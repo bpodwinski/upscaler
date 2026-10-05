@@ -63,6 +63,12 @@ export interface UpscalerNodeOptions {
      */
     jitter?: boolean;
     /**
+     * Collect per-pass GPU times into `node.upscaler.gpuTimings` — see
+     * {@link Upscaler.gpuTiming}. Defaults to `false`. Linked to a guides node,
+     * a value set here applies to the shared upscaler.
+     */
+    gpuTiming?: boolean;
+    /**
      * Optional reduced-res **reactive mask** texture node (red channel in
      * `[0, 1]`): flagged pixels favour the current frame over history, for
      * additive particles / transparent surfaces that have no reliable motion
@@ -220,8 +226,10 @@ export class UpscalerNode extends TempNode {
             // that node dispatches the early stage, we finish the split frame.
             if (this._guidesNode) {
                 this._upscaler = this._guidesNode._acquireUpscaler(renderer);
+                if (this._options.gpuTiming !== undefined)
+                    this._upscaler.gpuTiming = this._options.gpuTiming;
             } else {
-                this._upscaler = new Upscaler({ renderer });
+                this._upscaler = new Upscaler({ renderer, gpuTiming: this._options.gpuTiming });
                 this._upscaler.init();
             }
             // When we jitter, motion vectors must stay jitter-free — feed the

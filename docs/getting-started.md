@@ -281,6 +281,13 @@ All except `sharpness` and `rcasDenoise` affect only the temporal path.
 frame's dispatch inputs, so the first frame after a teleport doesn't blend against
 the old view.
 
-**GPU timings:** `upscaler.gpuTimings` is a per-pass map of GPU milliseconds (labels
-such as `reconstruct`, `exposure`, `shadingChange`, `accumulate`, `rcas`). It's
-empty where the device lacks `timestamp-query`.
+**GPU timings:** off by default, because profiling has a per-frame cost (timestamp
+writes on every pass plus a readback) and nothing in the pipeline needs it. Opt in with
+`new Upscaler({ renderer, gpuTiming: true })`, `new UpscalePass(renderer, { gpuTiming:
+true })`, or `{ gpuTiming: true }` in the node and `temporalGuides()` options, or toggle
+`upscaler.gpuTiming` at runtime (turning it off frees the timer's query sets and
+buffers). `upscaler.gpuTimings` is then a per-pass map of GPU milliseconds for the
+latest timed frame (labels such as `reconstruct`, `exposure`, `shadingChange`,
+`accumulate`, `rcas`). It holds only the passes that frame ran, so summing it gives the
+frame's upscale cost. It's empty while timing is off, where the device lacks
+`timestamp-query`, and for the first frame or so after timing starts.

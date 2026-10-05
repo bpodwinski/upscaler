@@ -1258,6 +1258,45 @@ to rebuild them. Drive `Upscaler` with `_rcasShader` set to `RCAS_SHADER` /
 `RCAS_PER_TAP_SHADER` / a main copy, `copyTextureToBuffer` the output, and decode the
 halves.
 
+## 13. GPU timing overhead — DEFAULT OFF, clean measurement PENDING (2026-10-05, issues #69/#70)
+
+**Shipped:** `gpuTiming` (default **off**) on `Upscaler`, `UpscalePass`, the nodes and
+`temporalGuides()`; `upscaler.gpuTiming` toggles at runtime and frees the timer when
+off. The default was decided on design grounds, not on a number: nothing in the
+pipeline reads `gpuTimings`, so a production app should not pay for it. The bench and
+the examples with a timing readout opt in. Same change fixed #69: `gpuTimings` now
+holds only the latest frame's passes (per-frame merge, split frames held until the
+late submit reads back, `configure()` resets the timer).
+
+**Still owed: a clean overhead number.** The timer can't measure itself, so
+`scripts/measure-timer-overhead.mjs` (probe page `bench/timer-overhead.html`) measures
+wall-clock throughput with the GPU saturated, on vs off in ABBA blocks with a noise
+floor. The only runs so far (2026-10-05, Apple Metal-3, 1080p) were taken while two
+other measurement jobs shared the GPU, so they are **indicative, not evidence**:
+on was slower in nearly every block, by roughly 0.1–0.2 ms/frame on dispatch-only
+runs (temporal ratio 2 ≈ +10–15%), and that cost looked about the same for 1 pass
+(bilinear) as for ~6 (temporal) — i.e. mostly a fixed per-frame cost (resolve, copy,
+`mapAsync`), not per-pass. Self-disagreement was up to ±30% on some conditions.
+
+To get real numbers, run on an otherwise idle GPU (no other bench/measure jobs, no
+other headless Chrome), from the main checkout (worktree absolutes read slow — see
+CLAUDE.md):
+
+```bash
+# Headline: overhead of today's timer, plus the A/A control (should read ~0%)
+node scripts/measure-timer-overhead.mjs --attach-only --frames 200 --blocks 24 --inflight 8 \
+  --conditions temporal:2:dispatch,temporal:2:dispatch:none,temporal:2:frame,spatial:2:dispatch,bilinear:2:dispatch
+
+# Where the cost is: per-pass writes only / + resolve+copy / full timer every 8th frame
+node scripts/measure-timer-overhead.mjs --attach-only --frames 200 --blocks 24 --inflight 8 \
+  --conditions temporal:2:dispatch:writes,temporal:2:dispatch:resolve,temporal:2:dispatch:sampled:8
+```
+
+Trust a condition only when the A/A control reads near 0% and its overhead clears the
+reported noise floor. Record the result here. If most of the cost proves fixed per
+frame, `sampled:N` (time every Nth frame) is the candidate for a cheap always-on
+profiling mode; the default stays off either way.
+
 ## Explicitly not planned (measured against)
 
 - Lanczos2/bicubic history filtering (+47% accumulate, no visible win).

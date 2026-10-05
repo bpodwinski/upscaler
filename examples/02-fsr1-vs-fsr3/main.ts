@@ -63,7 +63,7 @@ const state = {
     autoRotate: true,
 };
 
-const presenter = new UpscalePresenter(renderer);
+const presenter = new UpscalePresenter(renderer, { gpuTiming: true });
 function configure(): void {
     const { width, height } = displaySize(dpr);
     presenter.configure({

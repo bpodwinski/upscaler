@@ -44,7 +44,7 @@ for (let i = 0; i < 3; i++) {
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 200);
 
 //* Upscaler — raw driver (no UpscalePass: we need the split dispatch).
-const upscaler = new Upscaler({ renderer });
+const upscaler = new Upscaler({ renderer, gpuTiming: true });
 upscaler.init();
 // Motion vectors must be jitter-free.
 velocity.setProjectionMatrix(upscaler.unjitteredProjectionMatrix);
