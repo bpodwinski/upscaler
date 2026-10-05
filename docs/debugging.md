@@ -60,6 +60,7 @@ afterwards. The pipeline picks the change up on its next `render()`
 | Brightness lags or trails for a moment after your app steps its own exposure | The host exposure baked into `color` isn't declared. Pass it as `preExposureTexture` (not `exposureTexture`) so history is corrected across the step. |
 | Still image shimmers | Measure before tuning; see [Verifying on a real GPU](#verifying-on-a-real-gpu). Check `ShadingChange`, then `Disocclusion`. |
 | `ShadingChange` lights up in blocks along thin bright features over an empty background on a still camera | Fixed for issue [#22](https://github.com/pmndrs/upscaler/issues/22): the detector's contrast floor used to read only the current frame, so a block fired whenever the jitter phase missed a sub-texel wire. If you still see it, measure it on bench scenario Q16 (`measure-convergence.mjs --scenario Q16 --shading-frames 32`). The same wires also show short `Disocclusion` dashes on a still camera; that is a known, separate effect. |
+| `ShadingChange` lights up in blocks over fine line patterns (bars near a pixel wide, a resolution chart, a star centre) on a still camera | Fixed in NEXT-STEPS §14: past the render Nyquist the pattern aliases into moiré larger than a block, so block means flip between jitter phases. The detector now remembers each block's last 8 means and ignores a mean it has recently taken. If you still see it, measure on bench scenario Q18 (`measure-convergence.mjs --scenario Q18 --shading-frames 32 --views final,accumulation-age`), which reports firing and accumulation age per chart region. |
 | No sub-pixel reconstruction from `upscale()` | Another node owns the camera view offset (warns once); or the node was built outside a `RenderPipeline` output graph (warns once). |
 
 ## Console warnings
@@ -118,7 +119,7 @@ WebGPU:
 - **Packaged TSL guides:** `npm run verify:packed-guides:gpu` builds and packs the
   library, then runs `examples/13-guides-node` against the packed artifact on a real
   GPU.
-- **Benchmarks:** how to run and read A/B timing runs, the Q0–Q17 scenario catalogue,
+- **Benchmarks:** how to run and read A/B timing runs, the Q0–Q18 scenario catalogue,
   and device setup are in [`bench/docs/BENCHMARKING.md`](../bench/docs/BENCHMARKING.md).
 
 Output from all of these lands under `bench/results/raw/`, which is gitignored.

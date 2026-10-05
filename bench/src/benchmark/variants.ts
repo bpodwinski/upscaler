@@ -2,6 +2,7 @@ import {
     createBaselineResolver,
     createRcasExperimentResolver,
     createRcasNumericParityResolver,
+    createShadingMemoryResolver,
     createSourceBundleResolver,
 } from './BenchmarkResolver';
 
@@ -36,6 +37,13 @@ const RESOLVER_FACTORIES = {
     'source-filter-bundle-v1': createSourceBundleResolver,
     'source-structural-bundle-v1': createSourceBundleResolver,
     'source-spd-resolver-bundle-v1': createSourceBundleResolver,
+    'shading-memory-range4': createShadingMemoryResolver,
+    'shading-memory-range8': createShadingMemoryResolver,
+    'shading-memory-nearest8': createShadingMemoryResolver,
+    'shading-memory-ema': createShadingMemoryResolver,
+    'shading-frame-pair-v1': createShadingMemoryResolver,
+    'shading-memory-gated8-k1': createShadingMemoryResolver,
+    'shading-memory-gated4': createShadingMemoryResolver,
 } satisfies Record<BenchmarkVariantId, BenchmarkVariantDefinition['create']>;
 
 /**
@@ -72,6 +80,7 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
     const rcasLimiterParity = id === 'rcas-fsr315-limiter';
     const rcasNumericParity = rcasLimiterParity || id === 'rcas-fsr315-numeric' || rcasExperiment;
     const rcasDenoise = id === 'rcas-fsr315-numeric';
+    const shadingMemory = id.startsWith('shading-memory-') || id === 'shading-frame-pair-v1';
     const sourceResourceGraph = spdResolver
         ? [
               'scene-color-depth-velocity',
@@ -139,6 +148,10 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
                   ? 'RCAS with hoisted exposure load'
                   : id === 'rcas-tonemap-space-v1'
                     ? 'RCAS sharpening in tonemap space'
+                  : id === 'shading-frame-pair-v1'
+                    ? 'Shading change, frame pair only (pre block memory)'
+                  : shadingMemory
+                    ? `Shading change with block memory (${id.slice('shading-memory-'.length)})`
                 : rcasDenoise
             ? 'FSR 3.1.5 RCAS limiter + denoise'
             : rcasLimiterParity
@@ -159,7 +172,7 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
         },
         resourceGraph: sourceBundle ? sourceResourceGraph : RESOURCE_GRAPH,
         pipeline: {
-            shaderKey: sourceBundle || rcasExperiment
+            shaderKey: sourceBundle || rcasExperiment || shadingMemory
                 ? id
                 : rcasNumericParity
                 ? rcasDenoise

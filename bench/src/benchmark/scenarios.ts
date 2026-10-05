@@ -174,6 +174,21 @@ function q17(frame: number): BenchmarkFrameState {
     return { ...state(frame, [0, 0, EMITTER_DISTANCE], [0, 0, 0]), scene: 'emitters' };
 }
 
+/** Q18: camera distance to the chart wall (BenchScene sizes the chart from it). */
+export const CHART_DISTANCE = 10;
+/** Q18's light step: a genuine change on the chart, after convergence. */
+const Q18_STEP_FRAME = 300;
+
+function q18(frame: number): BenchmarkFrameState {
+    // Still camera square-on to a resolution chart whose finest bars sit past
+    // the render Nyquist. Up to the step the only per-frame variation is the
+    // upscaler's jitter, so any shading-change response before frame 300 is a
+    // false positive; at 300 the light drops to a quarter (as Q16's), a real
+    // change on the same content.
+    const directionalIntensity = frame >= Q18_STEP_FRAME ? 0.8 : 3.2;
+    return { ...state(frame, [0, 0, CHART_DISTANCE], [0, 0, 0]), scene: 'chart', directionalIntensity };
+}
+
 const SCENARIOS: Record<BenchmarkScenarioId, BenchmarkScenarioDefinition> = {
     Q0: {
         id: 'Q0',
@@ -498,6 +513,28 @@ const SCENARIOS: Record<BenchmarkScenarioId, BenchmarkScenarioDefinition> = {
         subruns: [],
         unsupported: null,
         frame: q17,
+    },
+    Q18: {
+        id: 'Q18',
+        name: 'fine-line-chart',
+        // Capture-only: measure with measure-convergence.mjs --shading-frames
+        // and measure-drift-lag.mjs (NEXT-STEPS §14). ROIs are the chart
+        // regions laid out in BenchScene (render px at ratio 2 / 640×360),
+        // kept above y = 0.93: below it a headless capture shows page, not canvas.
+        endFrame: 399,
+        captures: ['0', 'P-1', 'P', '2*P-1', '239', '299', '300', '301', '302', '304', '308', '316', '332', '399'],
+        debugViews: ['final', 'disocclusion', 'accumulation-age', 'locks', 'shading-change'],
+        rois: {
+            full: [0, 0, 1, 1],
+            bars_vertical: [0.031, 0.067, 0.953, 0.167],
+            bars_horizontal: [0.031, 0.278, 0.953, 0.144],
+            siemens_star: [0.041, 0.494, 0.2625, 0.43],
+            flat_swatches: [0.375, 0.528, 0.594, 0.194],
+            hairlines: [0.375, 0.778, 0.281, 0.15],
+        },
+        subruns: [],
+        unsupported: null,
+        frame: q18,
     },
 };
 

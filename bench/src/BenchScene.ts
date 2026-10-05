@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 
-import { EMITTER_DISTANCE } from './benchmark/scenarios';
+import { CHART_DISTANCE, EMITTER_DISTANCE } from './benchmark/scenarios';
 
 /**
  * The bench scene — deliberately full of upscaler torture tests:
@@ -19,6 +19,8 @@ export interface BenchScene {
     sparseWireScene: THREE.Scene;
     /** Q17: isolated sub-pixel emitters over black and a textured backdrop (issue #51). */
     emitterScene: THREE.Scene;
+    /** Q18: line-pair bars across the render Nyquist, a Siemens star and flat swatches. */
+    chartScene: THREE.Scene;
     reactiveScene: THREE.Scene;
     /**
      * Q13 transparents the auto-generator must see: hidden while the
@@ -43,6 +45,82 @@ const EMITTER_SPACING = 12;
 const EMITTER_MARGIN = 20;
 /** Q17 block centres, render px above/below the axis (floating top, decal bottom). */
 const EMITTER_BLOCK_Y = 90;
+
+/** Q18 chart texels per render pixel at ratio 2 (1280×720, fov 50). */
+const CHART_TEXELS_PER_PX = 4;
+/** Q18 visible chart area, in render pixels at ratio 2. */
+const CHART_VIEW = [640, 360] as const;
+/** Q18 line-pair periods in chart texels: 6 → 0.75 render px at ratio 2, 4 → 0.5 at ratio 3. */
+const CHART_PERIODS = [24, 16, 12, 10, 8, 7, 6, 5, 4, 3] as const;
+
+/**
+ * Builds Q18's resolution chart: line-pair bars whose period crosses the
+ * render Nyquist (2 render px) at both ratio 2 and 3, a Siemens star whose
+ * centre is finer than any pixel grid, flat swatches (the control: nothing to
+ * resolve, so nothing may fire) and a swatch crossed by half-render-pixel
+ * hairlines. Laid out in render pixels at ratio 2; the canvas overhangs the
+ * view by 10 % so the slightly rotated wall never shows its edge.
+ */
+function createChartTexture(): THREE.CanvasTexture {
+    const [viewWidth, viewHeight] = CHART_VIEW;
+    const marginX = viewWidth * 0.05;
+    const marginY = viewHeight * 0.05;
+    const scale = CHART_TEXELS_PER_PX;
+    const canvas = document.createElement('canvas');
+    canvas.width = (viewWidth + 2 * marginX) * scale;
+    canvas.height = (viewHeight + 2 * marginY) * scale;
+    const ctx = canvas.getContext('2d')!;
+    // Render-pixel layout coordinates → canvas texels.
+    const rect = (x: number, y: number, w: number, h: number) =>
+        ctx.fillRect((x + marginX) * scale, (y + marginY) * scale, w * scale, h * scale);
+    ctx.fillStyle = '#1b2230';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    //* Line-pair groups: varying along x (top row) and along y (second row).
+    // Periods are whole texels, so the bars' duty cycle is exact in the texture
+    // and only the render sampling aliases them.
+    ctx.fillStyle = '#eef2f8';
+    CHART_PERIODS.forEach((period, index) => {
+        const left = 20 + index * 62;
+        const bright = Math.floor(period / 2) / scale;
+        for (let t = 0; t < 52 * scale; t += period) rect(left + t / scale, 24, bright, 60);
+        for (let t = 0; t < 52 * scale; t += period) rect(left, 100 + t / scale, 52, bright);
+    });
+
+    //* Siemens star: 72 spokes, period 2πr/72 render px — 7.3 at the rim,
+    // the ratio-2 Nyquist at r ≈ 23, one pixel at r ≈ 11.5.
+    const starX = (110 + marginX) * scale;
+    const starY = (262 + marginY) * scale;
+    const starRadius = 84 * scale;
+    for (let spoke = 0; spoke < 72; spoke++) {
+        ctx.beginPath();
+        ctx.moveTo(starX, starY);
+        ctx.arc(starX, starY, starRadius, (spoke / 72) * Math.PI * 2, ((spoke + 0.5) / 72) * Math.PI * 2);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    //* Flat swatches (control) and a grey swatch crossed by 0.5 px hairlines.
+    ['#c2410c', '#15803d', '#1d4ed8', '#a1a1aa'].forEach((color, index) => {
+        ctx.fillStyle = color;
+        rect(240 + index * 98, 190, 85, 70);
+    });
+    ctx.fillStyle = '#6b7280';
+    rect(240, 280, 180, 66);
+    rect(436, 280, 183, 66);
+    ctx.fillStyle = '#ffffff';
+    for (let line = 0; line < 6; line++) rect(252 + line * 29.25, 276, 0.5, 74);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    // No mip chain: at render resolution the derivatives are `ratio`× larger,
+    // so mipmapping would pre-blur exactly the detail under test. Base-level
+    // bilinear aliases at render resolution, which is the honest input.
+    texture.generateMipmaps = false;
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    return texture;
+}
 
 /** Builds the checkerboard+grid floor texture on a canvas (no asset deps). */
 function createGridTexture(): THREE.CanvasTexture {
@@ -424,6 +502,26 @@ export function createBenchScene(): BenchScene {
     backdrop(backdropTexture, halfWidth / 2 + 2 * renderPixel, -halfHeight / 2, decalOffset);
     backdrop(null, -halfWidth / 2 - 2 * renderPixel, -halfHeight / 2, decalOffset);
 
+    //* Resolution Chart (Q18) ============================================
+    // The fine-line shading-change repro: a still camera square-on to a chart
+    // whose finest bars and star centre sit beyond the render Nyquist. Their
+    // aliasing differs per jitter phase, so render-space block means can swing
+    // although nothing changed; the flat swatches next to them must stay
+    // quiet, and the light step at frame 300 must still register.
+    const chartScene = new THREE.Scene();
+    chartScene.background = new THREE.Color(0x000000);
+    const chartLight = new THREE.DirectionalLight(0xfff2df, 3.2);
+    chartLight.position.set(2, 3, 10);
+    chartScene.add(chartLight, new THREE.AmbientLight(0x8090b0, 0.6));
+    const chartPixel = (2 * CHART_DISTANCE * Math.tan((25 * Math.PI) / 180)) / CHART_VIEW[1];
+    const chartWall = new THREE.Mesh(
+        new THREE.PlaneGeometry(CHART_VIEW[0] * 1.1 * chartPixel, CHART_VIEW[1] * 1.1 * chartPixel),
+        new THREE.MeshStandardMaterial({ map: createChartTexture(), roughness: 0.95 }),
+    );
+    // A small roll so no bar edge sits exactly on a render-pixel boundary.
+    chartWall.rotation.z = (1.2 * Math.PI) / 180;
+    chartScene.add(chartWall);
+
     //* Floor
     const floor = new THREE.Mesh(
         new THREE.PlaneGeometry(120, 120),
@@ -660,6 +758,7 @@ export function createBenchScene(): BenchScene {
         mergeCoverage.visible = frame.reactiveMerge === true;
         sun.intensity = frame.directionalIntensity;
         sparseLight.intensity = frame.directionalIntensity;
+        chartLight.intensity = frame.directionalIntensity;
         // The Q11 host pre-exposure multiplier lives in the MRT output node,
         // which the background never passes through — scale it here so the
         // whole frame is uniformly pre-exposed like a real app's render.
@@ -675,6 +774,7 @@ export function createBenchScene(): BenchScene {
         wireRoomScene,
         sparseWireScene,
         emitterScene,
+        chartScene,
         reactiveScene,
         autoReactiveObjects: [overlapPanel, diffOnlyPanel],
         update,

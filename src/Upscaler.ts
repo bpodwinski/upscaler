@@ -71,6 +71,10 @@ type UpscalerInternalOptions = UpscalerOptions & {
     // Bench-only: an RCAS for the spatial path that differs from `_rcasShader`
     // (a frozen temporal identity that still runs FSR1 on production RCAS).
     _spatialRcasShader?: string;
+    // Bench-only: a shading-change shader with production's bindings (block
+    // memory at 9 / 10 included) — the NEXT-STEPS §14 candidates and the
+    // frozen pre-memory identity in bench/src/candidates/shaders/shadingChangeRange.ts.
+    _shadingChangeShader?: string;
 };
 
 /**
@@ -126,6 +130,7 @@ export class Upscaler {
     private readonly _renderer: WebGPURenderer;
     private readonly _rcasShader: string;
     private readonly _spatialRcasShader: string | null;
+    private readonly _shadingChangeShader: string | null;
     private _device!: GPUDevice;
     private _constants!: ConstantsBuffer;
     // Null while GPU timing is off: nothing is allocated, nothing attached.
@@ -188,6 +193,12 @@ export class Upscaler {
     // Production shading-change detector state.
     private _shadingLumaHistory: [GPUTexture, GPUTexture] | null = null;
     private _shadingSignal: GPUTexture | null = null;
+    // Per-block memory of past means (shadingChange.ts), ping-ponged with
+    // history. Stale once a temporal frame ran without the detector: it is
+    // zeroed before the detector next runs. The shader reads an all-zero
+    // memory as empty: it suppresses nothing and restarts from the current mean.
+    private _shadingBlockMemory: [GPUTexture, GPUTexture] | null = null;
+    private _shadingMemoryStale = false;
 
     //* Published Guides (contract: docs/temporal-guides.md)
     // The production working set is allocated as three StorageTextures so the
@@ -231,6 +242,7 @@ export class Upscaler {
         // shader in rcas.ts does — because _encodeRcas always binds it.
         this._rcasShader = options._rcasShader ?? RCAS_SHADER;
         this._spatialRcasShader = options._spatialRcasShader ?? null;
+        this._shadingChangeShader = options._shadingChangeShader ?? null;
     }
 
     /**
@@ -263,7 +275,11 @@ export class Upscaler {
             assembledChunks: [],
         });
         this._exposurePass = new ComputePass(device, 'exposure', LUMINANCE_PYRAMID_SHADER);
-        this._shadingChangePass = new ComputePass(device, 'shading-change', SHADING_CHANGE_SHADER);
+        this._shadingChangePass = new ComputePass(
+            device,
+            'shading-change',
+            this._shadingChangeShader ?? SHADING_CHANGE_SHADER,
+        );
         this._generateReactivePass = new ComputePass(
             device,
             'gen-reactive',
@@ -852,7 +868,18 @@ export class Upscaler {
         //* Shading Change — fused multi-scale block-mean detector (skipped
         //* entirely when the detector is off; accumulate then reads a zero dummy).
         let shadingSignalView = this._reactiveDummy!.createView();
-        if (this.settings.detectShadingChanges) {
+        if (!this.settings.detectShadingChanges) this._shadingMemoryStale = true;
+        else {
+            const shadingMemoryIn = this._shadingBlockMemory![this._historyIndex];
+            if (this._shadingMemoryStale) {
+                this._shadingMemoryStale = false;
+                this._device.queue.writeTexture(
+                    { texture: shadingMemoryIn },
+                    new Uint8Array(shadingMemoryIn.width * shadingMemoryIn.height * 16),
+                    { bytesPerRow: shadingMemoryIn.width * 16 },
+                    { width: shadingMemoryIn.width, height: shadingMemoryIn.height },
+                );
+            }
             const shadingLumaIn = this._shadingLumaHistory![this._historyIndex];
             const shadingLumaOut = this._shadingLumaHistory![1 - this._historyIndex];
             const shadingBindGroup = this._shadingChangePass.createBindGroup([
@@ -865,6 +892,8 @@ export class Upscaler {
                 shadingLumaOut.createView(),
                 this._shadingSignal!.createView(),
                 this._masks!.createView(),
+                shadingMemoryIn.createView(),
+                this._shadingBlockMemory![1 - this._historyIndex].createView(),
             ]);
             const shadingPass = encoder.beginComputePass({
                 label: 'upscale-shading-change',
@@ -1061,12 +1090,13 @@ export class Upscaler {
         w: number,
         h: number,
         format: GPUTextureFormat,
+        extraUsage = 0,
     ): GPUTexture {
         return this._device.createTexture({
             label: `upscale-${label}`,
             size: { width: w, height: h },
             format,
-            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING,
+            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | extraUsage,
         });
     }
 
@@ -1195,6 +1225,18 @@ export class Upscaler {
             );
             this._guideTex.shadingSignal = shadingSignal.tex;
             this._shadingSignal = shadingSignal.gpu;
+            // Block memory: the 4×4 blocks' rows, then the 8×8 blocks' rows;
+            // 8 f16 means per rgba32uint texel. Allocated zeroed, which the
+            // shader treats as empty (configure() also resets history, which
+            // restarts every block on the first frame anyway).
+            const memoryWidth = Math.max(1, Math.ceil(rw / 4));
+            const memoryHeight = Math.max(1, Math.ceil(rh / 4) + Math.ceil(rh / 8));
+            this._shadingBlockMemory = [
+                // COPY_DST: zeroed by queue.writeTexture when it goes stale.
+                this._createTexture('shading-memory-0', memoryWidth, memoryHeight, 'rgba32uint', GPUTextureUsage.COPY_DST),
+                this._createTexture('shading-memory-1', memoryWidth, memoryHeight, 'rgba32uint', GPUTextureUsage.COPY_DST),
+            ];
+            this._shadingMemoryStale = false;
 
         }
 
@@ -1282,6 +1324,10 @@ export class Upscaler {
         if (this._shadingLumaHistory) {
             this._shadingLumaHistory.forEach((texture) => texture.destroy());
             this._shadingLumaHistory = null;
+        }
+        if (this._shadingBlockMemory) {
+            this._shadingBlockMemory.forEach((texture) => texture.destroy());
+            this._shadingBlockMemory = null;
         }
     }
 }

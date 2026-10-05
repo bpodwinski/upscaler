@@ -1297,6 +1297,233 @@ reported noise floor. Record the result here. If most of the cost proves fixed p
 frame, `sampled:N` (time every Nth frame) is the candidate for a cheap always-on
 profiling mode; the default stays off either way.
 
+## 14. Shading-change false positives on fine lines — DONE (2026-10-05): per-block memory of 8 means
+
+Report: building the convergence explainer (PR #64, `examples/s4-convergence`), a
+sibling agent saw the shading-change view firing on a **still** camera over the finest
+line-pair bars and the wires. The accumulation age there never reached white, and
+turning the detector off halved the never-converging area (4.6 % → 2.2 % of the stage
+at frame 64). That was measured before #58 landed.
+
+**Cause.** Content past the render Nyquist aliases. A line pair near one render pixel
+(or a Siemens star's centre) folds into moiré whose period is many pixels, and the
+jitter shifts that moiré by a multiple of the jitter itself. So a whole 4×4 or 8×8
+block flips between bright and dark from one jitter phase to the next. Inside the
+block every texel agrees, so cv ≈ 0 and only the base floor applies. #58's clamp
+doesn't catch it either: its range is the four bilinear taps of last frame, and they
+flipped together. One previous frame cannot tell this from a light switching. What
+gives it away is that the block keeps returning to values it has already taken.
+
+**Repro: new scenario Q18 `fine-line-chart`.** A still camera square-on to an
+unmipmapped resolution chart:
+- line-pair groups of 6 / 4 / 3 / 2.5 / 2 / 1.75 / 1.5 / 1.25 / 1 / 0.75 render-px
+  period at ratio 2 (4 → 0.5 at ratio 3), varying along x and along y;
+- a 72-spoke Siemens star (render Nyquist at r ≈ 23 px);
+- four flat swatches (the control) and a grey swatch crossed by 0.5 px hairlines.
+
+The light drops to a quarter at frame 300, as in Q16. Each region is a scenario ROI.
+`measure-convergence.mjs` now reports `--shading-frames` firing per ROI, plus the mean
+accumulation age and the share of pixels younger than half the cap per ROI. The
+full-frame young share includes the ~6.5 % page strip the canvas clip picks up below
+the headless viewport, so use the ROIs.
+
+Settings: Apple Metal-3, headless Chrome over CDP, run from a git worktree. Settle 180,
+`firing` = v > 0.1, averaged over frames 180–211; age at the last pair frame (220 at
+ratio 2, 253 at ratio 3).
+
+**Baseline on main (0aa4855, after #58).** Only Q18 fires; #52 and #58 already took the
+other still scenes to ~0.
+
+| scenario | ratio | firing | bars (vertical / horizontal) | young bars (v / h) | content consecutive |
+| --- | --- | --- | --- | --- | --- |
+| Q18 | 2 | **3.30 %** | 10.1 % / 10.4 % | 8.6 % / 8.6 % | 4.60 |
+| Q18 | 3 | **5.63 %** | 16.1 % / 19.0 % | 24.4 % / 24.3 % | 9.04 |
+| Q18, detector off | 2 / 3 | — | — | 0 % / 0 % | 3.36 / 6.13 |
+| Q16 | 2 / 3 | 0 % / 0.002 % | | | |
+| Q12 | 2 | 0 % | | | |
+| Q1 | 2 / 3 | 0 % / 0.002 % | | | |
+
+The star (0.10 %), swatches (0 %) and hairlines (0 %) are quiet. The firing sits on the
+bar groups at 1.5, 1.25, 1 and 0.75 px; the 1 px group flips as one solid block. So #58
+did not fix this, and the detector costs Q18 most of its convergence. The age on the
+bars stays young exactly where the detector fires, and is fully converged with it off.
+
+**Candidates.** Each keeps per-block memory for the 4×4 and 8×8 blocks: raw block
+means without either exposure, as f16, eight to an `rgba32uint` texel, ping-ponged. It
+is written by the block's top-left thread, and every thread reads it. The memory only
+applies to blocks where nothing moved more than 0.05 render px, nothing is disoccluded
+and the frame isn't a reset; such blocks restart their memory. So under motion every
+candidate is the frame-pair detector. The memory can only lower the relative
+difference, which still goes through the same floors. The shader builder is
+`bench/src/candidates/shaders/shadingChangeRange.ts`, and each form is a bench
+identity, so all of them can be re-run.
+
+| candidate (`shading-memory-*`) | Q18 r2 / r3 firing | young bars r2 (v / h) | young bars r3 (v / h) | Q9 f60 mean v | Q9 f180 mean v (firing) |
+| --- | --- | --- | --- | --- | --- |
+| main (frame pair) | 3.30 % / 5.63 % | 8.6 / 8.6 % | 24.4 / 24.3 % | 0.541 | 0.353 (46.5 %) |
+| `range8`: inside [min, max] of the last 8 | 0.10 % / 0.19 % | 0 / 3.3 % | 2.3 / 0 % | 0.538 | **0.119 (23.5 %)** |
+| `range4` | 0.52 % / 0.84 % | 4.7 / 6.8 % | 10.9 / 9.7 % | 0.539 | 0.323 (43.9 %) |
+| `nearest8`: closest single stored mean | 0.81 % / 0.92 % | 6.7 / 6.6 % | 11.8 / 5.0 % | 0.538 | 0.119 (23.5 %) |
+| `ema`: running average, weight 0.2 | 2.30 % / 4.13 % | 8.4 / 8.4 % | 17.6 / 15.3 % | 0.541 | 0.297 (42.7 %) |
+| **`gated8`: `range8` + jump gate 1.5 (adopted)** | **0.12 % / 0.20 %** | **0 / 3.3 %** | **2.3 / 0 %** | **0.540** | **0.351 (45.8 %)** |
+| `gated8-k1`: jump gate 1.0 | 0.75 % / 1.66 % | 7.8 / 8.0 % | 20.1 / 16.3 % | 0.541 | 0.353 (46.4 %) |
+| `gated4` | 0.62 % / 0.92 % | 4.7 / 6.8 % | 11.7 / 10.2 % | 0.540 | 0.352 (46.2 %) |
+
+Every candidate leaves Q16, Q12, Q1, Q11 (host pre-exposure, f56–185) and the Q9 ramp
+at 0 % firing. Q4's motion windows are unchanged or lower: f100–139 reads 0 %
+everywhere, and f340–379 reads 0.003 % mean with 0.014 % max against main's 0.007 % /
+0.014 %.
+
+Why each form failed or won:
+- **The ungated range swallows a step that follows a ramp.** Q9 ramps the sun 8 → 2
+  over f120–179, then steps to 3.2 at f180. The last 8 means span the ramp's tail
+  (about 2 → 2.8), so a step to 3.2 lands 12 % past the range instead of 37 % past the
+  previous frame, and two thirds of the response goes. `nearest8` fails the same way.
+  `range4` loses less, because 4 frames of ramp is a narrower range, but it keeps 5×
+  the residue: 4 consecutive Halton phases rarely span a block's whole alias swing.
+- **The EMA** sits mid-swing, so a flip still reads about half its size. It cuts only
+  ~30 %.
+- **The jump gate** separates the two cases. Alias flicker repeats jumps of its own
+  size, so the frame's jump from the newest mean is rarely larger than the largest jump
+  among 8 stored means. A ramp's jumps are a few percent, so a step after one is far
+  larger and the range is not used. At gain 1.0 the newest jump is the largest of 8
+  about one time in eight, and a sixth of the false positives come back. Gain 1.5
+  keeps all of `range8`'s suppression (0.12 % vs 0.10 %) and all of the Q9 step (0.351
+  vs 0.353). Without a ramp before it, a step leaves the gate open but falls outside
+  the range anyway: Q9 f60 and Q18 f300 keep their response.
+
+**Genuine steps with the adopted form** (per-frame firing / mean v):
+
+| event | main | adopted |
+| --- | --- | --- |
+| Q9 f60, sun 3.2 → 8 | 62.41 % / 0.541 | 62.29 % / 0.540 |
+| Q9 f180, 2 → 3.2 after the ramp | 46.50 % / 0.353 | 45.76 % / 0.351 |
+| Q18 f300, light ÷ 4, ratio 2 (swatches / hairlines / star / bars v, h) | 58.30 % / 0.555 (98.2 / 94.1 / 20.1 / 23.9, 23.2 %) on a 3.4 % floor | 56.36 % / 0.538 (98.2 / 94.1 / 20.1 / 17.6, 17.5 %) on a 0.17 % floor |
+| Q18 f300, ratio 3 | 57.85 % / 0.542 on a 5.3–6.7 % floor | 53.74 % / 0.511 on a 0.2–0.3 % floor |
+| Q16 f300, light ÷ 4 | 0.81 % / 0.0053 | 0.81 % / 0.0053 |
+
+All of them are still single-frame spikes. On Q18 the bars read less at the step
+because main's number was partly its own false-positive floor. With that subtracted
+(about 11–19 %), the bars respond about as before.
+
+**Lag after the step** (`measure-drift-lag.mjs --scenario Q18 --frames 296:356:2`,
+auto-exposure off, Σ|Δ| over f300–356):
+- full frame 120.55 → 122.78 (+1.8 %);
+- bars 289.3 / 279.3 → 296.5 / 286.1 (+2.5 %);
+- star 221.9 → 222.4; swatches 14.47 → 14.47; hairlines 12.99 → 12.97.
+
+This is §9's trade again. The constant false fires kept the bars part-aged, and the
+short history happened to answer the real step sooner. Now the bars are converged like
+the rest of the frame. Q15's sub-detector drift is identical row for row (`--frames
+116:379:4`), and so is Q16's step lag.
+
+**Q14 `rotating`** (SSGI's 6-frame rotating pattern, the configuration examples 06/09
+ship since #58): firing 0.0004 % → 0 %, and output churn and age are identical.
+
+**Cost** (`run-benchmark.mjs --smoke --ratios 1,2,3 --blocks 6 --variant
+shading-memory-gated8 --comparison local-baseline-5d6a65e`, worktree):
+
+| ratio | shadingChange main → adopted | Δ | pass noise floor | compute-sum Δ (noise) |
+| --- | --- | --- | --- | --- |
+| 1 | 0.279 → 0.303 ms | +23.7 µs (+8.5 %) | 12.8 % | +1.2 % (15.8 %) |
+| 2 | 0.073 → 0.081 ms | +7.9 µs (+10.9 %) | 8.0 % | +3.2 % (7.1 %) |
+| 3 | 0.037 → 0.042 ms | +5.1 µs (+14.0 %) | 8.0 % | −0.6 % (4.7 %) |
+
+The pass delta is only 1–1.75× this environment's noise floor, which is not enough on
+its own. But all 18 repetitions point the same way (+5.7 % to +19.4 %), so read it as
+about +10 % of a small pass. The whole compute sum doesn't move beyond noise. These are
+worktree absolutes (CLAUDE.md bench caveat). In a repo run the pass measured 0.044 ms
+at ratio 2, so the memory should cost a few µs there; that hasn't been timed. The cost
+is two `rgba32uint` loads per thread, one store per 4×4 and per 8×8 block, and 20 more
+workgroup-memory reads in the reductions. The memory is ⌈w/4⌉ × (⌈h/4⌉ + ⌈h/8⌉) × 16 B
+× 2, which is 173 KB at 1280×720 render.
+
+**Adopted** in `src/shaders/shadingChange.ts` as `SHADING_MEMORY_SLOTS` 8,
+`SHADING_MEMORY_JUMP_GAIN` 1.5 and `SHADING_MEMORY_STILL_PX` 0.05, with bindings 9/10.
+`Upscaler` always allocates the memory. It also zeroes the memory before the detector
+runs again after any temporal frame without it, and the shader treats an all-zero
+memory as empty (below). That was GPU-checked: the bench was toggled off for 20 frames
+and back on, with no validation errors. Examples 07, 12 and 13 render with a clean
+console.
+
+Production reproduces every `gated8` number above to the last digit. The frozen pre-memory
+detector is bench identity `shading-frame-pair-v1`, and it reproduces main's numbers
+exactly on every row above.
+
+**Fixed in review: an empty memory hid darkening for up to 8 frames.** A zero memory
+suppresses nothing on its own first frame: every jump from 0 is 1, and it holds no jumps
+to compare against. But that frame used to *push* the current mean m into it, which left
+`[m, 0 × 7]`. On the next frame the range was [0, m] and the stored jump was
+`relativeDistance(m, 0)` = 1, so the jump gate (≤ 1.5 × 1) could never trip. Any block
+that darkened stayed inside the range and was fully suppressed until the zeros aged out.
+
+The memory is zeroed when the detector is re-enabled at runtime. `configure()` is not a
+path: it always calls `resetHistory()`, and the reset frame restarts every block. The
+fix: `memoryUpdate` treats an all-zero memory as empty and restarts it from the current
+mean (`restart || all(words == vec4u(0u))`). For a genuinely black block that restart is
+the same memory. The builder's `gated` mode in `shadingChangeRange.ts` keeps the old
+push. Production has no bench twin, and the rejected identities were only measured on
+mature memory, so none of their numbers depend on it.
+
+`scripts/measure-shading-restart.mjs` reads the signal texture back exactly on Q18 at
+ratio 2. The detector was off for 10 frames and back on `lead` frames before the
+frame-300 light step. Firing at f300, full frame / flat swatches:
+
+| run | before | after |
+| --- | --- | --- |
+| mature memory (detector on throughout) | 62.2 % / 98.2 % | 62.2 % / 98.2 % |
+| re-enabled 2 frames before | **0 % / 0 %** | 62.9 % / 98.2 % |
+| re-enabled 3 frames before | **0 % / 0 %** | 62.5 % / 98.2 % |
+| re-enabled 4 frames before | **0 % / 0 %** | 62.4 % / 98.2 % |
+| re-enabled 9 frames before (zeros aged out) | 62.2 % / 98.2 % | — |
+| `configure()` 2 / 3 / 4 frames before | 63.0 / 63.3 / 62.3 % | identical |
+
+After the fix, re-enabling costs 1–3.5 % false firing on the bars for the first 2–3
+frames while the memory refills. That is the frame-pair detector's own level, plus the
+luma history going 10 frames stale. Every headline number above re-ran identically: Q18
+still, Q9 f60/f180, Q16, Q12, Q1, Q11, Q4 and the Q16/Q18 steps. No WGSL or WebGPU
+errors. Fingerprint: `shadingChange` `1868fc72` → `fba11623`.
+
+```bash
+node scripts/measure-shading-restart.mjs --scenario Q18 --ratio 2 --lead 3   # also --lead 2, 4, 9
+```
+
+**Surprising, out of scope: #58 costs Q16's genuine step.** The step on Q16's sparse
+wires now fires on 0.81 % of the frame, against 2.37 % after #52 (§9). The fans
+themselves read 0 %, and only the knot's ROI fires. A wire over black has black among
+its four bilinear taps, so a quarter-intensity step lands inside the tap range, and
+#58's clamp reads it as jitter. Integrated error after the step rose from 19.37 to
+22.79 on the full frame; the slant-fan-and-knot ROI went from 48.70 to 71.01. The block
+memory doesn't change any of this; it's the same with and without. If it matters, the
+fix belongs in the per-texel clamp, for example by not clamping toward a black tap.
+
+Reproduce. The bench is on 5199 by default; this program ran on `--url
+http://127.0.0.1:5320 --port 9320`. Add `--variant shading-frame-pair-v1` (or a
+`shading-memory-*` identity) for the other columns. Output lands under
+`bench/results/raw/` (gitignored).
+
+```bash
+node scripts/measure-convergence.mjs --scenario Q18 --ratio 2 --pairs 40 --shading-frames 32 \
+  --views final,accumulation-age,shading-change
+node scripts/measure-convergence.mjs --scenario Q18 --ratio 3 --pairs 73 --shading-frames 32 \
+  --views final,accumulation-age,shading-change
+node scripts/measure-convergence.mjs --scenario Q18 --ratio 2 --pairs 40 --views final,accumulation-age \
+  --settings '{"detectShadingChanges":false}'
+node scripts/measure-convergence.mjs --scenario Q9 --settle 56 --pairs 1 --shading-frames 128 --views final
+node scripts/measure-convergence.mjs --scenario Q4 --settle 340 --pairs 1 --shading-frames 40 --views final
+node scripts/measure-convergence.mjs --scenario Q18 --settle 296 --pairs 1 --shading-frames 8 --views final
+node scripts/measure-drift-lag.mjs --scenario Q18 --frames 296:356:2 --settings '{"autoExposure":false}'
+node scripts/run-benchmark.mjs --smoke --ratios 1,2,3 --blocks 6 \
+  --variant shading-frame-pair-v1 --comparison local-baseline-5d6a65e
+```
+
+The same runs for Q16 (ratios 2 and 3), Q12, Q1 (ratios 2 and 3), Q11 (`--settle 56
+--shading-frames 130`), Q4 (`--settle 100`), Q14 `--subrun rotating` and Q15
+(`measure-drift-lag.mjs --frames 116:379:4`) complete the matrix. Note that the timing
+row's A/B was taken with the candidate identity against the frozen E00 baseline. Since
+adoption, `baseline` runs the memory, so time `shading-frame-pair-v1` against it for
+the reverse comparison.
+
 ## Explicitly not planned (measured against)
 
 - Lanczos2/bicubic history filtering (+47% accumulate, no visible win).
