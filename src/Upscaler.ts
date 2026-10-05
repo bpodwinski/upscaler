@@ -195,7 +195,8 @@ export class Upscaler {
     private _shadingSignal: GPUTexture | null = null;
     // Per-block memory of past means (shadingChange.ts), ping-ponged with
     // history. Stale once a temporal frame ran without the detector: it is
-    // zeroed before the detector next runs (a zero memory suppresses nothing).
+    // zeroed before the detector next runs. The shader reads an all-zero
+    // memory as empty: it suppresses nothing and restarts from the current mean.
     private _shadingBlockMemory: [GPUTexture, GPUTexture] | null = null;
     private _shadingMemoryStale = false;
 
@@ -1225,8 +1226,9 @@ export class Upscaler {
             this._guideTex.shadingSignal = shadingSignal.tex;
             this._shadingSignal = shadingSignal.gpu;
             // Block memory: the 4×4 blocks' rows, then the 8×8 blocks' rows;
-            // 8 f16 means per rgba32uint texel. Allocated zeroed (suppresses
-            // nothing until the blocks have history).
+            // 8 f16 means per rgba32uint texel. Allocated zeroed, which the
+            // shader treats as empty (configure() also resets history, which
+            // restarts every block on the first frame anyway).
             const memoryWidth = Math.max(1, Math.ceil(rw / 4));
             const memoryHeight = Math.max(1, Math.ceil(rh / 4) + Math.ceil(rh / 8));
             this._shadingBlockMemory = [

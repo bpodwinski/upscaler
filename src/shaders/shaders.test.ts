@@ -86,8 +86,9 @@ const BASELINE_FINGERPRINTS: Record<string, string> = {
     // current frame's (issue #22, NEXT-STEPS §9); 2026-10-03: the compared
     // previous value is clamped into the bilinear footprint's tap range;
     // 2026-10-05: per-block memory of the last 8 means, jump-gated range test
-    // (fine-line aliasing on a still camera, NEXT-STEPS §14).
-    shadingChange: '1868fc72',
+    // (fine-line aliasing on a still camera, NEXT-STEPS §14); 2026-10-05: an
+    // all-zero (empty) memory restarts instead of pushing (NEXT-STEPS §14).
+    shadingChange: 'fba11623',
     // Updated 2026-07-21: DeltaPreExposure history correction (NEXT-STEPS item 2);
     // 2026-08-25: alpha resolved alongside color into the locks buffer's .a;
     // 2026-10-02: the alpha clamp takes the color path's still-scene relax;
@@ -638,5 +639,12 @@ describe('shading-change block memory', () => {
         // One writer per block: its top-left thread.
         expect(SHADING_CHANGE_SHADER).toContain('if (all((lid.xy & vec2u(1u)) == vec2u(0u))) {');
         expect(SHADING_CHANGE_SHADER).toContain('if (all((lid.xy & vec2u(3u)) == vec2u(0u))) {');
+    });
+
+    it('restarts an empty (all-zero) memory instead of pushing into it', () => {
+        // Pushed, the zeros stay in the range for 8 frames with a stored jump of 1,
+        // so the gate never trips and a darkening step is hidden — e.g. right
+        // after the detector is re-enabled, when Upscaler zeroes the memory.
+        expect(SHADING_CHANGE_SHADER).toContain('if (restart || all(words == vec4u(0u))) {');
     });
 });

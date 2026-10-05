@@ -1441,14 +1441,52 @@ workgroup-memory reads in the reductions. The memory is ⌈w/4⌉ × (⌈h/4⌉ 
 **Adopted** in `src/shaders/shadingChange.ts` as `SHADING_MEMORY_SLOTS` 8,
 `SHADING_MEMORY_JUMP_GAIN` 1.5 and `SHADING_MEMORY_STILL_PX` 0.05, with bindings 9/10.
 `Upscaler` always allocates the memory. It also zeroes the memory before the detector
-runs again after any temporal frame without it, because a zero memory holds no jumps
-and suppresses nothing. That was GPU-checked: the bench was toggled off for 20 frames
+runs again after any temporal frame without it, and the shader treats an all-zero
+memory as empty (below). That was GPU-checked: the bench was toggled off for 20 frames
 and back on, with no validation errors. Examples 07, 12 and 13 render with a clean
 console.
 
 Production reproduces every `gated8` number above to the last digit. The frozen pre-memory
 detector is bench identity `shading-frame-pair-v1`, and it reproduces main's numbers
-exactly on every row above. Fingerprint: `shadingChange` `353acc93` → `fdb7f169`.
+exactly on every row above.
+
+**Fixed in review: an empty memory hid darkening for up to 8 frames.** A zero memory
+suppresses nothing on its own first frame: every jump from 0 is 1, and it holds no jumps
+to compare against. But that frame used to *push* the current mean m into it, which left
+`[m, 0 × 7]`. On the next frame the range was [0, m] and the stored jump was
+`relativeDistance(m, 0)` = 1, so the jump gate (≤ 1.5 × 1) could never trip. Any block
+that darkened stayed inside the range and was fully suppressed until the zeros aged out.
+
+The memory is zeroed when the detector is re-enabled at runtime. `configure()` is not a
+path: it always calls `resetHistory()`, and the reset frame restarts every block. The
+fix: `memoryUpdate` treats an all-zero memory as empty and restarts it from the current
+mean (`restart || all(words == vec4u(0u))`). For a genuinely black block that restart is
+the same memory. The builder's `gated` mode in `shadingChangeRange.ts` keeps the old
+push. Production has no bench twin, and the rejected identities were only measured on
+mature memory, so none of their numbers depend on it.
+
+`scripts/measure-shading-restart.mjs` reads the signal texture back exactly on Q18 at
+ratio 2. The detector was off for 10 frames and back on `lead` frames before the
+frame-300 light step. Firing at f300, full frame / flat swatches:
+
+| run | before | after |
+| --- | --- | --- |
+| mature memory (detector on throughout) | 62.2 % / 98.2 % | 62.2 % / 98.2 % |
+| re-enabled 2 frames before | **0 % / 0 %** | 62.9 % / 98.2 % |
+| re-enabled 3 frames before | **0 % / 0 %** | 62.5 % / 98.2 % |
+| re-enabled 4 frames before | **0 % / 0 %** | 62.4 % / 98.2 % |
+| re-enabled 9 frames before (zeros aged out) | 62.2 % / 98.2 % | — |
+| `configure()` 2 / 3 / 4 frames before | 63.0 / 63.3 / 62.3 % | identical |
+
+After the fix, re-enabling costs 1–3.5 % false firing on the bars for the first 2–3
+frames while the memory refills. That is the frame-pair detector's own level, plus the
+luma history going 10 frames stale. Every headline number above re-ran identically: Q18
+still, Q9 f60/f180, Q16, Q12, Q1, Q11, Q4 and the Q16/Q18 steps. No WGSL or WebGPU
+errors. Fingerprint: `shadingChange` `1868fc72` → `fba11623`.
+
+```bash
+node scripts/measure-shading-restart.mjs --scenario Q18 --ratio 2 --lead 3   # also --lead 2, 4, 9
+```
 
 **Surprising, out of scope: #58 costs Q16's genuine step.** The step on Q16's sparse
 wires now fires on 0.81 % of the frame, against 2.37 % after #52 (§9). The fans

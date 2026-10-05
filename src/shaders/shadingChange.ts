@@ -190,9 +190,10 @@ fn memorySlot(words : vec4u, index : u32) -> f32 {
 // How far the block's current mean is from what its memory explains: the
 // distance to the stored means' [min, max], or 1 (memory does not apply, the
 // previous-frame comparison alone decides) when this frame's jump exceeds
-// SHADING_MEMORY_JUMP_GAIN × the largest jump the memory holds. A memory that
-// was zeroed (allocation, or the detector re-enabled) holds no jumps, so it
-// never suppresses anything.
+// SHADING_MEMORY_JUMP_GAIN × the largest jump the memory holds. An all-zero
+// memory (allocation, or the detector re-enabled) suppresses nothing on its
+// first frame, since every jump from 0 is 1 and it holds none; memoryUpdate
+// then restarts it rather than keeping its zeros.
 fn memoryDistance(words : vec4u, current : f32) -> f32 {
     var lo = 3.0e38;
     var hi = -3.0e38;
@@ -216,10 +217,15 @@ fn halfBits(value : f32) -> u32 {
 }
 
 // Pushes the current mean into slot 0 — a 16-bit funnel shift across the four
-// words drops the oldest — or restarts the memory from it.
+// words drops the oldest — or restarts the memory from it. An all-zero memory
+// is empty and restarts too: pushed instead, its zeros would stay in the range
+// for 8 frames with a stored jump of 1 (m vs 0), so the jump gate never trips
+// and any darkening inside [0, m] reads as no change (measured: Q18's light
+// step fully hidden 2–4 frames after re-enabling the detector, NEXT-STEPS §14).
+// For a genuinely black block a restart to zeros is the same memory.
 fn memoryUpdate(words : vec4u, current : f32, restart : bool) -> vec4u {
     let bits = halfBits(current);
-    if (restart) {
+    if (restart || all(words == vec4u(0u))) {
         let both = bits | (bits << 16u);
         return vec4u(both, both, both, both);
     }
