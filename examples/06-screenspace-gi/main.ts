@@ -23,6 +23,7 @@ import { Upscaler } from '@pmndrs/upscaler';
 import { bootRenderer, displaySize } from '../shared/boot';
 import { addStudioLighting } from '../shared/props';
 import { addRenderScale, basePercent } from '../shared/ui';
+import { matchPassResolution } from '../shared/matchPassResolution';
 
 //* The "complex" example: an expensive screen-space effect (GTAO / SSR / SSGI)
 //* is rendered at REDUCED resolution via a TSL pass graph, and FSR3 upscales
@@ -163,21 +164,26 @@ function configure(): void {
 
     let composite: ReturnType<typeof vec4>;
     if (state.effect === 'gtao') {
-        const aoTex = sw(texNode(ao(depth, normal, camera)));
+        const aoTex = sw(texNode(matchPassResolution(ao(depth, normal, camera), scenePass)));
         composite = sw(beauty.mul(vec4(aoTex.r, aoTex.r, aoTex.r, 1)));
     } else if (state.effect === 'ssr') {
         // Unpack the material scalars from the single packed attachment (kept to
         // four MRT targets above to fit WebGPU's 32-byte/sample cap).
         const mat = sw(scenePass.getTextureNode('material'));
         // three r185 moved SSR's material scalars + camera into an options object.
-        const ssrTex = texNode(ssr(beauty, depth, normal as never, { metalnessNode: mat.r, roughnessNode: mat.g, camera }));
+        const ssrTex = texNode(
+            matchPassResolution(
+                ssr(beauty, depth, normal as never, { metalnessNode: mat.r, roughnessNode: mat.g, camera }),
+                scenePass,
+            ),
+        );
         // Reflection is additive over the beauty; spatial-denoise it first.
         const refl = sw(denoise(ssrTex as never, depth, normal, camera));
         composite = vec4(beauty.rgb.add(refl.rgb), beauty.a);
     } else {
         // three r185's SSGINode splits its output into separate AO + GI nodes
         // (getAONode/getGINode) — the old single-texture getTextureNode() is gone.
-        const giPass = ssgi(beauty, depth, normal, camera);
+        const giPass = matchPassResolution(ssgi(beauty, depth, normal, camera), scenePass);
         // Rotating pattern — FSR3 is the temporal resolver that integrates it.
         giPass.useTemporalFiltering = true;
         const aoTex = sw(giPass.getAONode());

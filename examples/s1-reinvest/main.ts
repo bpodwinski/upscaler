@@ -27,6 +27,7 @@ import { Upscaler } from '@pmndrs/upscaler';
 
 import { displaySize, showFatal } from '../shared/boot';
 import { addRenderScale } from '../shared/ui';
+import { matchPassResolution } from '../shared/matchPassResolution';
 import { createCourtyard, setSconceCount } from './scene';
 import { GpuMeter } from './GpuMeter';
 import { MeasureCycle, type Measured } from './measure';
@@ -147,21 +148,6 @@ let colorRT: THREE.RenderTarget | null = null;
 let nativeRT: THREE.RenderTarget | null = null;
 let scenePass: ReturnType<typeof pass> | null = null;
 
-/**
- * Pins a three screen-space effect to an explicit resolution. SSGINode,
- * SSRNode (and GTAONode) size themselves from `renderer.getDrawingBufferSize()`
- * every frame — the full CANVAS — not from the pass they read. Fed a 1/ratio
- * G-buffer they would still trace every display pixel, which is exactly the
- * cost this showcase claims to save. So side A overrides `setSize` on the
- * instance to its render resolution (the G-buffer is sampled by UV, so only
- * the trace density changes).
- */
-function pinEffectSize(node: unknown, width: number, height: number): void {
-    const n = node as { setSize(w: number, h: number): void };
-    const original = n.setSize.bind(n);
-    n.setSize = () => original(width, height);
-}
-
 // three's addon effect nodes are typed as their concrete class, which doesn't
 // expose the swizzle / getTextureNode proxy members TSL adds at runtime — cast
 // through the swizzle-capable node object type (same shim as 06/09).
@@ -221,7 +207,7 @@ function configure(): void {
         // At render resolution: a half-res trace is cheaper but doubles the
         // size of SSGI's static sampling pattern, which then survives the
         // upscale as visible crosshatch. Fewer steps (8, from 12) instead.
-        pinEffectSize(giPass, rw, rh);
+        matchPassResolution(giPass, scenePass);
         giPass.stepCount.value = 8;
         const ao = sw(giPass.getAONode());
         const gi = sw(denoise(giPass.getGINode() as never, depth, normal, camera));
@@ -238,7 +224,7 @@ function configure(): void {
         const ssrUniforms = ssrNode as unknown as { maxDistance: { value: number }; quality: { value: number } };
         ssrUniforms.maxDistance.value = 14;
         ssrUniforms.quality.value = 0.4; // 26 march steps; the blur hides the rest
-        pinEffectSize(ssrNode, rw, rh);
+        matchPassResolution(ssrNode, scenePass);
         const refl = sw(denoise(texNode(ssrNode) as never, depth, normal, camera));
         rgb = rgb.add(refl.rgb);
     }
