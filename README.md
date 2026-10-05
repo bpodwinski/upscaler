@@ -20,10 +20,10 @@ warns once and falls back to the pre-r186 render-pipeline hooks, and that fallba
 will be removed. There is no WebGL fallback. See
 [Compatibility](./docs/compatibility.md).
 
-**▶ Live demos: [pmndrs.github.io/upscaler](https://pmndrs.github.io/upscaler/)**: 15
+**▶ Live demos: [pmndrs.github.io/upscaler](https://pmndrs.github.io/upscaler/)**: 16
 interactive examples, covering spatial vs temporal, the aliasing-torture scene,
-transparency and reactive masks, the composable TSL node, SSGI/SSR upscaled in one post
-graph, temporal guides, and transparent-canvas alpha.
+transparency and reactive masks, the composable and spatial-only TSL nodes, SSGI/SSR
+upscaled in one post graph, temporal guides, and transparent-canvas alpha.
 
 ## Quick start
 
@@ -41,7 +41,8 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 scene.background = new THREE.Color(0x10141a); // or empty regions stay transparent (see Alpha)
 
 const pipeline = new THREE.RenderPipeline(renderer);
-pipeline.outputNode = upscaleScene(scene, camera, { quality: QualityMode.Quality });
+// The factories' declared return type needs a cast to `THREE.Node` in TypeScript.
+pipeline.outputNode = upscaleScene(scene, camera, { quality: QualityMode.Quality }) as unknown as THREE.Node;
 
 renderer.setAnimationLoop(() => pipeline.render());
 ```

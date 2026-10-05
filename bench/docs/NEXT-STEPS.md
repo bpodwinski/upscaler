@@ -349,6 +349,11 @@ rotating pattern — the issue's SSGI setting), `builtin` (static pattern +
 `DenoiseNode` — the 06/09 recipe). `measure-convergence.mjs` gained `--subrun` and
 `--settings` (capture-setting overrides) for the A/Bs below.
 
+> **Note (2026-10-05):** "the 06/09 recipe" in this section means the
+> static-pattern + `DenoiseNode` recipe, which examples 06/09 used when it was
+> measured. Since #58 (2026-10-03) examples 06/09 keep SSGI's rotating pattern on
+> (with `DenoiseNode`); the `builtin` subrun is unchanged, still the static pattern.
+
 **Wire-mask metrics** (ratio 2, 1280×720, settle 240, 97 frames; 0–255 scale). The
 mask is the 16 042 display pixels where the lock lifetime averages > 0.3 on the
 clean `off` control — "the thin features locks are meant for". `cons` = mean
@@ -426,6 +431,11 @@ frame (`DenoiseNode`, the 06/09 recipe). If an integration must keep per-frame-n
 raising `maxAccumulation` trades responsiveness for noise. The principled end state is
 still the fused GI-history path ([#7](https://github.com/pmndrs/upscaler/issues/7)).
 Q14 is its natural acceptance scenario: `static` should approach `builtin`.
+
+> **Note (2026-10-05):** as above, "the 06/09 recipe" here is the static-pattern +
+> `DenoiseNode` recipe 06/09 used at the time. #58 later moved examples 06/09 to
+> SSGI's rotating pattern (see CLAUDE.md, "SSGI rotating pattern"); this decision
+> was measured before that change and is recorded as it stood.
 
 Reproduce: `node scripts/measure-convergence.mjs --scenario Q14 --subrun static
 --pairs 40 [--settings '{"lockThinFeatures":false}']`. The wire-mask probe

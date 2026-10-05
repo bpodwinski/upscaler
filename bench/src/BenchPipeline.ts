@@ -435,8 +435,8 @@ export class BenchPipeline {
                 giPass.sliceCount.value = 2;
                 giPass.stepCount.value = 8;
             }
-            // SSGINode defaults to the rotating 6-frame pattern (needs a real
-            // TRAA); `static` is the 06/09/10 no-TRAA recipe.
+            // SSGINode defaults to the rotating 6-frame pattern; `static` is
+            // the no-TRAA recipe example 10 uses (and 06/09 used until #58).
             if (wires) giPass.useTemporalFiltering = effect.subrun === 'rotating';
             const aoTexture = giPass.getAONode() as unknown as ReturnType<typeof vec4>;
             const giRaw = giPass.getGINode();

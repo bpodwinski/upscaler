@@ -153,15 +153,16 @@ export class Upscaler {
     private _output: StorageTexture | null = null;
     private _outputGPU: GPUTexture | null = null;
     private _history: [GPUTexture, GPUTexture] | null = null;
-    // Luminance-stability lock state (r = lock lifetime, g = locked luma),
-    // ping-ponged in lockstep with history.
+    // Luminance-stability lock state (r = lock lifetime, g = locked luma,
+    // b = shading-change age, a = resolved alpha), ping-ponged with history.
     private _locks: [GPUTexture, GPUTexture] | null = null;
     private _dilatedDepth: [GPUTexture, GPUTexture] | null = null;
     private _dilatedMotion: GPUTexture | null = null;
     private _masks: GPUTexture | null = null;
     private _easuOutput: GPUTexture | null = null;
-    // Auto-exposure state: 1×1 exposure value (r = exposure, g = avg luma),
-    // ping-ponged so eye-adaptation can ease from last frame's value.
+    // Auto-exposure state: 1×1 exposure value (r = exposure, g = avg luma,
+    // b = host pre-exposure), ping-ponged so eye-adaptation can ease from last
+    // frame's value.
     private _exposure: [GPUTexture, GPUTexture] | null = null;
     // 1×1 zero texture bound in place of a reactive mask when the caller
     // doesn't supply one (WebGPU zero-inits it, so reactivity reads 0).
@@ -435,7 +436,8 @@ export class Upscaler {
     /**
      * Encodes and submits the upscaling passes for this frame. Call after
      * the scene has been rendered into the input textures.
-     * @param inputs - Scene color (+ depth/velocity for the temporal path) and camera info
+     * @param inputs - Scene color (+ depth/velocity for the temporal path) and frame info
+     * @param camera - The scene camera (near/far and projection type)
      */
     dispatch(inputs: DispatchInputs, camera: JitterableCamera): void {
         if (this._path === 'guides') {
@@ -796,8 +798,8 @@ export class Upscaler {
         this._exposurePass.dispatch(exposurePass, exposureBindGroup, 8, 8);
         exposurePass.end();
 
-        //* Shading Change — signed luma-difference pyramid (skipped entirely
-        //* when the detector is off; accumulate then reads a zero dummy).
+        //* Shading Change — fused multi-scale block-mean detector (skipped
+        //* entirely when the detector is off; accumulate then reads a zero dummy).
         let shadingSignalView = this._reactiveDummy!.createView();
         if (this.settings.detectShadingChanges) {
             const shadingLumaIn = this._shadingLumaHistory![this._historyIndex];

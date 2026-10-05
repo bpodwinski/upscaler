@@ -244,8 +244,9 @@ export interface TemporalGuides {
     readonly shadingChange: Texture | null;
     /**
      * The 1×1 exposure state (rgba16float): r = conditioning pre-exposure,
-     * g = average scene luma (exposed **beauty** luma — wrong space for GI
-     * statistics), b = host pre-exposure. `null` on the `guides` path.
+     * g = metered log-average luma of the beauty input, with host
+     * pre-exposure divided out (the wrong space for GI statistics),
+     * b = host pre-exposure. `null` on the `guides` path.
      */
     readonly exposure: Texture | null;
     /**

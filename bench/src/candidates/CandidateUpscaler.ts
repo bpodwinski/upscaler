@@ -535,7 +535,7 @@ export class CandidateUpscaler {
      * disocclusion, and the late data products) as ordinary three textures.
      * Available on the `temporal` and `guides` paths after `configure()`.
      * See {@link TemporalGuides} for each product's contract, and
-     * docs/archive/temporal-guides/TEMPORAL-GUIDES-SPEC.md for the historical context.
+     * docs/temporal-guides.md for the frame stages and consumer rules.
      */
     get guides(): TemporalGuides {
         if (!this._guides) {

@@ -34,13 +34,14 @@ number so they sort apart from the single-purpose demos.
 | 07 | **TSL node** (`07-tsl-node`) | The whole upscaler as one line: `post.outputNode = upscaleScene(scene, camera)`. |
 | 08 | **TSL compose** (`08-tsl-compose`) | The node composed with other TSL effects (`.mul(vignette)`) in the same post graph. |
 | 09 | **Kitchen sink** (`09-kitchen-sink`) | The composable `upscale()` node driving a full SSGI+SSR stack rendered small, in one post graph, with jitter A/B. |
-| 10 | **SSGI denoise** (`10-ssgi-denoise`) | Experimental documentation, not a feature: why a second temporal denoiser in front of FSR3 can't work (jitter-blind history rejection). Like 06/09, SSGI runs with `useTemporalFiltering = false` (its rotating pattern needs a real TRAA); the baseline is the 06/09 `DenoiseNode` recipe. The `spatial` option still re-rolls its à-trous kernel every frame, so thin features boil under it — see issue #17 / bench Q14. |
+| 10 | **SSGI denoise** (`10-ssgi-denoise`) | Experimental documentation, not a feature: why a second temporal denoiser in front of FSR3 can't work (jitter-blind history rejection). SSGI runs with `useTemporalFiltering = false` on every path (06/09 keep the rotating pattern on since #58); the baseline is the static-pattern `DenoiseNode` recipe. The `spatial` option still re-rolls its à-trous kernel every frame, so thin features boil under it — see issue #17 / bench Q14. |
 | 11 | **Reactive mask (node)** (`11-node-reactive`) | The reactive mask through the composable node — an in-graph coverage pass, toggleable to A/B ghost trails. |
 | 12 | **Temporal guides** (`12-temporal-guides`) | The upscaler as a data-products provider: the split `dispatchGuides()`/`dispatchUpscale()` frame, guide textures sampled live (raw driver). |
 | 13 | **Guides node** (`13-guides-node`) | The same split frame, declaratively: `temporalGuides()` publishes the bundle into the graph, a toy effect consumes disocclusion pre-upscale, `upscale({ guides })` shares one computation. |
 | 14 | **Path tracer · alpha** (`14-pathtracer-alpha`) | A transparent canvas over page content: `three-gpu-pathtracer`'s WebGPU renderer accumulates at half resolution with a zero-alpha background, and the FSR1 spatial path upscales coverage along with color (issue #15). Needs network — model/HDRI and the Draco decoder are streamed. |
 | 15 | **Transparent canvas** (`15-transparent-canvas`) | Alpha on the *temporal* path — coverage reconstructed from jitter, not interpolated. The acceptance demo for temporal RGBA; toggles temporal/spatial on sub-texel wires. |
 | 16 | **Spatial node** (`16-spatial-node`) | `upscaleSpatial(color)`, the color-only FSR1 node, in a `RenderPipeline`: fed by an in-graph reduced-res `pass()` or an externally filled `texture()`. RCAS sharpness / `rcasDenoise` controls, an input-grain slider for the denoise to act on, and HDR neon (well above 1.0) to show RCAS sharpening highlight edges in conditioned space (#30). |
+
 Most interactive demos have a **render scale ×** slider (1.0×–3.0×) that sweeps the
 base render resolution, with the resulting size + base % shown in the HUD.
 

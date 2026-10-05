@@ -299,15 +299,15 @@ for the before column, set `clipToAABB` in `src/shaders/accumulate.ts` back to
 - a survey of public TAA/TAAU implementations for the same ε placement;
 - a greyscale *lit* scene (white materials, white lights) to show the effect
   beyond black backgrounds;
-- the hold re-measured once the disocclusion (#54) and shading-change (#22)
-  false positives are gone, to separate what is inherent from what is
-  pipeline-specific;
+- the hold re-measured once the disocclusion false positives (#54) are gone
+  (the shading-change ones, #22, already are since #52), to separate what is
+  inherent from what is pipeline-specific;
 - a second device and ratios other than 2.
 
 ## 3. Source-faithful pass graphs measured against fused re-derivations
 
 **Claim:** porting FSR 3.1.5's pass graph faithfully to WebGPU costs
-+36% / +43% / +76% GPU compute (filter / structural / SPD-resolver bundles,
++36% / +44% / +76% GPU compute (filter / structural / SPD-resolver bundles,
 cumulative vs production; structural was measured as +6.5% on top of filter)
 over a fused re-derivation with no measurable visual win on torture scenes —
 because the source graph's structure pays for generality (intermediate

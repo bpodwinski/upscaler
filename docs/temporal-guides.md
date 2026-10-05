@@ -87,6 +87,8 @@ Rules a consumer must follow:
 ## Raw split frame
 
 ```ts
+import { velocity } from 'three/tsl';
+
 upscaler.configure({ displayWidth, displayHeight, customUpscaleRatio: 2, path: 'temporal' });
 velocity.setProjectionMatrix(upscaler.unjitteredProjectionMatrix);
 
@@ -94,9 +96,9 @@ velocity.setProjectionMatrix(upscaler.unjitteredProjectionMatrix);
 upscaler.beginFrame(camera);
 /* render the G-buffer (depth + velocity MRT, plus whatever your effects need) */
 upscaler.endFrame(camera);
-upscaler.dispatchGuides({ depth, velocity, deltaTime }, camera);
+upscaler.dispatchGuides({ depth: gbuffer.depthTexture!, velocity: gbuffer.textures[1], deltaTime }, camera);
 /* effects sample upscaler.guides.dilatedMotion / .disocclusion / .dilatedDepth … */
-upscaler.dispatchUpscale({ color, deltaTime }, camera); // + reactive / exposure inputs
+upscaler.dispatchUpscale({ color: beautyColor, deltaTime }, camera); // + reactive / exposure inputs
 ```
 
 - A split frame is in flight between the two calls (`upscaler.guidesPending`). Inside it,
@@ -147,7 +149,7 @@ live:
 ```ts
 const guides = temporalGuides(depth, velocity, camera);
 const effected = myEffect(color, guides.getTextureNode('disocclusion'));
-pipeline.outputNode = upscale(effected, depth, velocity, camera, { guides });
+pipeline.outputNode = upscale(effected, depth, velocity, camera, { guides }) as unknown as THREE.Node;
 ```
 
 - Hand the guides node the **same** depth, velocity and camera as `upscale()`.

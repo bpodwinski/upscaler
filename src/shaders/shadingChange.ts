@@ -4,11 +4,13 @@ import { assembleShader } from './wgsl';
 /**
  * Shading-change detection — the concept of FSR3's signed luma-difference
  * pyramid (the source resolver's "coarse mip" detector), fused into one
- * render-resolution dispatch.
+ * half-resolution dispatch (one thread per 2×2 render block).
  *
  * The pass averages current luma and last frame's reprojected luma over
- * 2×2 / 4×4 / 8×8 render blocks and compares the *means* per scale, each gated
- * by a scale-matched noise floor. Averaging before the ratio is the point:
+ * 4×4 / 8×8 render blocks (the 2×2 per-thread sums only feed them) and
+ * compares the *means* per scale, each gated by a scale-matched noise floor.
+ * Per texel, the previous value is the closest one in the reprojected
+ * bilinear footprint's tap range (see `lumaPair`). Averaging before the ratio is the point:
  * block-mean luma is stable under sub-pixel jitter and aliasing, so genuine
  * shading changes (a light turning on, an animated material) move the means
  * while alias flicker does not. (Two rejected designs, measured on GPU: the
@@ -38,6 +40,7 @@ import { assembleShader } from './wgsl';
  * - 5: previous frame's exposure, 1×1
  * - 6: luma history out (r32float storage, render size)
  * - 7: shading-change response out (r32float storage, ceil(render/2))
+ * - 8: reconstruct's masks, render size (.r = disocclusion; neutralizes texels)
  */
 export const SHADING_CHANGE_SHADER = assembleShader(
     WGSL_CONSTANTS,

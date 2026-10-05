@@ -35,8 +35,10 @@ before its first dispatch: render to it once, or pass it through
   mapping and output encoding. The temporal path accumulates in an invertible tonemap
   space (`c / (1 + max(c))`, FSR2's firefly guard) and inverts that before output, so
   HDR values survive. The spatial path's RCAS sharpens in that same tonemap space and
-  inverts on output, so highlights above 1.0 are sharpened like any other edge. The
-  output is the same domain as the input.
+  inverts on output, so highlights above 1.0 are sharpened like any other edge. On both
+  paths the sharpening gain on HDR edges is capped near what linear RCAS would apply,
+  so an isolated peak can't invert into a firefly. The output is the same domain as
+  the input.
 - **Filterable format.** The temporal path's exposure meter and the bilinear path
   sample `color` through a filtering sampler. `rgba16float` (`HalfFloatType`) always
   qualifies; `rgba32float` only does on devices exposing `float32-filterable` (three
@@ -123,14 +125,16 @@ and `endFrame(camera)` removes it.
   owns it, `upscale()` warns once and runs unjittered rather than double-jittering.
   Remove the other temporal AA: stacking two temporal resolvers smears, and the
   upscaler already anti-aliases (`QualityMode.NativeAA` is temporal AA at ratio 1).
-- **Effects with their own temporal patterns.** An input effect that rotates its
-  sampling pattern per frame expecting a TRAA behind it defeats the variance clip at
-  silhouettes and ghost-streaks off moving edges. Three's `SSGINode` does this by
-  default (`useTemporalFiltering = true`). Set it to `false` when the upscaler is the
-  temporal resolver, as examples 06, 09 and 10 do. The same holds for a denoiser that
-  re-rolls its kernel every frame: `recurrentDenoise({ accumulate: false })` keeps no
-  history but still feeds fresh noise each frame, which thin features show as boiling
-  (issue #17). `DenoiseNode` on the static pattern converges.
+- **Effects with their own temporal patterns.** Three's `SSGINode` rotates its
+  sampling pattern on a 6-frame cycle by default (`useTemporalFiltering = true`) for a
+  temporal resolver to integrate, and the upscaler is one. Examples 06 and 09 keep it
+  on: accumulation integrates the rotation to clean shading, while the static pattern
+  (`false`) leaves a fixed hatch that accumulation can't remove. The known cost is some
+  ghosting off silhouettes in motion, which is shelved for the fused GI work
+  ([#7](https://github.com/pmndrs/upscaler/issues/7)). A denoiser that re-rolls its
+  kernel aperiodically every frame is different: `recurrentDenoise({ accumulate: false })`
+  keeps no history but still feeds fresh noise each frame, which thin features show as
+  boiling (issue #17). `DenoiseNode` on the static pattern converges.
 
 ## Reactive masks
 
@@ -185,7 +189,9 @@ The conditioning exposure also sets the **HDR headroom** of the temporal output.
 Values resolve up to about `999 / exposure` in the input's linear domain. Below
 that they lose precision as they approach it, and sub-pixel highlights are
 compressed more strongly as exposure rises. Auto-exposure brightens at most 8×
-(three stops), so even a pitch-black scene keeps about 125 linear of headroom.
+(three stops), so even a pitch-black scene keeps about 125 linear of headroom. The
+trade-off is that a dim scene (log-average luminance below about 0.02) is conditioned
+darker than mid-grey, so its thin features form fewer luminance locks.
 A fixed `exposure` or an `exposureTexture` is not clamped. At 80, everything above
 about 12.5 clips to the same value, so keep app-supplied values near what the
 scene's highlights allow. See issue
@@ -211,7 +217,9 @@ at output and apply no history correction.
   presentation transform.** When a TSL node is the pipeline's final output node,
   three's `RenderPipeline` applies the renderer's `toneMapping` and
   `outputColorSpace`; `UpscalePass.present()` renders through the same output
-  transform. Otherwise the result can feed later linear post-processing.
+  transform, except that it skips tone mapping while a debug view is on (see
+  [Reading debug values](debugging.md#reading-debug-values)). Otherwise the result can
+  feed later linear post-processing.
 - The texture belongs to the upscaler and is reallocated by `configure()`. Re-read it
   after a resize; the TSL nodes and `UpscalePass` re-point their samplers themselves.
 

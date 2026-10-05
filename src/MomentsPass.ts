@@ -64,8 +64,8 @@ export class MomentsPass {
     }
 
     /**
-     * (Re)configures size and scalar space; allocates the output textures
-     * and (re)builds the pipeline when the space changes.
+     * (Re)configures size and scalar space and allocates the output
+     * textures. The space is a runtime flag, so one pipeline serves both.
      * @param config - Source size and scalar space
      */
     configure(config: MomentsPassConfig): void {

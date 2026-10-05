@@ -58,18 +58,25 @@ veloc ─┘  (dilate +      dilatedDepth   │        Lanczos2 upsample        
 1. **Reconstruct** (`reconstruct.ts`): one fused render-resolution pass. Nearest-depth
    3×3 dilation of depth and motion, then disocclusion by per-bilinear-tap
    confidence voting against last frame's dilated depth, using AMD's
-   viewport/depth-scaled tolerance. This is the whole early stage of a split frame.
+   viewport/depth-scaled tolerance. The reprojection is jitter-delta-compensated, but
+   the off-screen test uses the motion-only reprojection so a still camera's border
+   doesn't read as disoccluded. This is the whole early stage of a split frame.
 2. **Generate reactive** (`generateReactive.ts`): only when `reactiveOpaqueColor` is
    given. It max-merges any incoming mask.
 3. **Exposure** (`luminancePyramid.ts`): a single 1×1 log-average with eye
    adaptation. It also carries the external and host pre-exposure inputs.
 4. **Shading change** (`shadingChange.ts`): one fused half-resolution dispatch
-   comparing block-mean luma at 4×4 and 8×8 against a one-frame luma history. It is
-   skipped entirely when `detectShadingChanges` is off.
+   comparing block-mean luma at 4×4 and 8×8 against a one-frame luma history. Per texel
+   the previous value is the closest one in the reprojected bilinear footprint's tap
+   range, so differences jitter alone explains read 0, and the noise floor pools both
+   frames' within-block contrast. It is skipped entirely when `detectShadingChanges`
+   is off.
 5. **Accumulate** (`accumulate.ts`): the core. A jitter-aware Lanczos2 upsample of
    the current frame, Catmull-Rom history reprojection, YCoCg variance-clip
    rectification (relaxed on still, converged pixels; its cost under slow lighting
-   drift is measured in [`NEXT-STEPS.md` §8](../bench/docs/NEXT-STEPS.md)),
+   drift is measured in [`NEXT-STEPS.md` §8](../bench/docs/NEXT-STEPS.md); the clip's
+   epsilon sits on the box extents, so an exactly achromatic neighbourhood still
+   accumulates),
    luminance-stability locks,
    reactive and shading-change aging, and the alpha resolve. Blending runs in
    invertible-tonemap space with a per-pixel age stored in history `.a`.

@@ -54,7 +54,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 scene.background = new THREE.Color(0x10141a); // opaque output; see "Alpha"
 
 const pipeline = new THREE.RenderPipeline(renderer);
-pipeline.outputNode = upscaleScene(scene, camera, { quality: QualityMode.Quality });
+pipeline.outputNode = upscaleScene(scene, camera, { quality: QualityMode.Quality }) as unknown as THREE.Node;
 
 renderer.setAnimationLoop(() => pipeline.render());
 ```
@@ -71,9 +71,10 @@ Options: `quality` (a `QualityMode`, default `Quality` = 1.5×) or `ratio` (over
 `upscale()` below.
 
 `THREE.PostProcessing` is the pre-r183 name of `RenderPipeline`. It still works, with
-a deprecation warning from three; the examples all use `RenderPipeline`. The factories return
-three's `nodeObject` type, so the examples cast when assigning to `outputNode`
-(`node as unknown as THREE.Node`).
+a deprecation warning from three; the examples all use `RenderPipeline`. The factories'
+declared return type doesn't narrow to `THREE.Node`, so in TypeScript the snippets here
+and the examples cast when assigning to `outputNode` (`node as unknown as THREE.Node`).
+Plain JavaScript needs no cast.
 
 ## `upscale()`: the composable node
 
@@ -82,6 +83,7 @@ reduced-resolution color, depth and velocity texture nodes, and it outputs the
 display-resolution result:
 
 ```ts
+import * as THREE from 'three/webgpu';
 import { pass, mrt, output, velocity } from 'three/tsl';
 import { upscale } from '@pmndrs/upscaler';
 
@@ -95,7 +97,7 @@ pipeline.outputNode = upscale(
     scenePass.getTextureNode('depth'),
     scenePass.getTextureNode('velocity'),
     camera,
-);
+) as unknown as THREE.Node;
 ```
 
 - **The caller controls input resolution.** The node reads the input texture's actual
@@ -123,9 +125,11 @@ pipeline.outputNode = upscale(
 ## `upscaleSpatial()`: color only
 
 ```ts
+import * as THREE from 'three/webgpu';
+import { pass } from 'three/tsl';
 import { upscaleSpatial } from '@pmndrs/upscaler';
 
-pipeline.outputNode = upscaleSpatial(pass(scene, camera).getTextureNode('output'));
+pipeline.outputNode = upscaleSpatial(pass(scene, camera).getTextureNode('output')) as unknown as THREE.Node;
 ```
 
 `upscaleSpatial()` runs the single-frame FSR1 path: EASU, then RCAS. It needs no depth,
@@ -171,7 +175,8 @@ renderer.setAnimationLoop(() => {
 - `draw(scene, camera, dt)` renders and upscales into `outputTexture` without
   presenting. Use it with `outputTexture` for split views, custom composites, or
   feeding another pass. `present()` draws the full-screen quad through the renderer's
-  output transform.
+  output transform; while a debug view is on, it skips the tone mapping for that draw
+  (see [Debugging](debugging.md#reading-debug-values)).
 - `configure()` reallocates the render target and resets history. Call it on resize
   and when changing quality or path. `path` accepts `'temporal'` (default),
   `'spatial'` or `'bilinear'`; `'guides'` throws because there's nothing to present.
@@ -261,7 +266,7 @@ on the next dispatch, with no rebuild:
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| `sharpness` | `0.8` | RCAS strength in `[0, 1]`; `0` skips RCAS for a plain resolve. |
+| `sharpness` | `0.8` | RCAS strength in `[0, 1]`; `0` skips RCAS for a plain resolve. HDR edges are sharpened with a capped gain, so highlights don't overshoot into fireflies. |
 | `rcasDenoise` | `false` | FSR1's RCAS denoise variant: no extra sharpening of lone luma outliers. For noisy inputs (reduced-res GI/SSR, path tracing). |
 | `maxAccumulation` | `24` | History length cap. Higher is steadier but ghosts longer. |
 | `autoExposure` | `true` | Meter the conditioning exposure from the scene. It conditions accumulation only and is divided back out, so brightness doesn't change. |

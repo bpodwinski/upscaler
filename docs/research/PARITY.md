@@ -119,7 +119,7 @@ the rgba16float output showed ~1000× fireflies on isolated peaks and ~2× overs
 converged HDR plateau edges. The conditioned limiter bounds the result below
 conditioned 1, which is linear infinity. The single inversion is now capped at the
 conditioned lobe applied in linear space against the darkest ring tap. On ordinary
-content the cap is bit-exact outside a few hundred pixels per frame. It costs ~+4–5%
+content the cap is bit-exact outside a few hundred to ~2.7k pixels per 1280×720 frame. It costs ~+4–5%
 RCAS, so most of the −34% win stands (`bench/docs/NEXT-STEPS.md` §12).
 
 ### 3. Fused multi-scale shading-change detector
@@ -149,10 +149,14 @@ Two findings from GPU tuning (five documented iterations):
 - **The finest (2×2) scale is unrescuable.** 2×2 means of a thin feature still swing
   under sub-pixel jitter regardless of the noise floor; a genuinely changing small
   feature still moves its containing 4×4 mean. The response therefore uses only the
-  coarse scales, each gated by a base + contrast-adaptive floor (scaled by the block's
-  coefficient of variation), with disoccluded texels neutralized.
+  coarse scales, each gated by a base + contrast-adaptive floor (scaled by the
+  coefficient of variation pooled over both frames' blocks, since #52), with
+  disoccluded texels neutralized. Since #58 the previous luma is taken per texel as
+  the closest value in its reprojected bilinear footprint's tap range, so a difference
+  that jitter alone explains reads 0.
 
-**Measured:** 0.044 ms at ratio 2 vs 0.231 ms for the source-style two-pass candidate
+**Measured (2026-07-21; #52's pooled spread and #58's footprint clamp were not
+re-timed):** 0.044 ms at ratio 2 vs 0.231 ms for the source-style two-pass candidate
 (5× cheaper; zero when disabled — the pass isn't dispatched). Quality beats both
 alternatives: still-scene response at the old inline heuristic's baseline, *fewer*
 false positives than that heuristic under camera motion on high-frequency content
@@ -237,6 +241,7 @@ claims can be re-tested; a repeatable ≥5% result is treated as actionable, <3%
 
 The parity program is concluded. Every adoption-worthy behavior it identified landed on
 2026-07-21 — the four items above. Nothing from the program remains open; what remains
-deferred (perf-only micro-optimizations, the distinct T&C channel, a fused GI/denoise
-temporal path) is listed with rationale in the project README and
-`bench/docs/NEXT-STEPS.md`.
+deferred is listed with rationale elsewhere: perf-only micro-optimizations in the
+project README, the distinct T&C channel under "Explicitly not planned" in
+`bench/docs/NEXT-STEPS.md`, and a fused GI/denoise temporal path in
+[#7](https://github.com/pmndrs/upscaler/issues/7).
