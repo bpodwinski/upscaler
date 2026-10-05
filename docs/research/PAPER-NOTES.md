@@ -59,6 +59,18 @@ the 3×3 dilation ring's own depth relief — data the fused pass already holds
 in-register. The gather + repairs form retains the scatter's stability at
 the gather's cost.
 
+**Amended 2026-10-05 (issue #67) — the repairs were not enough.** The
+gather is also not *camera*-invariant: the two depths come from two camera
+positions, so motion along the view axis reads as separation (97% of a
+frontal wall disoccluded by a one-frame dolly-out; objects receding from a
+still camera likewise), and the best-tap repair hides genuine ~1 px reveals
+behind moving silhouettes. Production now runs the scatter; with the clear
+folded into the depth clip (ping-pong buffers) it costs ~0.012 ms per frame,
+almost all of it pass-split overhead, not atomics. The "−22–30%" was a
+per-pass figure on a ~0.035 ms pass; the self-referencing property is worth
+far more than it. Evidence: `bench/docs/NEXT-STEPS.md` §15, bench Q19 +
+`scripts/measure-receding-disocclusion.mjs`.
+
 **Evidence:** commit `b16274a`; [`src/shaders/reconstruct.ts`](../../src/shaders/reconstruct.ts)
 (inline); [PARITY.md](PARITY.md) enhancement 1 ("the price of skipping the
 scatter"); flicker metrology in the commit message (example-12 disocclusion

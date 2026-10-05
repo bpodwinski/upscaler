@@ -28,7 +28,7 @@ velocity**; everything else needs the final beauty color.
 ```
 frame start ── last frame's products are readable (dilatedDepth still holds frame N−1)
   ├─ G-buffer: depth + velocity rendered
-  ├─ dispatchGuides()     EARLY  reconstruct pass: dilatedMotion, dilatedDepth, disocclusion
+  ├─ dispatchGuides()     EARLY  reconstruct + depth clip: dilatedMotion, dilatedDepth, disocclusion
   ├─ effects run, sampling the guides
   ├─ final beauty color available
   ├─ dispatchUpscale()    LATE   reactive → exposure → shading change → accumulate → RCAS

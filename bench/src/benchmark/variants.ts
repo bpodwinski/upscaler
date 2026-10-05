@@ -2,6 +2,7 @@ import {
     createBaselineResolver,
     createRcasExperimentResolver,
     createRcasNumericParityResolver,
+    createReconstructExperimentResolver,
     createShadingMemoryResolver,
     createSourceBundleResolver,
 } from './BenchmarkResolver';
@@ -34,6 +35,8 @@ const RESOLVER_FACTORIES = {
     'rcas-fsr315-numeric': createRcasNumericParityResolver,
     'rcas-hoisted-exposure-v1': createRcasExperimentResolver,
     'rcas-tonemap-space-v1': createRcasExperimentResolver,
+    'reconstruct-cross-frame-v1': createReconstructExperimentResolver,
+    'reconstruct-camera-v1': createReconstructExperimentResolver,
     'source-filter-bundle-v1': createSourceBundleResolver,
     'source-structural-bundle-v1': createSourceBundleResolver,
     'source-spd-resolver-bundle-v1': createSourceBundleResolver,
@@ -80,6 +83,7 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
     const rcasLimiterParity = id === 'rcas-fsr315-limiter';
     const rcasNumericParity = rcasLimiterParity || id === 'rcas-fsr315-numeric' || rcasExperiment;
     const rcasDenoise = id === 'rcas-fsr315-numeric';
+    const reconstructExperiment = id.startsWith('reconstruct-');
     const shadingMemory = id.startsWith('shading-memory-') || id === 'shading-frame-pair-v1';
     const sourceResourceGraph = spdResolver
         ? [
@@ -148,6 +152,10 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
                   ? 'RCAS with hoisted exposure load'
                   : id === 'rcas-tonemap-space-v1'
                     ? 'RCAS sharpening in tonemap space'
+                  : id === 'reconstruct-cross-frame-v1'
+                    ? 'Cross-frame depth clip (pre-#67 production)'
+                  : id === 'reconstruct-camera-v1'
+                    ? 'Cross-frame depth clip, camera-motion compensated (#67)'
                   : id === 'shading-frame-pair-v1'
                     ? 'Shading change, frame pair only (pre block memory)'
                   : shadingMemory
@@ -172,14 +180,14 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
         },
         resourceGraph: sourceBundle ? sourceResourceGraph : RESOURCE_GRAPH,
         pipeline: {
-            shaderKey: sourceBundle || rcasExperiment || shadingMemory
+            shaderKey: sourceBundle || rcasExperiment || shadingMemory || reconstructExperiment
                 ? id
                 : rcasNumericParity
                 ? rcasDenoise
                     ? 'rcas-fsr315-numeric'
                     : 'rcas-fsr315-limiter'
                 : 'local-baseline-5d6a65e',
-            pipelineKey: sourceBundle ? id : 'temporal-baseline',
+            pipelineKey: sourceBundle || reconstructExperiment ? id : 'temporal-baseline',
             assembledChunks: sourceBundle
                 ? [
                       'constants',
@@ -206,7 +214,9 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
                 : {},
             timingPassLabels: sourceBundle
                 ? sourceTimingLabels
-                : ['exposure', 'reconstruct', 'shadingChange', 'accumulate', 'rcas'],
+                : reconstructExperiment
+                  ? ['exposure', 'reconstruct', 'shadingChange', 'accumulate', 'rcas']
+                  : ['exposure', 'reconstruct', 'depthClip', 'shadingChange', 'accumulate', 'rcas'],
         },
     };
 }

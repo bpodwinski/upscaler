@@ -4,6 +4,7 @@ import * as variants from '../benchmark/variants';
 import {
     createBaselineResolver,
     createRcasExperimentResolver,
+    createReconstructExperimentResolver,
     createRcasNumericParityResolver,
     createSourceBundleResolver,
 } from '../benchmark/BenchmarkResolver';
@@ -260,5 +261,8 @@ describe('benchmark resolver ownership', () => {
             'rcas-tonemap-space-v1',
         ] as const)
             expect(resolveFactory?.(id)).toBe(createRcasExperimentResolver);
+
+        for (const id of ['reconstruct-cross-frame-v1', 'reconstruct-camera-v1'] as const)
+            expect(resolveFactory?.(id)).toBe(createReconstructExperimentResolver);
     });
 });

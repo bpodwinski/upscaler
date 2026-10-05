@@ -3,9 +3,9 @@ import { type LayerId } from './layers';
 //* Narration — what one temporal frame does, in dispatch order.
 // Every claim maps to source: Upscaler.ts (beginFrame/_encodeGuides/
 // _encodeLate), reconstruct.ts, luminancePyramid.ts, shadingChange.ts,
-// accumulate.ts and rcas.ts. The order is the GPU's: the reconstruct pass
-// (dilation + disocclusion) runs before accumulate reprojects history, and
-// exposure + shading change run between them.
+// accumulate.ts and rcas.ts. The order is the GPU's: the reconstruct and
+// depth-clip passes (dilation, then disocclusion) run before accumulate
+// reprojects history, and exposure + shading change run between them.
 
 /** One narration step: a title, a short explanation, and the layer it shows. */
 export interface NarrationStep {
@@ -58,16 +58,17 @@ export const STEPS: NarrationStep[] = [
     },
     {
         title: 'Detect disocclusion',
-        where: 'reconstruct pass (same dispatch)',
+        where: 'depth-clip pass · render res',
         layer: 'disocclusion',
         body:
-            'The same pass reprojects through that motion (compensating the jitter change) and ' +
-            'compares the current depth with <b>last frame’s dilated depth</b>, with a tolerance ' +
-            'that scales with viewport size and depth (AMD’s depth-clip formulation). A surface ' +
-            'that was behind something nearer last frame — or off-screen — is disoccluded: its ' +
-            'history will be thrown away. Because the test is against last frame’s depth, a ' +
-            'surface the camera moves away from reads as disoccluded too.',
-        tryIt: 'Slide the camera one frame: slivers of wall light up beside each wire. Orbit 1° and the wall’s far edge lights up as well.',
+            'While dilating, the reconstruct pass also scatters each pixel’s depth to <b>where ' +
+            'it was last frame</b>, keeping the nearest: last frame’s depth, rebuilt from this ' +
+            'frame’s geometry. The depth-clip pass then compares each pixel with that map at its ' +
+            'previous position, with a tolerance that scales with viewport size and depth (AMD’s ' +
+            'depth-clip formulation). A surface that something nearer covered last frame — or ' +
+            'that was off-screen — is disoccluded: its history will be thrown away. Both depths ' +
+            'come from this frame, so a surface the camera merely moves away from keeps its history.',
+        tryIt: 'Slide the camera one frame: slivers of wall light up beside each wire. Orbit 1° and the wall itself stays dark; only the slivers and the panel’s edges light up.',
     },
     {
         title: 'Exposure and shading change',

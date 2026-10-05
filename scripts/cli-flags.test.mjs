@@ -27,7 +27,8 @@ describe('parseFlags', () => {
 
 // GPU-free: both paths exit during argument parsing, before any server or
 // browser is started.
-describe.each(['measure-drift-lag.mjs', 'measure-exposure-ceiling.mjs'])('%s CLI', (script) => {
+describe.each(['measure-drift-lag.mjs', 'measure-exposure-ceiling.mjs', 'measure-receding-disocclusion.mjs'])(
+    '%s CLI', (script) => {
     const run = (...args) =>
         spawnSync(process.execPath, [join(ROOT, 'scripts', script), ...args], {
             encoding: 'utf8',

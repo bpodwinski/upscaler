@@ -189,6 +189,72 @@ function q18(frame: number): BenchmarkFrameState {
     return { ...state(frame, [0, 0, CHART_DISTANCE], [0, 0, 0]), scene: 'chart', directionalIntensity };
 }
 
+/**
+ * Q19 (issue #67): converge, then one motion type per 60-frame segment, each
+ * followed by a 60-frame hold. Segment starts are exported for the measuring
+ * script (scripts/measure-receding-disocclusion.mjs).
+ */
+export const Q19_SEGMENTS = [
+    { name: 'still', start: 0, end: 119 },
+    { name: 'dolly-back', start: 120, end: 179 },
+    { name: 'hold-1', start: 180, end: 239 },
+    { name: 'dolly-forward', start: 240, end: 299 },
+    { name: 'hold-2', start: 300, end: 359 },
+    { name: 'orbit-left', start: 360, end: 419 },
+    { name: 'hold-3', start: 420, end: 479 },
+    { name: 'orbit-right', start: 480, end: 539 },
+    { name: 'hold-4', start: 540, end: 599 },
+    { name: 'slide', start: 600, end: 659 },
+    { name: 'hold-5', start: 660, end: 719 },
+    { name: 'scene-recede', start: 720, end: 779 },
+    { name: 'hold-6', start: 780, end: 839 },
+    { name: 'scene-approach', start: 840, end: 899 },
+    { name: 'hold-7', start: 900, end: 959 },
+] as const;
+/** Q19 per-frame speeds: 0.1 world units/frame (6 u/s) along the view axis. */
+const Q19_DOLLY_STEP = 0.1;
+const Q19_ORBIT_STEP = (0.5 * Math.PI) / 180;
+const Q19_SLIDE_STEP = 0.05;
+
+function q19(frame: number): BenchmarkFrameState {
+    const ramp = (start: number) => Math.min(Math.max(frame - start + 1, 0), 60);
+    const target = BASE_TARGET;
+    const offset = [
+        BASE_POSITION[0] - target[0],
+        BASE_POSITION[1] - target[1],
+        BASE_POSITION[2] - target[2],
+    ];
+    const distance = Math.hypot(offset[0], offset[1], offset[2]);
+    const back = offset.map((value) => value / distance);
+
+    // Dolly back then forward: net zero after frame 299.
+    const dolly = Q19_DOLLY_STEP * (ramp(120) - ramp(240));
+    // Orbit left then right about the target's vertical axis: net zero after 539.
+    const yaw = Q19_ORBIT_STEP * (ramp(360) - ramp(480));
+    const cos = Math.cos(yaw);
+    const sin = Math.sin(yaw);
+    const ox = offset[0] + back[0] * dolly;
+    const oz = offset[2] + back[2] * dolly;
+    const oy = offset[1] + back[1] * dolly;
+    const rotated = [ox * cos - oz * sin, oy, ox * sin + oz * cos];
+    // Slide: camera and target translate together, perpendicular to the view.
+    const side = [back[2], 0, -back[0]];
+    const sideNorm = Math.hypot(side[0], side[2]);
+    const slide = Q19_SLIDE_STEP * ramp(600);
+    const shift = [(side[0] / sideNorm) * slide, 0, (side[2] / sideNorm) * slide];
+    const cameraTarget = [target[0] + shift[0], target[1], target[2] + shift[2]] as const;
+    const cameraPosition = [
+        cameraTarget[0] + rotated[0],
+        cameraTarget[1] + rotated[1],
+        cameraTarget[2] + rotated[2],
+    ] as const;
+    // Scene recedes then returns with the camera still: the same image motion
+    // as a dolly, but carried by object velocity instead of the camera.
+    const recede = Q19_DOLLY_STEP * (ramp(720) - ramp(840));
+    const sceneOffset = [-back[0] * recede, -back[1] * recede, -back[2] * recede] as const;
+    return { ...state(frame, cameraPosition, cameraTarget), sceneOffset, backdrop: true };
+}
+
 const SCENARIOS: Record<BenchmarkScenarioId, BenchmarkScenarioDefinition> = {
     Q0: {
         id: 'Q0',
@@ -535,6 +601,18 @@ const SCENARIOS: Record<BenchmarkScenarioId, BenchmarkScenarioDefinition> = {
         subruns: [],
         unsupported: null,
         frame: q18,
+    },
+    Q19: {
+        id: 'Q19',
+        name: 'receding-disocclusion',
+        // Capture-only: measure with scripts/measure-receding-disocclusion.mjs.
+        endFrame: 959,
+        captures: ['0', '119', '121', '179', '241', '299', '361', '419', '601', '721', '779'],
+        debugViews: ['final', 'motion-vectors', 'disocclusion', 'accumulation-age'],
+        rois: { full: [0, 0, 1, 1] },
+        subruns: [],
+        unsupported: null,
+        frame: q19,
     },
 };
 

@@ -40,9 +40,10 @@ controls.target.copy(LAYOUT.cameraTarget);
 // Left-drag slides the camera sideways (screen-space pan), right-drag orbits.
 // A sideways move keeps every surface at the same view depth and only shifts
 // near things against far ones, so disocclusion shows exactly what it is for:
-// the slivers of wall uncovered beside each wire. (An orbit also changes view
-// depth, which the cross-frame depth test reads as disocclusion too — see the
-// narration's disocclusion step.) The wheel drives the magnifier instead.
+// the slivers of wall uncovered beside each wire. (An orbit or dolly changes
+// view depth too; the depth clip compares same-frame depths, so that alone
+// never reads as disocclusion — see the narration's disocclusion step.) The
+// wheel drives the magnifier.
 controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: null, RIGHT: THREE.MOUSE.ROTATE };
 controls.screenSpacePanning = true;
 controls.enableZoom = false;

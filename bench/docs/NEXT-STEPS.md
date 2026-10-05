@@ -963,6 +963,8 @@ Reading it:
   cross-frame-gather divergence from FSR's same-frame scatter (CLAUDE.md, "depth separation"
   landmine), filed as [#54](https://github.com/pmndrs/upscaler/issues/54) for
   `reconstruct.ts`; the same dashes show on #22's thin bars.
+  **Resolved by §15 (2026-10-05):** the same-frame scatter reads 0 % disocclusion on
+  every emitter group.
 - **Shading change fires on 12–65 % of frames over black** (block means swing with the
   jitter phase) — [#22](https://github.com/pmndrs/upscaler/issues/22). Over texture it
   stays under 17 % on the discs.
@@ -1524,11 +1526,97 @@ row's A/B was taken with the candidate identity against the frozen E00 baseline.
 adoption, `baseline` runs the memory, so time `shading-frame-pair-v1` against it for
 the reverse comparison.
 
+## 15. Depth clip against a reconstructed previous depth — DONE (2026-10-05, issue #67)
+
+**Problem.** The fused cross-frame depth clip compared this frame's dilated view depth
+with last frame's at the reprojected position. Those depths come from two camera
+positions, so a camera moving away from a surface (dolly-out, the receding side of an
+orbit) reads as separation: 97% of a frontal wall lost its history on a 0.3-unit
+dolly-out; the tolerance is ~0.5% of depth per frame at 960×540. Objects receding from
+a still camera trip it too (velocity carries only screen-space xy).
+
+**Options built and measured** (ratio 2, 1920×1080, Apple Metal-3, ABBA vs production;
+worktree clocks read ~2.6× slow — see CLAUDE.md — so repo-clock estimates are in
+brackets):
+
+| form | reconstruct-stage Δ | camera motion | object depth motion |
+| --- | --- | --- | --- |
+| cross-frame (pre-#67, `reconstruct-cross-frame-v1`) | — (≈90 µs here, 35 µs at repo clocks) | ✗ | ✗ |
+| camera-compensated (`reconstruct-camera-v1`): z row of `prevView · currentWorld` + unprojection in a 32-byte side uniform; far-plane texels excluded | +1.5 µs (noise) | ✓ | ✗ |
+| two passes, no scatter (control) | +31 µs [~+12 µs] | ✗ | ✗ |
+| scatter, separate clear pass | +41 µs [~+16 µs]: clear 24 µs, atomics ~13 µs, split ~31 µs, clip −23 µs vs the control | ✓ | ✓ |
+| **scatter, ping-pong clear (adopted)** | **+30 µs [~+12 µs]: ~2% of upscaler compute, ~0.07% of a 16.7 ms frame** | ✓ | ✓ |
+
+Whole-pipeline totals were noise-dominated (other GPU tenants; noise floor ~50%), but
+every per-repetition reconstruct-stage delta kept its sign. The parity program's
+"+22–30%" was per pass inside a larger candidate bundle (+0.056 ms for that whole bundle
+step). Raw: `bench/results/raw/issue67/` (gitignored; regenerate with
+`node scripts/run-benchmark.mjs --smoke --ratios 2 --blocks 6 --variant baseline --comparison reconstruct-cross-frame-v1`).
+Re-time from the main checkout on a quiet machine before quoting absolutes.
+
+**Quality — Q19** (new: converge, then dolly back/forward 0.1 u/frame, orbit ±0.5°/frame,
+slide, scene receding/approaching under a still camera; interior = 8% margin excluded so
+the border strip entering view does not dominate). Interior mean disocclusion, %:
+
+| segment | cross-frame | camera | scatter (adopted) |
+| --- | --- | --- | --- |
+| still | 0.029 | 0.029 | **0.000** |
+| dolly back | 1.033 | **0.058** | 0.334 |
+| dolly forward | 0.044 | 0.045 | 0.312 |
+| orbit L / R | 0.70 / 0.71 | 0.59 / 0.60 | 1.35 / 1.34 |
+| slide | 0.098 | 0.098 | 0.645 |
+| scene recedes (still camera) | 1.313 | 1.313 | **0.236** |
+
+The scatter's higher dolly-forward / orbit / slide numbers are genuine: continuous
+outlines on the trailing side of every post and sphere, where background was revealed.
+The cross-frame best-tap vote let ~1 px/frame reveals through (one tap always landed on
+the old background). The scatter's residual dolly-back figure is the same kind of
+reveal plus the floor/sky horizon. Q19's back wall sits 23.6 units out, under the
+tolerance at 0.1 u/frame; a faster dolly would reproduce the issue's 97% wall case.
+Regenerate: `node scripts/measure-receding-disocclusion.mjs --variants baseline,reconstruct-cross-frame-v1,reconstruct-camera-v1 --stride 2`.
+
+**The issue's own repro (S4 explainer, converged still frame, one-frame moves through
+`window.__s4`; share of render pixels with disocclusion > 0.5, whole frame / interior
+with an 8% margin excluded).** Before (from the issue): dolly back 0.3 disoccluded 97% of
+the wall, orbit 1° a graded band over ~10% of the frame. After:
+
+| one-frame move | whole frame | interior |
+| --- | --- | --- |
+| still (converged) | 0.00% | 0.00% |
+| dolly back 0.3 | 4.92% | 1.89% |
+| dolly back 0.05 | 0.87% | 0.45% |
+| dolly forward 0.3 | 0.61% | 0.79% |
+| orbit 1° | 2.39% | 2.40% |
+| slide 0.1 | 0.74% | 0.52% |
+
+The wall's interior stays black on every move. What lights up is the border strip a
+dolly-out brings into view, the panel's outline where background is revealed, and slivers
+beside the wires: all genuine. The S4 narration's disocclusion step was rewritten to match.
+
+**Gates.** `measure-convergence.mjs` (40 pairs, `--variant`): Q1 consecutive churn
+0.1083 → 0.1076, phase-locked 0.0268 both; Q12 0.0219 / 0.0302 both; shading change 0%
+firing on all four runs. Q3 disocclusion now outlines the rotating knots and moving
+spheres (the cross-frame form missed most of them); age resets stay confined to trails.
+`verify-packed-guides.mjs` GPU smoke passes (split frames, no monolithic fallback).
+Q17 / #54 (`measure-emitter-retention.mjs --settings '{"autoExposure":false}' --variant <id>`):
+emitter disocclusion 7–34% of frames → 0%; floating emitters over texture roughly double
+their retention with lower flicker (0.5 px L1 0.170 → 0.389; 0.7 px L1 flicker
+0.147 → 0.041). Over black they now behave like decals (1 px L1 retention 0.228 → 0.060,
+flicker 0.134 → 0.049 — the old figure was reset-driven blinking; the clip is the
+binding fader over black, §11). Switch-off: floating emitters now fade like decals
+(e.g. 1 px L1 22.6 → 38.1 frames to < 10%) — the false disocclusion used to clear them
+by accident.
+
+**Open.** Whether the relief widening and the best-tap vote (both cross-frame
+stabilizers) are still needed under the scatter; dropping them would move toward
+upstream's vote. Re-time on a mobile tiler (atomics are architecture-sensitive).
+
 ## Explicitly not planned (measured against)
 
 - Lanczos2/bicubic history filtering (+47% accumulate, no visible win).
 - Farthest depth / motion divergence signals (+30% prepareInputs, outputs unconsumed).
-- Atomic depth scatter as a wholesale replacement for the fused reconstruct pass.
+- ~~Atomic depth scatter as a wholesale replacement for the fused reconstruct pass.~~
+  Adopted 2026-10-05 (§15): the fused form was not camera-invariant (issue #67).
 - T&C as a distinct softer channel — revisit only on user demand with real content.
 - Conditioning-exposure history correction (beyond host pre-exposure): eased
   adaptation keeps the per-frame mismatch under the shading detector's threshold;

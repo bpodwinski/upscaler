@@ -47,7 +47,7 @@ baseline variant — so pick `--variant`/`--comparison` deliberately too.)
 | **block / repetition** | One full A-B-B-A pattern. `--blocks 4` runs four of them. |
 | **warmup** | Frames rendered and thrown away before timing starts, so shader compilation and caches are not in the sample. |
 | **samples** | Timed frames per leg. More samples = tighter medians, longer runs. |
-| **scenario** | A scripted camera/scene animation, `Q0`–`Q18`. See the catalogue below. |
+| **scenario** | A scripted camera/scene animation, `Q0`–`Q19`. See the catalogue below. |
 | **noise floor** | How much the harness disagrees with *itself*. The bar your delta has to clear. |
 
 ---
@@ -166,11 +166,11 @@ work did not change, the rest of the frame got cheaper.
 
 ---
 
-## Scenarios (Q0–Q18)
+## Scenarios (Q0–Q19)
 
 Scripted camera and scene animations, defined in
 `bench/src/benchmark/scenarios.ts`. Performance runs use the default; capture
-runs select Q0–Q11 (the E00 manifest's set) with `--scenarios`. Q12–Q18 are
+runs select Q0–Q11 (the E00 manifest's set) with `--scenarios`. Q12–Q19 are
 capture-only through the `measure-*` scripts (`measure-convergence.mjs
 --scenario <id>` and the scripts named in their rows); `run-benchmark.mjs` drops
 them from `--scenarios` without an error.
@@ -196,6 +196,7 @@ them from `--scenarios` without an error.
 | Q16 | `sparse-wires-empty-background` | Issue #22: fans of sub-texel bars (about 0.5–1 render px at ratio 2, 0.35–0.7 at ratio 3) over an opaque black background, still camera, plus a solid knot as a control. The jitter phase decides whether a bar lands in a texel, so block means swing although nothing changed: the shading-change view must stay black until the fans' light drops to a quarter at frame 300. Measure with `measure-convergence.mjs --scenario Q16 --shading-frames 32` (and `measure-drift-lag.mjs --frames 296:356:2` for the step). |
 | Q17 | `subpixel-emitter-retention` | Issue #51: still camera onto unlit discs of 0.3–1.5 render-px diameter and 0.5 px lines, over black and over a textured backdrop, each floating (depth edge) or as a decal (no depth edge). Measure with `scripts/measure-emitter-retention.mjs` (per-emitter retention vs input coverage, flicker, switch-off ghost) and `measure-convergence.mjs --scenario Q17`. |
 | Q18 | `fine-line-chart` | Still camera square-on to a resolution chart: line-pair bars of 6 → 0.75 render px period at ratio 2 (4 → 0.5 at ratio 3), so they cross the render Nyquist; a Siemens star; flat swatches (the control); a swatch crossed by 0.5 px hairlines. The chart is unmipmapped, so the bars alias differently on every jitter phase and render-space block means swing although nothing changed: the shading-change view must stay black until the light drops to a quarter at frame 300. ROIs per chart region. Measure with `measure-convergence.mjs --scenario Q18 --shading-frames 32 --views final,accumulation-age` (per-ROI firing and accumulation age) and `measure-drift-lag.mjs --scenario Q18 --frames 296:356:2` for the step, and `measure-shading-restart.mjs` for a step right after the detector is re-enabled (`NEXT-STEPS.md` §14). |
+| Q19 | `receding-disocclusion` | Issue #67: converge, then dolly back / forward, orbit left / right, slide, and the scene receding / approaching under a still camera, each followed by a 60-frame hold; a frontal textured wall stands behind the props. A camera-invariant depth clip keeps receding surfaces' history. Measure with `scripts/measure-receding-disocclusion.mjs --variants baseline,reconstruct-cross-frame-v1` (per-segment disocclusion and accumulation age; the interior crop excludes the border strip entering view). |
 
 ---
 
@@ -302,6 +303,7 @@ several runs — or several worktrees — can share a machine without colliding.
 | `measure-exposure-ceiling.mjs` | bench, `http://127.0.0.1:5199` | `--port` (9333) |
 | `measure-emitter-retention.mjs` | bench, `http://127.0.0.1:5199` | `--port` (9333) |
 | `measure-shading-restart.mjs` | bench, `http://127.0.0.1:5199` | `--port` (9333) |
+| `measure-receding-disocclusion.mjs` | bench, `http://127.0.0.1:5199` | `--port` (9333) |
 | `verify-packed-guides.mjs` | its own `vite preview` on `--port` (a free port) | `--cdp-port` (a free port) |
 
 ```bash

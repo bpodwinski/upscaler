@@ -38,7 +38,7 @@ import { EASU_SHADER } from './shaders/easu';
 import { GENERATE_REACTIVE_SHADER } from './shaders/generateReactive';
 import { LUMINANCE_PYRAMID_SHADER } from './shaders/luminancePyramid';
 import { RCAS_SHADER } from './shaders/rcas';
-import { RECONSTRUCT_SHADER } from './shaders/reconstruct';
+import { DEPTH_CLIP_SHADER, RECONSTRUCT_SHADER } from './shaders/reconstruct';
 import { SHADING_CHANGE_SHADER } from './shaders/shadingChange';
 import {
     DebugView,
@@ -75,6 +75,10 @@ type UpscalerInternalOptions = UpscalerOptions & {
     // memory at 9 / 10 included) — the NEXT-STEPS §14 candidates and the
     // frozen pre-memory identity in bench/src/candidates/shaders/shadingChangeRange.ts.
     _shadingChangeShader?: string;
+    // Bench-only: a single-pass cross-frame reconstruct (the frozen pre-#67
+    // form, or its camera-compensated variant — shaders/reconstructVariants.ts)
+    // in place of the production scatter + depth clip pair.
+    _crossFrameReconstruct?: { shader: string; cameraCompensated: boolean };
 };
 
 /**
@@ -84,9 +88,9 @@ type UpscalerInternalOptions = UpscalerOptions & {
  * Pipelines:
  * - `bilinear` — blit (comparison baseline / native passthrough)
  * - `spatial`  — EASU → RCAS (FSR1)
- * - `temporal` — reconstruct (fused dilate + depth clip) → exposure →
+ * - `temporal` — reconstruct (dilate + depth scatter) → depth clip → exposure →
  *   shading change → accumulate → RCAS (FSR2/3-style)
- * - `guides`   — reconstruct only (see {@link dispatchGuides})
+ * - `guides`   — reconstruct + depth clip only (see {@link dispatchGuides})
  *
  * Usage per frame (temporal path):
  * ```ts
@@ -131,6 +135,7 @@ export class Upscaler {
     private readonly _rcasShader: string;
     private readonly _spatialRcasShader: string | null;
     private readonly _shadingChangeShader: string | null;
+    private readonly _crossFrameReconstruct: { shader: string; cameraCompensated: boolean } | null;
     private _device!: GPUDevice;
     private _constants!: ConstantsBuffer;
     // Null while GPU timing is off: nothing is allocated, nothing attached.
@@ -143,6 +148,14 @@ export class Upscaler {
     private _rcasPass!: ComputePass;
     private _spatialRcasPass!: ComputePass;
     private _reconstructPass!: ComputePass;
+    private _depthClipPass!: ComputePass;
+    // Bench-only `camera` identity state (unused in production).
+    private _reprojectBuffer: GPUBuffer | null = null;
+    private readonly _reprojectData = new Float32Array(8);
+    private readonly _prevViewMatrix = new Matrix4();
+    private readonly _relativeView = new Matrix4();
+    private _hasPrevView = false;
+    private _frameCamera: JitterableCamera | null = null;
     private _accumulatePass!: ComputePass;
     private _exposurePass!: ComputePass;
     private _generateReactivePass!: ComputePass;
@@ -177,6 +190,10 @@ export class Upscaler {
     // b = shading-change age, a = resolved alpha), ping-ponged with history.
     private _locks: [GPUTexture, GPUTexture] | null = null;
     private _dilatedDepth: [GPUTexture, GPUTexture] | null = null;
+    // Reconstructed previous depth (u32 = f32 bits), ping-ponged: one is
+    // scattered into while the depth clip empties the other for next frame.
+    private _reconstructedDepth: [GPUBuffer, GPUBuffer] | null = null;
+    private _scatterIndex = 0;
     private _dilatedMotion: GPUTexture | null = null;
     private _masks: GPUTexture | null = null;
     private _easuOutput: GPUTexture | null = null;
@@ -243,6 +260,7 @@ export class Upscaler {
         this._rcasShader = options._rcasShader ?? RCAS_SHADER;
         this._spatialRcasShader = options._spatialRcasShader ?? null;
         this._shadingChangeShader = options._shadingChangeShader ?? null;
+        this._crossFrameReconstruct = options._crossFrameReconstruct ?? null;
     }
 
     /**
@@ -269,7 +287,23 @@ export class Upscaler {
             this._spatialRcasShader === null
                 ? this._rcasPass
                 : new ComputePass(device, 'rcas', this._spatialRcasShader);
-        this._reconstructPass = new ComputePass(device, 'reconstruct', RECONSTRUCT_SHADER);
+        if (this._crossFrameReconstruct) {
+            this._reconstructPass = new ComputePass(
+                device,
+                'reconstruct',
+                this._crossFrameReconstruct.shader,
+            );
+            if (this._crossFrameReconstruct.cameraCompensated) {
+                this._reprojectBuffer = device.createBuffer({
+                    label: 'upscale-reproject',
+                    size: 32,
+                    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+                });
+            }
+        } else {
+            this._reconstructPass = new ComputePass(device, 'reconstruct', RECONSTRUCT_SHADER);
+            this._depthClipPass = new ComputePass(device, 'depth-clip', DEPTH_CLIP_SHADER);
+        }
         this._accumulatePass = new ComputePass(device, 'accumulate', ACCUMULATE_SHADER, {
             shaderKey: 'baseline:accumulate',
             assembledChunks: [],
@@ -654,6 +688,7 @@ export class Upscaler {
     dispose(): void {
         this._destroyTextures();
         this._constants?.dispose();
+        this._reprojectBuffer?.destroy();
         this._timer?.dispose();
         this._timer = null;
         this._initialized = false;
@@ -736,8 +771,9 @@ export class Upscaler {
         this._encodeLate(encoder, colorGPU, inputs);
     }
 
-    // Early stage — the reconstruct pass (fused dilate + depth clip). Produces
-    // the signal-agnostic geometry guides: dilated depth/motion, disocclusion.
+    // Early stage — reconstruct (dilate + previous-depth scatter) then depth
+    // clip. Produces the signal-agnostic geometry guides: dilated depth/motion,
+    // disocclusion.
     private _encodeGuides(encoder: GPUCommandEncoder, inputs: GuideDispatchInputs): void {
         const depthGPU = getGPUTexture(this._renderer, inputs.depth);
         const velocityGPU = getGPUTexture(this._renderer, inputs.velocity);
@@ -751,10 +787,66 @@ export class Upscaler {
         const depthCur = this._dilatedDepth![this._depthIndex];
         const depthPrev = this._dilatedDepth![1 - this._depthIndex];
         this._latestDepthWrite = this._depthIndex;
+        const w = this._renderWidth;
+        const h = this._renderHeight;
 
-        //* Reconstruct — dilate (nearest-depth motion/depth over 3×3) + depth
-        //* clip (disocclusion vs last frame's dilated depth) fused into one pass.
+        if (this._crossFrameReconstruct) {
+            this._encodeCrossFrameReconstruct(encoder, depthView, velocityGPU, depthPrev, depthCur);
+            return;
+        }
+
+        // The guides stage is encoded exactly once per frame (monolithic or
+        // split), so the scatter buffers flip here: this frame scatters into
+        // the one last frame's depth clip emptied.
+        this._scatterIndex = 1 - this._scatterIndex;
+        const scatterBuffer = this._reconstructedDepth![this._scatterIndex];
+        const nextScatterBuffer = this._reconstructedDepth![1 - this._scatterIndex];
+
+        //* Reconstruct — dilate (nearest-depth motion/depth over 3×3) and
+        //* scatter this frame's depth to each pixel's previous position.
         const reconstructBindGroup = this._reconstructPass.createBindGroup([
+            { buffer: this._constants.buffer },
+            depthView,
+            velocityGPU.createView(),
+            depthCur.createView(),
+            this._dilatedMotion!.createView(),
+            { buffer: scatterBuffer },
+        ]);
+        const reconstructPass = encoder.beginComputePass({
+            label: 'upscale-reconstruct',
+            timestampWrites: this._timer?.passDescriptor('reconstruct'),
+        });
+        this._reconstructPass.dispatch(reconstructPass, reconstructBindGroup, w, h);
+        reconstructPass.end();
+
+        //* Depth Clip — disocclusion against the reconstructed previous depth.
+        // A separate pass: every pixel's scatter must land before any reads.
+        const depthClipBindGroup = this._depthClipPass.createBindGroup([
+            { buffer: this._constants.buffer },
+            depthCur.createView(),
+            this._dilatedMotion!.createView(),
+            { buffer: scatterBuffer },
+            this._masks!.createView(),
+            { buffer: nextScatterBuffer },
+        ]);
+        const depthClipPass = encoder.beginComputePass({
+            label: 'upscale-depth-clip',
+            timestampWrites: this._timer?.passDescriptor('depthClip'),
+        });
+        this._depthClipPass.dispatch(depthClipPass, depthClipBindGroup, w, h);
+        depthClipPass.end();
+    }
+
+    // Bench-only single-pass reconstruct identities (`cross-frame`, `camera`):
+    // dilate + depth clip fused, against last frame's dilated depth.
+    private _encodeCrossFrameReconstruct(
+        encoder: GPUCommandEncoder,
+        depthView: GPUTextureView,
+        velocityGPU: GPUTexture,
+        depthPrev: GPUTexture,
+        depthCur: GPUTexture,
+    ): void {
+        const entries: GPUBindingResource[] = [
             { buffer: this._constants.buffer },
             depthView,
             velocityGPU.createView(),
@@ -762,18 +854,47 @@ export class Upscaler {
             depthCur.createView(),
             this._dilatedMotion!.createView(),
             this._masks!.createView(),
-        ]);
-        const reconstructPass = encoder.beginComputePass({
+        ];
+        if (this._reprojectBuffer) {
+            this._writeReproject();
+            entries.push({ buffer: this._reprojectBuffer! });
+        }
+        const bindGroup = this._reconstructPass.createBindGroup(entries);
+        const pass = encoder.beginComputePass({
             label: 'upscale-reconstruct',
             timestampWrites: this._timer?.passDescriptor('reconstruct'),
         });
-        this._reconstructPass.dispatch(
-            reconstructPass,
-            reconstructBindGroup,
-            this._renderWidth,
-            this._renderHeight,
-        );
-        reconstructPass.end();
+        this._reconstructPass.dispatch(pass, bindGroup, this._renderWidth, this._renderHeight);
+        pass.end();
+    }
+
+    // Stages the `camera` variant's side uniform: the z row of
+    // prevView * currentCameraWorld (current view space → previous view depth)
+    // and the unjittered projection's unprojection terms. Runs once per frame
+    // (the guides stage is encoded exactly once), so the previous view rolls
+    // forward here.
+    private _writeReproject(): void {
+        const camera = this._frameCamera!;
+        camera.updateMatrixWorld();
+        const view = camera.matrixWorldInverse;
+        if (!this._hasPrevView) this._prevViewMatrix.copy(view);
+        const m = this._relativeView.multiplyMatrices(this._prevViewMatrix, camera.matrixWorld).elements;
+        const p = this.unjitteredProjectionMatrix.elements;
+        const perspective = (camera as PerspectiveCamera).isPerspectiveCamera === true;
+        const d = this._reprojectData;
+        // Column-major: row 2 is elements 2, 6, 10, 14. Negated so the dot
+        // product yields a positive view distance.
+        d[0] = -m[2];
+        d[1] = -m[6];
+        d[2] = -m[10];
+        d[3] = -m[14];
+        d[4] = 1 / p[0];
+        d[5] = 1 / p[5];
+        d[6] = perspective ? p[8] : -p[12];
+        d[7] = perspective ? p[9] : -p[13];
+        this._device.queue.writeBuffer(this._reprojectBuffer!, 0, d);
+        this._prevViewMatrix.copy(view);
+        this._hasPrevView = true;
     }
 
     // Late stage — everything that needs the final beauty color: reactive,
@@ -1043,6 +1164,7 @@ export class Upscaler {
         inputs: Omit<DispatchInputs, 'color'>,
         camera: JitterableCamera,
     ): void {
+        this._frameCamera = camera;
         const c = this._constants;
         c.setRenderSize(this._renderWidth, this._renderHeight);
         c.setDisplaySize(this._displayWidth, this._displayHeight);
@@ -1196,6 +1318,22 @@ export class Upscaler {
             );
             this._guideTex.masks = masks.tex;
             this._masks = masks.gpu;
+            // Both start empty (+inf bits); afterwards each frame's depth
+            // clip empties the buffer the next frame scatters into.
+            if (!this._crossFrameReconstruct) {
+                const createEmpty = (index: number): GPUBuffer => {
+                    const buffer = this._device.createBuffer({
+                        label: `upscale-reconstructed-depth-${index}`,
+                        size: rw * rh * 4,
+                        usage: GPUBufferUsage.STORAGE,
+                        mappedAtCreation: true,
+                    });
+                    new Uint32Array(buffer.getMappedRange()).fill(0x7f800000);
+                    buffer.unmap();
+                    return buffer;
+                };
+                this._reconstructedDepth = [createEmpty(0), createEmpty(1)];
+            }
             this._latestDepthWrite = this._depthIndex;
         }
 
@@ -1314,6 +1452,8 @@ export class Upscaler {
         this._history = null;
         this._locks = null;
         this._dilatedDepth = null;
+        this._reconstructedDepth?.forEach((buffer) => buffer.destroy());
+        this._reconstructedDepth = null;
         this._dilatedMotion = null;
         this._masks = null;
         this._exposure = null;
