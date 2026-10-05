@@ -17,6 +17,9 @@ import { assembleShader } from './wgsl';
  *   predicted depth is compared. Fixes camera motion at ~zero cost; object
  *   motion in depth still disoccludes. The measured alternative to the
  *   scatter (bench/docs/NEXT-STEPS.md §15).
+ * - `depth-clip-*` — production's scatter + depth clip with the depth-clip
+ *   pass rebuilt toward upstream FSR2 one piece at a time
+ *   ({@link buildDepthClipVariant}, issue #79; all measured, none adopted).
  */
 
 /**
@@ -337,3 +340,155 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
 `,
 );
 
+
+/** Options for {@link buildDepthClipVariant} (issue #79). */
+export interface DepthClipVariantOptions {
+    /**
+     * `ours`: `1.37e-5 · length(renderSize / 2) · maxDepth` (production).
+     * `upstream`: `1.37e-5 · Kfov · length(renderSize) · maxDepth`, as
+     * ffx_fsr2_depth_clip.h actually computes it — its `fHalfViewportWidth` is
+     * the full diagonal, and `Kfov` = |corner| / |center| of the view plane.
+     */
+    tolerance: 'ours' | 'upstream';
+    /** Widen the tolerance by the 3×3 depth relief (production). */
+    relief: boolean;
+    /**
+     * `best-tap`: max confidence over the footprint (production).
+     * `upstream`: weighted mean over the positive-separation taps of
+     * `saturate(required / difference)^power`, power 1 → 3 with render size.
+     */
+    vote: 'best-tap' | 'upstream';
+    /**
+     * Upstream's `EvaluateSurface`: no disocclusion where the reconstructed
+     * depth falls monotonically by > 1% per texel down the column (a plane
+     * receding toward the horizon) — upstream's answer to grazing floors.
+     */
+    surfaceCheck: boolean;
+}
+
+/**
+ * Bench-only depth-clip variants for issue #79: production's
+ * `DEPTH_CLIP_SHADER` with the cross-frame-era stabilizers (relief widening,
+ * best-tap vote) and the tolerance scale toggled one at a time, up to
+ * upstream's full formulation. Same bindings as production.
+ *
+ * `Kfov` needs the camera's vertical FOV, which the constants UBO doesn't
+ * carry: it is the pipeline override `TAN_HALF_VFOV` (default: the bench
+ * camera's 50°), with the aspect taken from the render size.
+ * @param options - Which pieces to take from upstream
+ * @returns A WGSL module with `DEPTH_CLIP_SHADER`'s bindings
+ */
+export function buildDepthClipVariant(options: DepthClipVariantOptions): string {
+    const required =
+        options.tolerance === 'upstream'
+            ? 'DEPTH_SEPARATION_CONSTANT * kfov() * length(C.renderSize) * max(curDepth, tapDepth)'
+            : 'DEPTH_SEPARATION_CONSTANT * length(C.renderSize * 0.5) * max(curDepth, tapDepth)';
+    const tolerance = options.relief ? `max(${required}, localRelief)` : required;
+    const vote =
+        options.vote === 'upstream'
+            ? /* wgsl */ `
+        if (difference > 0.0) {
+            let ratio = clamp(${tolerance} / max(difference, 1.0e-7), 0.0, 1.0);
+            confidenceSum += pow(ratio, power) * weight;
+            weightSum += weight;
+        }`
+            : /* wgsl */ `
+        var tapConfidence = 1.0;
+        if (difference > 0.0) {
+            tapConfidence = clamp(${tolerance} / max(difference, 1.0e-7), 0.0, 1.0);
+        }
+        surfaceConfidence = max(surfaceConfidence, tapConfidence);
+        sawValidTap = true;`;
+    const resolve =
+        options.vote === 'upstream'
+            ? 'var disocclusion = select(0.0, clamp(1.0 - confidenceSum / weightSum, 0.0, 1.0), weightSum > 0.0);'
+            : 'var disocclusion = select(0.0, clamp(1.0 - surfaceConfidence, 0.0, 1.0), sawValidTap);';
+    const surface = options.surfaceCheck
+        ? /* wgsl */ `
+    // Upstream EvaluateSurface: a column of reconstructed depth falling by
+    // > 1% per texel is a receding plane, not a disocclusion.
+    let d0 = reconstructedAt(center + vec2i(0, -1));
+    let d1 = reconstructedAt(center);
+    let d2 = reconstructedAt(center + vec2i(0, 1));
+    if (((d0 - d1) > (d1 * 0.01)) && ((d1 - d2) > (d2 * 0.01))) { disocclusion = 0.0; }`
+        : '';
+    return assembleShader(
+        WGSL_CONSTANTS,
+        /* wgsl */ `
+@group(0) @binding(1) var dilatedDepth : texture_2d<f32>;
+@group(0) @binding(2) var dilatedMotion : texture_2d<f32>;
+@group(0) @binding(3) var<storage, read> reconstructedDepth : array<u32>;
+@group(0) @binding(4) var maskOutput : texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(5) var<storage, read_write> nextReconstructedDepth : array<u32>;
+
+override TAN_HALF_VFOV : f32 = 0.46630766;
+const DEPTH_SEPARATION_CONSTANT : f32 = 1.37e-5;
+const DEPTH_TAP_WEIGHT_FLOOR : f32 = 6.1e-4;
+const EMPTY_DEPTH : u32 = 0x7f800000u;
+
+// |corner| / |center| of the view plane at any depth.
+fn kfov() -> f32 {
+    let aspect = C.renderSize.x / C.renderSize.y;
+    let t = TAN_HALF_VFOV;
+    return sqrt(1.0 + t * t * (1.0 + aspect * aspect));
+}
+
+fn reconstructedAt(coord : vec2i) -> f32 {
+    let p = clamp(coord, vec2i(0), vec2i(C.renderSize) - 1);
+    return bitcast<f32>(reconstructedDepth[u32(p.y * i32(C.renderSize.x) + p.x)]);
+}
+
+@compute @workgroup_size(8, 8)
+fn main(@builtin(global_invocation_id) gid : vec3u) {
+    if (any(vec2f(gid.xy) >= C.renderSize)) { return; }
+    let center = vec2i(gid.xy);
+    let maxCoord = vec2i(C.renderSize) - 1;
+    let width = i32(C.renderSize.x);
+    nextReconstructedDepth[u32(center.y * width + center.x)] = EMPTY_DEPTH;
+
+    let curDepth = textureLoad(dilatedDepth, center, 0).r;
+    let motion = textureLoad(dilatedMotion, center, 0);
+    let uvDelta = motion.xy;
+    let localRelief = motion.z;
+
+    let uv = (vec2f(gid.xy) + 0.5) * C.renderSizeInv;
+    let prevUV = uv - uvDelta;
+    if (any(prevUV < vec2f(0.0)) || any(prevUV > vec2f(1.0))) {
+        textureStore(maskOutput, gid.xy, vec4f(1.0, 0.0, 0.0, 1.0));
+        return;
+    }
+    let samplePosition = prevUV * C.renderSize - 0.5;
+    let base = vec2i(floor(samplePosition));
+    let fraction = fract(samplePosition);
+    let offsets = array<vec2i, 4>(vec2i(0, 0), vec2i(1, 0), vec2i(0, 1), vec2i(1, 1));
+    let weights = vec4f(
+        (1.0 - fraction.x) * (1.0 - fraction.y),
+        fraction.x * (1.0 - fraction.y),
+        (1.0 - fraction.x) * fraction.y,
+        fraction.x * fraction.y
+    );
+    let power = mix(1.0, 3.0, clamp(length(C.renderSize) / length(vec2f(1920.0, 1080.0)), 0.0, 1.0));
+    var surfaceConfidence = 0.0;
+    var sawValidTap = false;
+    var confidenceSum = 0.0;
+    var weightSum = 0.0;
+    for (var index = 0; index < 4; index++) {
+        let weight = weights[index];
+        if (weight <= DEPTH_TAP_WEIGHT_FLOOR) { continue; }
+        let tapDepth = reconstructedAt(base + offsets[index]);
+        let difference = curDepth - tapDepth;${vote}
+    }
+    ${resolve}${surface}
+    textureStore(maskOutput, gid.xy, vec4f(disocclusion, 0.0, 0.0, 1.0));
+}
+`,
+    );
+}
+
+/** The #79 matrix by bench identity: one change at a time, then all of upstream. */
+export const DEPTH_CLIP_VARIANTS = {
+    'depth-clip-no-relief-v1': { tolerance: 'ours', relief: false, vote: 'best-tap', surfaceCheck: false },
+    'depth-clip-mean-vote-v1': { tolerance: 'ours', relief: true, vote: 'upstream', surfaceCheck: false },
+    'depth-clip-upstream-tolerance-v1': { tolerance: 'upstream', relief: true, vote: 'best-tap', surfaceCheck: false },
+    'depth-clip-upstream-v1': { tolerance: 'upstream', relief: false, vote: 'upstream', surfaceCheck: true },
+} as const satisfies Record<string, DepthClipVariantOptions>;

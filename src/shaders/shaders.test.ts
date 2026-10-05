@@ -30,7 +30,11 @@ import {
     RCAS_TONEMAP_SPACE_SHADER,
 } from './rcas';
 import { DEPTH_CLIP_SHADER, RECONSTRUCT_SHADER } from './reconstruct';
-import { RECONSTRUCT_CROSS_FRAME_SHADER } from './reconstructVariants';
+import {
+    DEPTH_CLIP_VARIANTS,
+    RECONSTRUCT_CROSS_FRAME_SHADER,
+    buildDepthClipVariant,
+} from './reconstructVariants';
 import { SHADING_CHANGE_SHADER } from './shadingChange';
 import { assembleShader } from './wgsl';
 
@@ -681,5 +685,29 @@ describe('reconstructed previous depth (issue #67)', () => {
         // Off-screen pixels return early but must still empty their slot.
         expect(clear).toBeLessThan(body.indexOf('if (any(prevUV'));
         expect(DEPTH_CLIP_SHADER).toMatch(/EMPTY_DEPTH : u32 = 0x7f800000u/);
+    });
+});
+
+describe('depth-clip variants (issue #79)', () => {
+    // Swapped in through Upscaler's _depthClipShader, which binds production's
+    // six entries, so every variant must declare exactly bindings 0–5.
+    it.each(Object.entries(DEPTH_CLIP_VARIANTS))('%s keeps production bindings', (_id, options) => {
+        const source = buildDepthClipVariant(options);
+        const bindings = [...source.matchAll(/@group\(0\) @binding\((\d+)\)/g)].map((match) =>
+            Number(match[1]),
+        );
+        expect(bindings).toEqual([0, 1, 2, 3, 4, 5]);
+        expect(source.match(/@compute/g)).toHaveLength(1);
+        expect(source.match(/struct FsrConstants/g)).toHaveLength(1);
+        // Still empties next frame's slot before the off-screen early return.
+        const body = source.split('fn main')[1] ?? '';
+        expect(body.indexOf('nextReconstructedDepth[')).toBeLessThan(body.indexOf('if (any(prevUV'));
+    });
+
+    it('reads upstream tolerance as the full diagonal times Kfov', () => {
+        const upstream = buildDepthClipVariant(DEPTH_CLIP_VARIANTS['depth-clip-upstream-tolerance-v1']);
+        expect(upstream).toContain('kfov() * length(C.renderSize)');
+        const ours = buildDepthClipVariant(DEPTH_CLIP_VARIANTS['depth-clip-no-relief-v1']);
+        expect(ours).toContain('length(C.renderSize * 0.5)');
     });
 });

@@ -18,7 +18,8 @@
  *     [--label q19] [--url http://127.0.0.1:5199] [--port 9333]
  *
  * Per variant: per-frame mean disocclusion v (whole frame and an interior
- * crop that excludes the border strips), share with v > 0.5, mean
+ * crop that excludes the border strips), share with v > 0.5, frame-to-frame
+ * interior flicker (mean |Δv|, --stride 1 only), mean
  * accumulation age and the share of pixels younger than 0.25, summarized per
  * segment; debug-view and final PNGs at each motion segment's first and middle
  * frame. Writes bench/results/raw/receding/<label>-<ratio>x/.
@@ -66,12 +67,16 @@ const SEGMENTS = [
     { name: 'hold-6', start: 780, end: 839 },
     { name: 'scene-approach', start: 840, end: 899 },
     { name: 'hold-7', start: 900, end: 959 },
+    { name: 'dolly-back-fast', start: 960, end: 979 },
+    { name: 'hold-8', start: 980, end: 1039 },
+    { name: 'dolly-forward-fast', start: 1040, end: 1059 },
+    { name: 'hold-9', start: 1060, end: 1119 },
 ];
-const END_FRAME = 959;
+const END_FRAME = 1119;
 // Frames measured: everything from the end of the convergence window on.
 const FIRST_MEASURED = 100;
 const SNAPSHOT_FRAMES = SEGMENTS.filter((segment) => !/^(still|hold)/.test(segment.name)).flatMap(
-    (segment) => [segment.start + 1, segment.start + 30],
+    (segment) => [segment.start + 1, Math.floor((segment.start + segment.end) / 2)],
 );
 
 //* CLI
@@ -264,6 +269,23 @@ async function captureCanvas(client) {
 // would otherwise dominate the comparison between depth-clip forms.
 const MARGIN = 0.08;
 
+/** Interior mean |Δv| between two consecutive disocclusion captures. */
+function disocclusionFlicker(previous, image) {
+    const x0 = Math.floor(image.width * MARGIN);
+    const x1 = image.width - x0;
+    const y0 = Math.floor(image.height * MARGIN);
+    const y1 = image.height - y0;
+    let sum = 0;
+    let pixels = 0;
+    for (let y = y0; y < y1; y++)
+        for (let x = x0; x < x1; x++) {
+            const index = (y * image.width + x) * image.bytesPerPixel;
+            sum += Math.abs(SRGB_TO_LINEAR[image.raw[index]] - SRGB_TO_LINEAR[previous.raw[index]]);
+            pixels++;
+        }
+    return sum / pixels;
+}
+
 function disocclusionStats(image) {
     let disoccluded = 0;
     let sum = 0;
@@ -311,6 +333,8 @@ async function stepTo(client, frame) {
 async function replay(client, view, variantDirectory, measure) {
     await evaluate(client, `window.__UPSCALER_BENCH__.capture({ frame: ${FIRST_MEASURED}, debugView: '${view}' })`);
     const perFrame = [];
+    let previousImage = null;
+    let previousFrame = -1;
     for (let frame = FIRST_MEASURED; frame <= END_FRAME; frame++) {
         const snapshot = SNAPSHOT_FRAMES.includes(frame);
         if (frame > FIRST_MEASURED) await stepTo(client, frame);
@@ -318,7 +342,16 @@ async function replay(client, view, variantDirectory, measure) {
         if (!snapshot && (frame - FIRST_MEASURED) % stride !== 0) continue;
         const png = await captureCanvas(client);
         if (snapshot) await writeFile(join(variantDirectory, `${view}-f${frame}.png`), png);
-        if (measure && (frame - FIRST_MEASURED) % stride === 0) perFrame.push({ frame, ...measure(decodePng(png)) });
+        if (measure && (frame - FIRST_MEASURED) % stride === 0) {
+            const image = decodePng(png);
+            const entry = { frame, ...measure(image) };
+            // Frame-to-frame flicker needs consecutive captures (--stride 1).
+            if (view === 'disocclusion' && previousImage && previousFrame === frame - 1)
+                entry.flicker = disocclusionFlicker(previousImage, image);
+            previousImage = image;
+            previousFrame = frame;
+            perFrame.push(entry);
+        }
     }
     return perFrame;
 }
@@ -328,9 +361,9 @@ function summarize(perFrame, keys) {
         const frames = perFrame.filter((entry) => entry.frame >= segment.start && entry.frame <= segment.end);
         const result = { segment: segment.name, frames: frames.length };
         for (const key of keys) {
-            const values = frames.map((entry) => entry[key]);
-            result[key] = values.reduce((total, value) => total + value, 0) / Math.max(values.length, 1);
-            result[`${key}Max`] = Math.max(...values);
+            const values = frames.map((entry) => entry[key]).filter((value) => value !== null && value !== undefined);
+            result[key] = values.length ? values.reduce((total, value) => total + value, 0) / values.length : null;
+            result[`${key}Max`] = values.length ? Math.max(...values) : null;
         }
         return result;
     });
@@ -414,12 +447,14 @@ async function main() {
                 disoccluded: entry.disoccluded,
                 disocclusionMean: entry.mean,
                 disocclusionInterior: entry.interior,
+                flicker: entry.flicker ?? null,
                 ageMean: age[index].mean,
                 young: age[index].young,
             }));
             const segments = summarize(perFrame, [
                 'disocclusionMean',
                 'disocclusionInterior',
+                'flicker',
                 'disoccluded',
                 'ageMean',
                 'young',
@@ -427,11 +462,14 @@ async function main() {
             results[variant] = { perFrame, segments };
             await writeFile(join(variantDirectory, 'per-frame.json'), JSON.stringify(perFrame, null, 2));
             console.log(`\n${variant} (${((Date.now() - started) / 1000).toFixed(0)} s)`);
-            console.log('segment          mean v%  interior v%  v>0.5 %   age mean   young%');
+            console.log('segment              mean v%  interior v%  v>0.5 %   flicker%   age mean   young%');
+            // Segments a coarse --stride skips entirely have no values.
+            const pct = (value, digits, width) => (value === null ? '—' : (100 * value).toFixed(digits)).padStart(width);
             for (const row of segments)
                 console.log(
-                    `${row.segment.padEnd(16)} ${(100 * row.disocclusionMean).toFixed(3).padStart(7)}  ${(100 * row.disocclusionInterior).toFixed(3).padStart(11)}` +
-                        `  ${(100 * row.disoccluded).toFixed(3).padStart(7)}   ${row.ageMean.toFixed(3).padStart(8)}   ${(100 * row.young).toFixed(2).padStart(6)}`,
+                    `${row.segment.padEnd(20)} ${pct(row.disocclusionMean, 3, 7)}  ${pct(row.disocclusionInterior, 3, 11)}` +
+                        `  ${pct(row.disoccluded, 3, 7)}   ${pct(row.flicker, 4, 8)}` +
+                        `   ${(row.ageMean === null ? '—' : row.ageMean.toFixed(3)).padStart(8)}   ${pct(row.young, 2, 6)}`,
                 );
         }
 
