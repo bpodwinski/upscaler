@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import process from 'node:process';
 import { describe, expect, test } from 'vitest';
@@ -45,4 +46,16 @@ describe.each(['measure-drift-lag.mjs', 'measure-exposure-ceiling.mjs'])('%s CLI
         expect(result.stderr).toContain('Unknown option --bogus.');
         expect(result.stderr).toContain(`Usage: node scripts/${script}`);
     });
+});
+
+// #75 added --variant to the drift-lag meter; the strict parser must declare it,
+// or every candidate A/B (`--variant shading-frame-pair-v1`) exits with usage.
+test('measure-drift-lag.mjs declares --variant', () => {
+    const result = spawnSync(process.execPath, [join(ROOT, 'scripts', 'measure-drift-lag.mjs'), '--help'], {
+        encoding: 'utf8',
+        timeout: 20_000,
+    });
+    expect(result.stdout).toContain('--variant <id>');
+    const source = readFileSync(join(ROOT, 'scripts', 'measure-drift-lag.mjs'), 'utf8');
+    expect(source).toMatch(/parseCliOrExit\([\s\S]*?'variant'[\s\S]*?USAGE/);
 });

@@ -83,13 +83,14 @@ const USAGE = `Usage: node scripts/measure-drift-lag.mjs [options]
   --width <px> --height <px>   canvas size (default 1280x720)
   --label <name>         output folder prefix (default baseline)
   --settings <json>      capture-setting overrides, e.g. '{"autoExposure":false}'
+  --variant <id>         bench variant identity, e.g. shading-frame-pair-v1 (default: production)
   --url <origin>         bench origin (default ${DEFAULT_BENCH_URL}); if nothing answers,
                          the bench dev server is started on that host + port (--strictPort)
   --port <n>             Chrome DevTools (CDP) port (default 9333)
 Writes to bench/results/raw/drift-lag/<label>-<scenario>-<ratio>x/.`;
 const cli = parseCliOrExit(
     process.argv.slice(2),
-    ['scenario', 'ratio', 'frames', 'keep', 'width', 'height', 'label', 'settings', 'url', 'port'],
+    ['scenario', 'ratio', 'frames', 'keep', 'width', 'height', 'label', 'settings', 'variant', 'url', 'port'],
     USAGE,
 );
 const scenario = cli.scenario ?? 'Q15';
