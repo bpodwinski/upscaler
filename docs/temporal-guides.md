@@ -147,9 +147,9 @@ Only the early products are live. Sampling a late product warns once and reads b
 
 Pass the guides node to `upscale()` and both share **one** upscaler. The guides node
 dispatches the early stage as soon as depth and velocity have rendered, effects in the
-graph consume the products, and the upscale node finishes the split frame. One
-reconstruct pass serves both, and every product, including the late N−1 priors, is
-live:
+graph consume the products, and the upscale node finishes the split frame. The early
+stage (reconstruct + depth clip) runs once and serves both, and every product, including
+the late N−1 priors, is live:
 
 ```ts
 const guides = temporalGuides(depth, velocity, camera);

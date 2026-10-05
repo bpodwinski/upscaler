@@ -245,6 +245,11 @@ function frame(dt: number) {
   texture and resets history, so call it on resize. `renderWidth`, `renderHeight`,
   `displayWidth`, `displayHeight`, `upscaleRatio` and `jitterPhaseCount` report the
   result.
+- **Reading the jitter.** After `beginFrame()`, `upscaler.jitter` is this frame's
+  sub-pixel offset in render pixels and `upscaler.jitterPhase` its index in the cycle,
+  for any pass of your own that must line up with it (the TSL nodes expose the same
+  offset as `node.jitterNode`). Convention and conversions:
+  [Reading the jitter](inputs-and-contracts.md#jitter).
 - **Non-temporal paths** need only `color`: `'spatial'` (EASU + RCAS) and
   `'bilinear'` (a plain resample, the comparison baseline). For them, render a
   `count: 1` target with `mrt({ output })`. A `count: 2` target rendered without the

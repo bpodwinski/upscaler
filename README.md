@@ -27,8 +27,10 @@ path follows the FSR 2/3 architecture ([credits](#credits)). Then the web asked 
 FSR never had to answer, and we measured our way past the port:
 
 - **Leaner than the source.** We rebuilt source-faithful FSR 3.1.5 pass graphs and
-  raced them against ours on the GPU. They cost 6–76% more for no visible gain, so the
-  fused passes stayed. ([Why we diverge](./docs/research/PARITY.md))
+  raced them against ours on the GPU. Where they cost 6–76% more for no visible gain,
+  our fused passes stayed. Where the source's design earned its keep, as with the depth
+  reconstruction that keeps history through camera motion, we adopted it in a leaner
+  form. ([Why we diverge](./docs/research/PARITY.md))
 - **Still images that actually settle.** A standing scene converges and stays put,
   instead of shimmering as each jitter phase re-snaps the history.
 - **HDR-safe sharpening.** Bright highlights stay crisp, and the sharpening is capped
