@@ -29,6 +29,8 @@ the ones for its integration path.
 
 Maintained, for contributors:
 
+- [Contributing](contributing.md): the dev loop, the bench, verifying on a real GPU,
+  and how releases are cut.
 - [Architecture](architecture.md): the layers, the pass graph, color domains and the
   shared constants buffer.
 - [`src/shaders/README.md`](../src/shaders/README.md): the per-pass audit against

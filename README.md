@@ -2,11 +2,54 @@
 
 [![npm](https://img.shields.io/npm/v/@pmndrs/upscaler?color=cb3837&label=npm)](https://www.npmjs.com/package/@pmndrs/upscaler) [![live demos](https://img.shields.io/badge/demos-live-7dd3fc)](https://pmndrs.github.io/upscaler/) [![license](https://img.shields.io/npm/l/@pmndrs/upscaler?color=blue)](./LICENSE)
 
-AMD FidelityFX Super Resolution (FSR) brought to **three.js `WebGPURenderer`** as raw **WGSL compute passes**, with an interactive test bench.
+**Render fewer pixels. Get a sharper image.**
 
-Three ships an official [`FSR1Node`](https://threejs.org/docs/#FSR1Node) — spatial-only upscaling. This package goes further: three's WebGPU renderer already produces every temporal input FSR2/3 needs (depth, per-pixel motion vectors via the `velocity` node, jitterable projections), so we can run a **temporal** upscaler — the architecture behind FSR 2/3, DLSS, and XeSS — which reconstructs detail spatial upscalers can't, and anti-aliases for free.
+`@pmndrs/upscaler` is a temporal upscaler for the web. Render your scene at a fraction of
+its resolution, and it rebuilds the full-resolution frame from the last several,
+recovering detail that no single frame ever had and anti-aliasing it along the way. It's
+the idea behind FSR 2/3, DLSS and XeSS, running in the browser on WebGPU.
 
-> **WebGPU only.** The passes are hand-written WGSL dispatched straight on the renderer's `GPUDevice` — no TSL, no WebGL fallback. This is deliberate: the goal is a performance-first pipeline with sources that read like the FidelityFX originals.
+What you do with the GPU time it saves is up to you: hold your frame rate on a laptop, or
+spend it on GI, reflections and heavier materials that wouldn't fit at native resolution.
+
+```ts
+pipeline.outputNode = upscaleScene(scene, camera);
+```
+
+**▶ [See it live](https://pmndrs.github.io/upscaler/)**: showcases and 16 hands-on
+examples, each one a small, readable integration.
+
+### Built on FSR, grown up on the web
+
+It started as a port of AMD's [FidelityFX Super Resolution](https://gpuopen.com/fidelityfx-superresolution-3/).
+The spatial EASU/RCAS shaders are faithful WGSL ports of AMD's originals, and the temporal
+path follows the FSR 2/3 architecture ([credits](#credits)). Then the web asked questions
+FSR never had to answer, and we measured our way past the port:
+
+- **Leaner than the source.** We rebuilt source-faithful FSR 3.1.5 pass graphs and
+  raced them against ours on the GPU. They cost 6–76% more for no visible gain, so the
+  fused passes stayed. ([Why we diverge](./docs/research/PARITY.md))
+- **Still images that actually settle.** A standing scene converges and stays put,
+  instead of shimmering as each jitter phase re-snaps the history.
+- **HDR-safe sharpening.** Bright highlights stay crisp, and the sharpening is capped
+  so they never blow out into fireflies.
+- **Transparent canvases.** Alpha is upscaled along with color, so the page shows
+  through where it should.
+- **At home in a render pipeline.** A native TSL node makes it one line in three's
+  `RenderPipeline`, and it composes with reduced-resolution SSGI, SSR and GTAO graphs.
+  It also publishes its motion and disocclusion *temporal guides* so your own effects
+  can reuse them instead of recomputing them.
+- **Debuggable by design.** Every stage has a debug view, there's an interactive bench,
+  and the tuning decisions are backed by measurement scripts you can re-run.
+
+### Where it runs
+
+Today it plugs into **three.js `WebGPURenderer`** (r186+). Underneath it's plain WebGPU:
+hand-written WGSL compute passes dispatched on your renderer's `GPUDevice`, with no
+three.js in the shaders. Bringing it to another WebGPU engine means writing an adapter,
+not rewriting the upscaler; that's tracked in
+[#61](https://github.com/pmndrs/upscaler/issues/61). It needs a WebGPU-capable browser,
+and there's no WebGL fallback.
 
 ## Install
 
@@ -119,36 +162,10 @@ Deliberately **not** planned:
   bind-group caching). Each adds correctness risk to a core path with no image-quality
   gain, so they wait until performance is an actual bottleneck on real content.
 
-## Develop
+## Contributing
 
-Clone the repo, then:
-
-```bash
-npm install
-npm run dev        # interactive bench   → http://localhost:5199
-npm run examples   # example gallery      → http://localhost:5300
-npm test           # unit tests (GPU-free)
-npm run typecheck  # tsc --noEmit
-npm run lint       # eslint
-npm run build      # library build → dist/
-```
-
-The bench (in [`bench/`](./bench/README.md)) renders an aliasing-hostile scene and
-lets you flip between native rendering, bilinear upscaling, FSR1 spatial, and FSR3
-temporal, with quality presets, sharpness control, debug views, and per-pass GPU
-timings. The [example gallery](https://pmndrs.github.io/upscaler/) is what's deployed
-to GitHub Pages. CI is GPU-free, so changes to shaders or passes need a real-GPU run;
-see [Debugging](./docs/debugging.md#verifying-on-a-real-gpu). The code layout is in
-[Architecture](./docs/architecture.md).
-
-## Releasing
-
-Merging to `main` never publishes, and releasing needs no local step. Either:
-
-- **Actions → Publish to npm → Run workflow** (`version: auto`): CI computes the next version from [Conventional Commits](https://www.conventionalcommits.org/), commits and tags it on `main`, and publishes, all in one run. `patch`/`minor`/`major`, an explicit `X.Y.Z` and a prerelease `preid` are options; or
-- **Releases → Draft a new release → new tag `vX.Y.Z` on `main` → Publish release**: the tag is the version. CI publishes it, keeps your Release notes, and bumps `main`'s `package.json` afterwards.
-
-Both check that the tag is SemVer and on `main`, publish to npm with OIDC **Trusted Publishing** (no tokens, provenance attached), and create the GitHub Release if it is missing. [GitHub Releases](https://github.com/pmndrs/upscaler/releases) are the changelog. Re-runs, prereleases, the optional local `npm run release` and the one-time npm setup are covered in [Releasing](./docs/releasing.md).
+Bug reports, examples and PRs are welcome. [Contributing](./docs/contributing.md) covers
+the dev loop, the bench, testing on a real GPU, and how releases are cut.
 
 ## References
 
