@@ -39,6 +39,7 @@
  *   node scripts/measure-drift-lag.mjs [--scenario Q15] [--ratio 2]
  *     [--frames 116:379:4] [--width 1280] [--height 720] [--label relax8]
  *     [--settings '{"autoExposure":false}'] [--port 9333]
+ *     [--variant shading-memory-range8]
  *     [--url http://127.0.0.1:5199]
  *
  * --settings is passed to every capture() as its settings override (the same
@@ -95,6 +96,7 @@ const ratio = Number(cli.ratio ?? 2);
 const width = Number(cli.width ?? 1280);
 const height = Number(cli.height ?? 720);
 const label = cli.label ?? 'baseline';
+const variant = typeof cli.variant === 'string' ? cli.variant : null;
 const captureSettings = typeof cli.settings === 'string' ? JSON.parse(cli.settings) : {};
 const port = parsePort(cli.port, '--port') ?? 9333;
 const server = resolveServerUrl(cli.url, DEFAULT_BENCH_URL);
@@ -375,6 +377,7 @@ async function main() {
         url.searchParams.set('ratio', String(ratio));
         url.searchParams.set('width', String(width));
         url.searchParams.set('height', String(height));
+        if (variant) url.searchParams.set('variant', variant);
         await client.call('Page.navigate', { url: url.href });
         for (let attempt = 0; ; attempt++) {
             const ready = await evaluate(client, 'window.__UPSCALER_BENCH__?.ready === true').catch(() => false);
@@ -458,6 +461,7 @@ async function main() {
             width,
             height,
             stillClampRelax: relax,
+            variant,
             settings: captureSettings,
             frames: sampleFrames,
             ghostThreshold: GHOST_THRESHOLD,

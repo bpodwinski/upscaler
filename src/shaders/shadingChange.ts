@@ -22,6 +22,17 @@ import { assembleShader } from './wgsl';
  * variance heuristic, which false-positived on high-frequency content under
  * heavy motion.
  *
+ * Block memory (NEXT-STEPS §14): content past the render Nyquist (fine
+ * line-pair bars, a Siemens star's centre) aliases into patterns larger than a
+ * block, so on a still camera a whole block mean can swing between values it
+ * has already taken on earlier jitter phases — one previous frame cannot tell
+ * that recurrence from a change. Each 4×4 and 8×8 block keeps its last
+ * SHADING_MEMORY_SLOTS raw means (FSR 3.1's "luma instability" idea), and a
+ * mean inside their [min, max] reads as no change, unless this frame's jump
+ * from the previous mean is larger than any jump the memory holds (see
+ * `memoryDistance`). Blocks that moved, were disoccluded or reset restart
+ * their memory, so under motion the detector is unchanged.
+ *
  * Structure (why this diverges from the source's SPD + resolve pass pair): one
  * 8×8 workgroup with a 2×2 render block per thread covers 16×16 render pixels —
  * exactly one 8×8-block (mip2) tile — so every reduction scale is
@@ -41,6 +52,9 @@ import { assembleShader } from './wgsl';
  * - 6: luma history out (r32float storage, render size)
  * - 7: shading-change response out (r32float storage, ceil(render/2))
  * - 8: reconstruct's masks, render size (.r = disocclusion; neutralizes texels)
+ * - 9: block memory in (rgba32uint, ⌈w/4⌉ × (⌈h/4⌉ + ⌈h/8⌉): the 4×4 blocks'
+ *      rows, then the 8×8 blocks' rows; 8 f16 means per texel)
+ * - 10: block memory out (rgba32uint storage, same layout)
  */
 export const SHADING_CHANGE_SHADER = assembleShader(
     WGSL_CONSTANTS,
@@ -54,6 +68,8 @@ export const SHADING_CHANGE_SHADER = assembleShader(
 @group(0) @binding(6) var lumaHistoryOut : texture_storage_2d<r32float, write>;
 @group(0) @binding(7) var shadingChangeOut : texture_storage_2d<r32float, write>;
 @group(0) @binding(8) var masks : texture_2d<f32>;
+@group(0) @binding(9) var blockMemoryIn : texture_2d<u32>;
+@group(0) @binding(10) var blockMemoryOut : texture_storage_2d<rgba32uint, write>;
 
 // Per-thread block state: x = current-luma sum, y = reprojected previous-luma
 // sum, z = current-luma² sum, w = previous-luma² sum (each frame's own
@@ -63,6 +79,9 @@ export const SHADING_CHANGE_SHADER = assembleShader(
 // larger ratio), so their signed mean carries a coherent bias on
 // high-frequency content — measured as a 0.07–0.10 still-scene floor.
 var<workgroup> tileSums : array<vec4f, 64>;
+// 1 where any texel of the thread's 2×2 moved, was disoccluded or reset: the
+// block's memory describes other content and restarts.
+var<workgroup> tileMoving : array<f32, 64>;
 
 // Per-scale base noise floors for the relative difference of block means.
 // Only the 4×4 and 8×8 scales contribute to the response — this is the
@@ -81,6 +100,21 @@ const SHADING_FLOOR_COARSE : f32 = 0.04; // 8×8
 // and go with the jitter phase, and this term keeps it from firing.
 const SHADING_FLOOR_CV : f32 = 0.35;
 
+//* Block memory (NEXT-STEPS §14, measured on Q18).
+// 8 means: 4 left a quarter of the Q18 false positives (0.52 % of the frame vs
+// 0.12 %), because 4 consecutive jitter phases rarely span a block's full
+// alias swing.
+const SHADING_MEMORY_SLOTS : u32 = 8u;
+// The range is trusted only when this frame's jump from the previous mean is
+// at most this × the largest jump between stored means. Alias flicker repeats
+// jumps of its own size; a ramp's are small, so a step right after one (Q9
+// f180) is not hidden inside the ramp's range (without the gate it lost two
+// thirds of its response). At 1.0 a sixth of the false positives come back on
+// Q18 (0.75 % vs 0.12 %) — the newest of 8 jumps is the largest one time in 8.
+const SHADING_MEMORY_JUMP_GAIN : f32 = 1.5;
+// Render-px motion above which a block's stored means describe other content.
+const SHADING_MEMORY_STILL_PX : f32 = 0.05;
+
 // Sums this texel's current luma, the previous frame's luma reprojected to the
 // same world position (jitter-delta compensated; the compared value is clamped
 // into the bilinear footprint's tap range — see below), and both squared.
@@ -88,12 +122,18 @@ const SHADING_FLOOR_CV : f32 = 0.35;
 // (prev = cur), and disoccluded texels are neutralized toward it — their
 // previous luma belongs to another surface, and disocclusion already discards
 // that history downstream.
-fn lumaPair(coord : vec2i, currentLuma : f32, hostRatio : f32, conditioning : f32) -> vec4f {
+fn lumaPair(
+    coord : vec2i,
+    currentLuma : f32,
+    hostRatio : f32,
+    conditioning : f32,
+    motion : vec2f,
+    disocclusion : f32,
+) -> vec4f {
     let currentSq = currentLuma * currentLuma;
     let neutral = vec4f(currentLuma, currentLuma, currentSq, currentSq);
     if (hasFlag(FLAG_RESET)) { return neutral; }
     let uv = (vec2f(coord) + 0.5) * C.renderSizeInv;
-    let motion = textureLoad(dilatedMotion, coord, 0).xy;
     // Off-screen tested on the motion-only reprojection, as in reconstruct.ts:
     // the jitter shift alone must not push border texels out of detection.
     let motionUv = uv - motion;
@@ -124,7 +164,6 @@ fn lumaPair(coord : vec2i, currentLuma : f32, hostRatio : f32, conditioning : f3
     let scale = hostRatio * conditioning;
     let tapMin = min(min(l00, l10), min(l01, l11)) * scale;
     let tapMax = max(max(l00, l10), max(l01, l11)) * scale;
-    let disocclusion = clamp(textureLoad(masks, coord, 0).r, 0.0, 1.0);
     let previousLuma = mix(clamp(currentLuma, tapMin, tapMax), currentLuma, disocclusion);
     // The spread term keeps the interpolated value: it measures last frame's
     // own within-block contrast (issue #22's two-sided floor), which the
@@ -133,6 +172,63 @@ fn lumaPair(coord : vec2i, currentLuma : f32, hostRatio : f32, conditioning : f3
     let reprojected = mix(mix(l00, l10, fraction.x), mix(l01, l11, fraction.x), fraction.y) * scale;
     let previousSq = mix(reprojected * reprojected, currentSq, disocclusion);
     return vec4f(currentLuma, previousLuma, currentSq, previousSq);
+}
+
+// Relative distance of two non-negative values (1 − min/max); 0 for two blacks.
+fn relativeDistance(a : f32, b : f32) -> f32 {
+    let maximum = max(a, b);
+    if (maximum <= 1.0e-8) { return 0.0; }
+    return 1.0 - min(a, b) / maximum;
+}
+
+// Slot i of a block's memory: 8 f16 means, two per word, slot 0 the newest.
+fn memorySlot(words : vec4u, index : u32) -> f32 {
+    let pair = unpack2x16float(words[index / 2u]);
+    return select(pair.x, pair.y, (index & 1u) == 1u);
+}
+
+// How far the block's current mean is from what its memory explains: the
+// distance to the stored means' [min, max], or 1 (memory does not apply, the
+// previous-frame comparison alone decides) when this frame's jump exceeds
+// SHADING_MEMORY_JUMP_GAIN × the largest jump the memory holds. A memory that
+// was zeroed (allocation, or the detector re-enabled) holds no jumps, so it
+// never suppresses anything.
+fn memoryDistance(words : vec4u, current : f32) -> f32 {
+    var lo = 3.0e38;
+    var hi = -3.0e38;
+    var flicker = 0.0;
+    var newer = memorySlot(words, 0u);
+    for (var i = 0u; i < SHADING_MEMORY_SLOTS; i++) {
+        let value = memorySlot(words, i);
+        lo = min(lo, value);
+        hi = max(hi, value);
+        flicker = max(flicker, relativeDistance(newer, value));
+        newer = value;
+    }
+    if (relativeDistance(current, memorySlot(words, 0u)) > SHADING_MEMORY_JUMP_GAIN * flicker) {
+        return 1.0;
+    }
+    return relativeDistance(current, clamp(current, lo, hi));
+}
+
+fn halfBits(value : f32) -> u32 {
+    return pack2x16float(vec2f(min(value, 65000.0), 0.0)) & 0xffffu;
+}
+
+// Pushes the current mean into slot 0 — a 16-bit funnel shift across the four
+// words drops the oldest — or restarts the memory from it.
+fn memoryUpdate(words : vec4u, current : f32, restart : bool) -> vec4u {
+    let bits = halfBits(current);
+    if (restart) {
+        let both = bits | (bits << 16u);
+        return vec4u(both, both, both, both);
+    }
+    return vec4u(
+        (words.x << 16u) | bits,
+        (words.y << 16u) | (words.x >> 16u),
+        (words.z << 16u) | (words.y >> 16u),
+        (words.w << 16u) | (words.z >> 16u),
+    );
 }
 
 // Relative difference of two block means, gated by the scale's base floor
@@ -145,15 +241,15 @@ fn lumaPair(coord : vec2i, currentLuma : f32, hostRatio : f32, conditioning : f3
 // same artefact was most of the still-scene block speckle on Q1/Q12 and the
 // motion false positives on Q4). The between-frame shift is deliberately left
 // out of the spread, so a genuine change on a flat surface does not raise its
-// own floor.
-fn scaleResponse(sums : vec4f, count : f32, floorBase : f32) -> f32 {
+// own floor. The memory distance can only lower the difference.
+fn scaleResponse(sums : vec4f, count : f32, floorBase : f32, memory : f32) -> f32 {
     let maximum = max(sums.x, sums.y);
     if (maximum <= 1.0e-5) { return 0.0; }
     let means = sums.xy / count;
     let variances = max(sums.zw / count - means * means, vec2f(0.0));
     let cv = sqrt(0.5 * (variances.x + variances.y)) / max(0.5 * (means.x + means.y), 1.0e-4);
     let floorValue = floorBase + SHADING_FLOOR_CV * cv;
-    let relative = 1.0 - min(sums.x, sums.y) / maximum;
+    let relative = min(1.0 - min(sums.x, sums.y) / maximum, memory);
     return smoothstep(floorValue, floorValue * 3.0, relative);
 }
 
@@ -169,11 +265,14 @@ fn main(
     let hostPrev = textureLoad(exposurePrevTex, vec2i(0), 0).b;
     let hostRatio = select(1.0, frameInfo.b / hostPrev, hostPrev > 1.0e-4 && frameInfo.b > 1.0e-4);
     let conditioning = max(frameInfo.r, 1.0e-4);
+    // Block memory is kept free of both exposures, so it survives their changes.
+    let memoryScale = 1.0 / (conditioning * select(1.0, frameInfo.b, frameInfo.b > 1.0e-4));
 
     //* Fine Sums + Luma History (2×2 render block per thread)
     let origin = vec2i(gid.xy) * 2;
     let maxCoord = vec2i(C.renderSize) - 1;
     var sums0 = vec4f(0.0);
+    var moving = select(0.0, 1.0, hasFlag(FLAG_RESET));
     for (var y = 0; y < 2; y++) {
         for (var x = 0; x < 2; x++) {
             let coord = clamp(origin + vec2i(x, y), vec2i(0), maxCoord);
@@ -181,10 +280,15 @@ fn main(
             // are applied to both sides of the comparison only.
             let hostLuma = luma(textureLoad(inputColor, coord, 0).rgb);
             textureStore(lumaHistoryOut, origin + vec2i(x, y), vec4f(hostLuma, 0.0, 0.0, 0.0));
-            sums0 += lumaPair(coord, hostLuma * conditioning, hostRatio, conditioning);
+            let motion = textureLoad(dilatedMotion, coord, 0).xy;
+            let disocclusion = clamp(textureLoad(masks, coord, 0).r, 0.0, 1.0);
+            let still = length(motion * C.renderSize) < SHADING_MEMORY_STILL_PX && disocclusion < 0.5;
+            moving = max(moving, select(1.0, 0.0, still));
+            sums0 += lumaPair(coord, hostLuma * conditioning, hostRatio, conditioning, motion, disocclusion);
         }
     }
     tileSums[lidx] = sums0;
+    tileMoving[lidx] = moving;
     workgroupBarrier();
 
     // Grid guards sit AFTER the barrier: every invocation must reach it
@@ -196,24 +300,48 @@ fn main(
     //* Coarse Sums (workgroup-local: 4×4 render per mid, 8×8 per coarse)
     let base1 = (lid.xy / 2u) * 2u;
     var sums1 = vec4f(0.0);
+    var moving1 = 0.0;
     for (var y = 0u; y < 2u; y++) {
         for (var x = 0u; x < 2u; x++) {
-            sums1 += tileSums[(base1.y + y) * 8u + base1.x + x];
+            let index = (base1.y + y) * 8u + base1.x + x;
+            sums1 += tileSums[index];
+            moving1 = max(moving1, tileMoving[index]);
         }
     }
 
     let base2 = (lid.xy / 4u) * 4u;
     var sums2 = vec4f(0.0);
+    var moving2 = 0.0;
     for (var y = 0u; y < 4u; y++) {
         for (var x = 0u; x < 4u; x++) {
-            sums2 += tileSums[(base2.y + y) * 8u + base2.x + x];
+            let index = (base2.y + y) * 8u + base2.x + x;
+            sums2 += tileSums[index];
+            moving2 = max(moving2, tileMoving[index]);
         }
+    }
+
+    //* Block Memory — every thread reads its blocks; one thread per block
+    //* (the block's top-left) advances them. Ping-ponged, so no read races a write.
+    let midRows = i32(ceil(C.renderSize.y / 4.0));
+    let midCoord = vec2i(gid.xy / 2u);
+    let coarseCoord = vec2i(gid.xy / 4u) + vec2i(0, midRows);
+    let midWords = textureLoad(blockMemoryIn, midCoord, 0);
+    let coarseWords = textureLoad(blockMemoryIn, coarseCoord, 0);
+    let midMean = sums1.x / 16.0 * memoryScale;
+    let coarseMean = sums2.x / 64.0 * memoryScale;
+    let midMemory = select(memoryDistance(midWords, midMean), 1.0, moving1 > 0.5);
+    let coarseMemory = select(memoryDistance(coarseWords, coarseMean), 1.0, moving2 > 0.5);
+    if (all((lid.xy & vec2u(1u)) == vec2u(0u))) {
+        textureStore(blockMemoryOut, midCoord, memoryUpdate(midWords, midMean, moving1 > 0.5));
+    }
+    if (all((lid.xy & vec2u(3u)) == vec2u(0u))) {
+        textureStore(blockMemoryOut, coarseCoord, memoryUpdate(coarseWords, coarseMean, moving2 > 0.5));
     }
 
     //* Resolve — strongest floor-gated mean-ratio across the coarse scales.
     let response = max(
-        scaleResponse(sums1, 16.0, SHADING_FLOOR_MID),
-        scaleResponse(sums2, 64.0, SHADING_FLOOR_COARSE),
+        scaleResponse(sums1, 16.0, SHADING_FLOOR_MID, midMemory),
+        scaleResponse(sums2, 64.0, SHADING_FLOOR_COARSE, coarseMemory),
     );
     textureStore(shadingChangeOut, vec2i(gid.xy), vec4f(response, 0.0, 0.0, 1.0));
 }

@@ -78,3 +78,33 @@ describe('Q16 sparse-wires-empty-background', () => {
         expect(q16.debugViews).toEqual(expect.arrayContaining(['shading-change', 'disocclusion']));
     });
 });
+
+describe('Q18 fine-line-chart', () => {
+    const q18 = getBenchmarkScenario('Q18');
+
+    it('holds a still camera on the chart scene, light steady until the step', () => {
+        const first = q18.frame(0);
+        expect(first.scene).toBe('chart');
+        for (const frame of [1, 180, 211, 299, 300, q18.endFrame]) {
+            const state = q18.frame(frame);
+            expect(state.scene).toBe('chart');
+            expect(state.animateScene).toBe(false);
+            expect(state.cameraPosition).toEqual(first.cameraPosition);
+            expect(state.cameraTarget).toEqual(first.cameraTarget);
+        }
+        // Anything the shading-change view shows before 300 is a false positive.
+        expect(q18.frame(299).directionalIntensity).toBe(first.directionalIntensity);
+        expect(q18.frame(300).directionalIntensity).toBeCloseTo(first.directionalIntensity / 4);
+    });
+
+    it('declares the chart regions as ROIs inside the frame', () => {
+        expect(q18.debugViews).toEqual(expect.arrayContaining(['shading-change', 'accumulation-age']));
+        expect(Object.keys(q18.rois)).toEqual(
+            expect.arrayContaining(['bars_vertical', 'bars_horizontal', 'siemens_star', 'flat_swatches']),
+        );
+        for (const [x, y, w, h] of Object.values(q18.rois)) {
+            expect(x + w).toBeLessThanOrEqual(1);
+            expect(y + h).toBeLessThanOrEqual(1);
+        }
+    });
+});

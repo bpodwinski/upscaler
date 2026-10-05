@@ -154,6 +154,15 @@ Two findings from GPU tuning (five documented iterations):
   disoccluded texels neutralized. Since #58 the previous luma is taken per texel as
   the closest value in its reprojected bilinear footprint's tap range, so a difference
   that jitter alone explains reads 0.
+- **One frame of history is not enough past the render Nyquist.** Fine line pairs and a
+  Siemens star centre alias into moiré larger than a block, so a whole block mean flips
+  between values on successive jitter phases with no change in the scene. Each block
+  now remembers its last 8 means and a mean inside their range is not a change (the
+  idea of FSR 3.1's luma-instability pass, at block scale), unless this frame's jump is
+  larger than the jumps the memory holds, which keeps a step right after a ramp
+  detectable. Still-scene firing on the resolution-chart scenario fell from 3.3% to
+  0.12% of the frame with light steps unchanged within 1% (`bench/docs/NEXT-STEPS.md`
+  §14).
 
 **Measured (2026-07-21; #52's pooled spread and #58's footprint clamp were not
 re-timed):** 0.044 ms at ratio 2 vs 0.231 ms for the source-style two-pass candidate

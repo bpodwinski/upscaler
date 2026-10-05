@@ -3,6 +3,10 @@ import type * as THREE from 'three/webgpu';
 import { Upscaler } from '@pmndrs/upscaler';
 import { CandidateUpscaler } from '../candidates/CandidateUpscaler';
 import {
+    buildShadingRecurrenceShader,
+    SHADING_CHANGE_FRAME_PAIR_SHADER,
+} from '../candidates/shaders/shadingChangeRange';
+import {
     RCAS_HOISTED_EXPOSURE_SHADER,
     RCAS_LEGACY_SHADER,
     RCAS_PER_TAP_SHADER,
@@ -173,6 +177,7 @@ function createProductionUpscaler(
     renderer: THREE.WebGPURenderer,
     rcasShader?: string,
     spatialRcasShader?: string,
+    shadingChangeShader?: string,
 ): Upscaler {
     // The bench always times: its HUD and the benchmark protocol read the timer.
     const options = {
@@ -180,6 +185,7 @@ function createProductionUpscaler(
         gpuTiming: true,
         _rcasShader: rcasShader,
         _spatialRcasShader: spatialRcasShader,
+        _shadingChangeShader: shadingChangeShader,
     };
     return new Upscaler(options);
 }
@@ -207,8 +213,12 @@ export class BaselineBenchmarkResolver extends BenchmarkResolverAdapter {
         metadata: BenchmarkVariantMetadata,
         rcasShader?: string,
         spatialRcasShader?: string,
+        shadingChangeShader?: string,
     ) {
-        super(createProductionUpscaler(renderer, rcasShader, spatialRcasShader), metadata);
+        super(
+            createProductionUpscaler(renderer, rcasShader, spatialRcasShader, shadingChangeShader),
+            metadata,
+        );
     }
 }
 
@@ -301,4 +311,42 @@ export function createSourceBundleResolver(
     metadata: BenchmarkVariantMetadata,
 ): BenchmarkResolver {
     return new CandidateBenchmarkResolver(renderer as THREE.WebGPURenderer, metadata);
+}
+
+/** Block-memory shading-change candidates (NEXT-STEPS §14) by identity; `gated8` is production. */
+const SHADING_MEMORY_CANDIDATES = {
+    'shading-memory-range4': { mode: 'range', slots: 4 },
+    'shading-memory-range8': { mode: 'range', slots: 8 },
+    'shading-memory-nearest8': { mode: 'nearest', slots: 8 },
+    'shading-memory-ema': { mode: 'ema', slots: 1 },
+    'shading-memory-gated8-k1': { mode: 'gated', slots: 8, jumpGain: 1 },
+    'shading-memory-gated4': { mode: 'gated', slots: 4, jumpGain: 1.5 },
+} as const;
+
+/**
+ * Creates a shading-change candidate: the baseline identity (legacy temporal
+ * RCAS, so captures compare against `baseline` and the E00 pair) with only the
+ * shading-change pass swapped — for a rejected block-memory form, or for
+ * `shading-frame-pair-v1`, the frozen pre-memory detector.
+ * @param renderer - Initialized three WebGPU renderer
+ * @param metadata - Registry metadata carrying the candidate identity
+ * @returns One candidate resolver instance
+ */
+export function createShadingMemoryResolver(
+    renderer: unknown,
+    metadata: BenchmarkVariantMetadata,
+): BenchmarkResolver {
+    const shader =
+        metadata.id === 'shading-frame-pair-v1'
+            ? SHADING_CHANGE_FRAME_PAIR_SHADER
+            : buildShadingRecurrenceShader(
+                  SHADING_MEMORY_CANDIDATES[metadata.id as keyof typeof SHADING_MEMORY_CANDIDATES],
+              );
+    return new BaselineBenchmarkResolver(
+        renderer as THREE.WebGPURenderer,
+        metadata,
+        RCAS_LEGACY_SHADER,
+        RCAS_SHADER,
+        shader,
+    );
 }
