@@ -54,6 +54,7 @@ export default defineConfig(({ mode }) => {
                           pathtraceralpha: resolve(root, '14-pathtracer-alpha/index.html'),
                           transparentcanvas: resolve(root, '15-transparent-canvas/index.html'),
                           spatialnode: resolve(root, '16-spatial-node/index.html'),
+                          s3howlow: resolve(root, 's3-how-low/index.html'),
                       },
             },
         },

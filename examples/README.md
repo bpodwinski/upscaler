@@ -20,6 +20,7 @@ number so they sort apart from the single-purpose demos.
 
 | # | Showcase | Shows |
 |---|----------|-------|
+| S3 | **How low can you go** (`s3-how-low`) | One log slider takes the render resolution from native to 1/8 per axis (1.6% of the pixels). The wipe is FSR temporal vs bilinear *from the same render resolution* (or vs native), so the difference is reconstruction, not render size; a nearest-neighbour loupe shows both sides pixel for pixel. Pause the orbit to watch it converge, and see where it stops holding up. |
 
 ## The demos
 

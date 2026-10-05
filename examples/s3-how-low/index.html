@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>S3 · How low can you go</title>
+        <style>
+            :root {
+                color-scheme: dark;
+                --text: #cfd8e3;
+                --muted: #8592a3;
+                --accent: #7dd3fc;
+                --panel: rgba(8, 10, 14, 0.84);
+                --line: rgba(255, 255, 255, 0.12);
+            }
+            html,
+            body {
+                margin: 0;
+                height: 100%;
+                overflow: hidden;
+                background: #0b0d10;
+                font: 12px/1.5 ui-monospace, Menlo, monospace;
+                color: var(--text);
+            }
+            canvas {
+                display: block;
+            }
+            .label {
+                position: fixed;
+                top: 12px;
+                padding: 6px 10px;
+                background: var(--panel);
+                border: 1px solid var(--line);
+                border-radius: 7px;
+                pointer-events: none;
+                white-space: nowrap;
+            }
+            #labLeft {
+                left: 12px;
+                color: var(--accent);
+            }
+            #labRight {
+                right: 252px; /* clear of the lil-gui panel */
+            }
+            #scalebar {
+                position: fixed;
+                left: 50%;
+                bottom: 14px;
+                transform: translateX(-50%);
+                width: min(720px, calc(100vw - 32px));
+                box-sizing: border-box;
+                padding: 10px 14px 8px;
+                background: var(--panel);
+                border: 1px solid var(--line);
+                border-radius: 9px;
+                z-index: 6;
+            }
+            #readout {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 2px 14px;
+                align-items: baseline;
+            }
+            #readout .big {
+                font-size: 17px;
+                color: #fff;
+            }
+            #readout .pct {
+                color: var(--accent);
+                font-size: 14px;
+            }
+            #readout .dim {
+                color: var(--muted);
+            }
+            #scale {
+                width: 100%;
+                margin: 8px 0 2px;
+                accent-color: var(--accent);
+            }
+            #ticks {
+                position: relative;
+                height: 18px;
+            }
+            #ticks button {
+                position: absolute;
+                transform: translateX(-50%);
+                padding: 0 3px;
+                background: none;
+                border: 0;
+                color: var(--muted);
+                font: inherit;
+                font-size: 11px;
+                cursor: pointer;
+            }
+            #ticks button:first-child {
+                transform: none;
+            }
+            #ticks button:last-child {
+                transform: translateX(-100%);
+            }
+            #ticks button:hover,
+            #ticks button.on {
+                color: var(--accent);
+            }
+            #hint {
+                margin-top: 4px;
+                padding-top: 6px;
+                border-top: 1px solid var(--line);
+                color: var(--muted);
+                font-size: 11px;
+            }
+            @media (max-width: 640px) {
+                /* Below the folded lil-gui title bar. */
+                #labLeft {
+                    top: 46px;
+                }
+                #labRight {
+                    right: 12px;
+                    top: 82px;
+                }
+                #hint {
+                    display: none;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="label" id="labLeft">◄ FSR temporal</div>
+        <div class="label" id="labRight">bilinear ►</div>
+        <div id="scalebar">
+            <div id="readout"></div>
+            <input id="scale" type="range" min="0" max="1000" step="1" aria-label="render scale" />
+            <div id="ticks"></div>
+            <div id="hint"></div>
+        </div>
+        <script type="module" src="./main.ts"></script>
+    </body>
+</html>
