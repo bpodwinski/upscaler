@@ -75,9 +75,8 @@ let sinceReset = 0;
 let simTime = 0;
 let pendingSteps = 0;
 let dirty = true;
-// Jitters actually applied this cycle, oldest first — read from the camera's
-// view offset between beginFrame/endFrame. The upscaler has no public accessor
-// for the current jitter, but the offset it applies to the camera *is* it.
+// Jitters actually applied this cycle, oldest first (upscaler.jitter, read
+// after each beginFrame — the pure jitter, even under an app view offset).
 const trail: Array<[number, number]> = [];
 let cycle: Array<[number, number]> = [];
 
@@ -150,8 +149,7 @@ function stepFrame(): void {
     poseMover(mover, simTime);
 
     upscaler.beginFrame(camera); // advances + applies the sub-pixel jitter
-    const v = camera.view;
-    const jitter: [number, number] = v?.enabled ? [v.offsetX, v.offsetY] : [0, 0];
+    const jitter: [number, number] = [upscaler.jitter.x, upscaler.jitter.y];
 
     renderer.setMRT(sceneMrt);
     renderer.setRenderTarget(rt);
@@ -267,7 +265,9 @@ function fmt(n: number): string {
 function updateStats(): void {
     const n = upscaler.jitterPhaseCount;
     const [jx, jy] = trail[trail.length - 1] ?? [0, 0];
-    const phase = sinceReset === 0 ? 0 : ((sinceReset - 1) % n) + 1;
+    // Index into the exported sequence: a fresh history starts at phase 1, and
+    // phase 0 closes each cycle (upscaler.jitterPhase).
+    const phase = upscaler.jitterPhase;
     const maxAcc = upscaler.settings.maxAccumulation;
     statsEl.innerHTML =
         `frame        <b>${frame}</b>   (${sinceReset} since reset)\n` +

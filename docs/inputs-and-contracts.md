@@ -110,6 +110,22 @@ and `endFrame(camera)` removes it.
   `jitter: false`) never touch the view offset. three's own `traa()`/`taau()`
   still clear an app offset.
 
+- **Reading the jitter.** `upscaler.jitter` is this frame's offset in render pixels
+  (`[-0.5, 0.5]` per axis), valid from `beginFrame()` until the next one;
+  `upscaler.jitterPrevious` is last frame's, and `upscaler.jitterPhase` its index into
+  `generateJitterSequence(upscaler.jitterPhaseCount)`. Convention: x right, y down, so
+  the sample for render texel `(i, j)` sits at `(i + 0.5 + x, j + 0.5 + y)` in the
+  unjittered image's pixels. As a UV offset that is `(x / renderWidth, y /
+  renderHeight)`, as an NDC offset `(2x / renderWidth, −2y / renderHeight)`. These are
+  the values `beginFrame()` applies and the shaders reconcile history against, so a pass
+  that must match the jitter (an opaque-only render for `reactiveOpaqueColor`, a layer
+  that undoes it, a custom renderer) can read them directly instead of
+  `camera.view`, which also carries any app view offset. All three read `0` when jitter
+  is off or the path isn't `temporal`. `beginFrame()` advances before applying, so a
+  fresh history starts at phase 1 and phase 0 closes each cycle. The objects are reused
+  across reads. In a TSL graph, `upscale()`/`upscaleScene()` nodes expose the same
+  offset as a `vec2` uniform, `node.jitterNode`, refreshed when the render pipeline
+  frame begins.
 - **The input must be re-rendered under the jitter every frame.** Jitter buys
   reconstruction only if the color you dispatch was rendered with this frame's
   offset. If it wasn't (a buffer filled outside the jitter window, a pre-rendered

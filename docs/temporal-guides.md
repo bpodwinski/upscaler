@@ -83,6 +83,10 @@ Rules a consumer must follow:
   textures belong to the upscaler, and `dispose()` releases them.
 - `shadingChange` is only written while `settings.detectShadingChanges` is on, because
   the detector pass isn't dispatched otherwise.
+- **The jitter isn't a guide.** Render-resolution products were sampled under this
+  frame's jitter; read it from `upscaler.jitter` / `jitterPhase` (or an `upscale()`
+  node's `jitterNode`) — see [Jitter](inputs-and-contracts.md#jitter). The `guides`
+  path never jitters, so there it reads `(0, 0)`.
 
 ## Raw split frame
 

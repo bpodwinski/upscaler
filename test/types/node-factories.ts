@@ -6,7 +6,7 @@
 // `NodeObject<unknown>` = `unknown`, so README snippets needed
 // `as unknown as THREE.Node` just to assign `post.outputNode`.
 import * as THREE from 'three/webgpu';
-import { pass, screenUV, smoothstep, vec3, vec4 } from 'three/tsl';
+import { pass, screenUV, smoothstep, vec2, vec3, vec4 } from 'three/tsl';
 
 import {
     QualityMode,
@@ -51,6 +51,10 @@ sceneNode.dispose();
 const guides = temporalGuides(depth, velocity, camera);
 post.outputNode = upscale(color, depth, velocity, camera, { guides });
 
+//* jitterNode (issue #68) — a vec2 uniform that composes into TSL math without a cast.
+const jitterUV = sceneNode.jitterNode.div(vec2(640, 360));
+post.outputNode = vec4(jitterUV, 0, 1);
+
 export type _Checks = [
     Expect<Not<IsAny<ReturnType<typeof upscaleScene>>>>,
     Expect<Not<IsAny<ReturnType<typeof upscale>>>>,
@@ -58,6 +62,7 @@ export type _Checks = [
     Expect<ReturnType<typeof upscaleScene> extends UpscalerNode ? true : false>,
     Expect<ReturnType<typeof upscale> extends THREE.Node<'vec4'> ? true : false>,
     Expect<ReturnType<typeof upscaleSpatial> extends THREE.Node<'vec4'> ? true : false>,
+    Expect<Not<IsAny<typeof jitterUV>>>,
 ];
 
 export { upscaler };

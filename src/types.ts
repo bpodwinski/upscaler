@@ -41,6 +41,17 @@ export enum QualityMode {
 export type UpscalePath = 'bilinear' | 'spatial' | 'temporal' | 'guides';
 
 /**
+ * A sub-pixel jitter offset in render pixels, each axis in `[-0.5, 0.5]`.
+ * x points right and y points down (texel coordinates, top-left origin): the
+ * sample for render texel `(i, j)` sits at `(i + 0.5 + x, j + 0.5 + y)` in the
+ * unjittered image's pixel coordinates. See {@link Upscaler.jitter}.
+ */
+export interface JitterOffset {
+    readonly x: number;
+    readonly y: number;
+}
+
+/**
  * Debug visualization modes rendered by the debug pass instead of the final
  * image. Useful for validating pipeline inputs while integrating.
  */
