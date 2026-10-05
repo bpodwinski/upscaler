@@ -331,7 +331,7 @@ when drawing to the screen; library users may instead continue linear post-proce
   with atomics, then evaluates reconstructed samples with the same viewport- and
   depth-scaled thresholds in a separate pass (weighted mean of positive separations).
 - **Evidence — Measured:** +30 µs per frame in a worktree at ratio 2 (~0.012 ms at
-  repo clocks); the pass split is ≈ all of it, atomics ~free (NEXT-STEPS §13). Bench
+  repo clocks); the pass split is ≈ all of it, atomics ~free (NEXT-STEPS §14). Bench
   Q18 interior disocclusion: dolly-back 1.03% → 0.33%, scene receding 1.31% → 0.24%,
   still 0.029% → 0.000%. Q1/Q12 convergence unchanged; Q3 outlines rotating knots the
   cross-frame form missed; #54's emitter false disocclusion 7–34% → 0% of frames.

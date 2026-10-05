@@ -23,6 +23,7 @@ import { upscale, type Upscaler } from '@pmndrs/upscaler';
 import { bootRenderer, displaySize } from '../shared/boot';
 import { addStudioLighting } from '../shared/props';
 import { addRenderScale, basePercent } from '../shared/ui';
+import { matchPassResolution } from '../shared/matchPassResolution';
 
 //* ⚠ EXPERIMENTAL — NOT part of the FSR3 library. A copy of 09 (which it leaves
 //* untouched) used to explore denoising noisy SSGI ahead of FSR3. None of the
@@ -164,7 +165,7 @@ function configure(): void {
     //* Composite the enabled effects onto the beauty, all at reduced res.
     let rgb = beauty.rgb;
     if (state.ssgi) {
-        const giPass = ssgi(beauty, depth, normal, camera);
+        const giPass = matchPassResolution(ssgi(beauty, depth, normal, camera), scenePass);
         giPass.sliceCount.value = state.ssgiSlices;
         giPass.stepCount.value = state.ssgiSteps;
         // SSGI's rotating temporal pattern requires a true TRAA to resolve;
@@ -183,28 +184,37 @@ function configure(): void {
             //* ALL temporal work. No jitter conflict; the denoiser just lowers the
             //* per-frame variance FSR3 then accumulates. This is the composition a
             //* jittered temporal upscaler actually wants: spatial clean → temporal.
-            const giDenoise = recurrentDenoise(giRaw as never, camera, {
-                depth: depth as never,
-                normal: normal as never,
-                raw: giRaw as never,
-                mode: 'diffuse',
-                accumulate: false,
-            });
+            const giDenoise = matchPassResolution(
+                recurrentDenoise(giRaw as never, camera, {
+                    depth: depth as never,
+                    normal: normal as never,
+                    raw: giRaw as never,
+                    mode: 'diffuse',
+                    accumulate: false,
+                }),
+                scenePass,
+            );
             gi = sw(giDenoise);
         } else if (state.ssgiDenoiser === 'recurrent') {
             //* Full spatiotemporal denoise: reproject along velocity, à-trous +
             //* temporally accumulate, feed the result back as history. Its own
             //* accumulation is what fights FSR3 jitter (see the header KNOWN ISSUE).
-            const giReproj = temporalReproject(giRaw as never, depth as never, normal as never, vel as never, camera, {
-                mode: 'diffuse',
-            });
-            const giDenoise = recurrentDenoise(giReproj as never, camera, {
-                depth: depth as never,
-                normal: normal as never,
-                raw: giRaw as never,
-                mode: 'diffuse',
-                accumulate: true,
-            });
+            const giReproj = matchPassResolution(
+                temporalReproject(giRaw as never, depth as never, normal as never, vel as never, camera, {
+                    mode: 'diffuse',
+                }),
+                scenePass,
+            );
+            const giDenoise = matchPassResolution(
+                recurrentDenoise(giReproj as never, camera, {
+                    depth: depth as never,
+                    normal: normal as never,
+                    raw: giRaw as never,
+                    mode: 'diffuse',
+                    accumulate: true,
+                }),
+                scenePass,
+            );
             giReproj.setHistoryTexture(giDenoise as never);
             gi = sw(giDenoise);
         } else {
@@ -222,7 +232,12 @@ function configure(): void {
         const mtl = diffuseTex.a;
         const rgh = normal.a;
         // three r185 moved SSR's material scalars + camera into an options object.
-        const ssrTex = texNode(ssr(beauty, depth, normal as never, { metalnessNode: mtl, roughnessNode: rgh, camera }));
+        const ssrTex = texNode(
+            matchPassResolution(
+                ssr(beauty, depth, normal as never, { metalnessNode: mtl, roughnessNode: rgh, camera }),
+                scenePass,
+            ),
+        );
         const refl = sw(denoise(ssrTex as never, depth, normal, camera));
         rgb = rgb.add(refl.rgb);
     }

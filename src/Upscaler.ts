@@ -52,8 +52,21 @@ import {
 } from './types';
 
 type JitterableCamera = PerspectiveCamera | OrthographicCamera;
-type UpscalerInternalOptions = {
+
+const EMPTY_TIMINGS: ReadonlyMap<string, number> = new Map();
+
+/** Construction options for {@link Upscaler}. */
+export interface UpscalerOptions {
+    /** The initialized `WebGPURenderer` whose device the passes run on. */
     renderer: WebGPURenderer;
+    /**
+     * Collect per-pass GPU times into {@link Upscaler.gpuTimings}. Defaults to
+     * `false` — a debugging aid with a per-frame cost. See {@link Upscaler.gpuTiming}.
+     */
+    gpuTiming?: boolean;
+}
+
+type UpscalerInternalOptions = UpscalerOptions & {
     _rcasShader?: string;
     // Bench-only: an RCAS for the spatial path that differs from `_rcasShader`
     // (a frozen temporal identity that still runs FSR1 on production RCAS).
@@ -120,7 +133,9 @@ export class Upscaler {
     private readonly _crossFrameReconstruct: { shader: string; cameraCompensated: boolean } | null;
     private _device!: GPUDevice;
     private _constants!: ConstantsBuffer;
-    private _timer!: GpuTimer;
+    // Null while GPU timing is off: nothing is allocated, nothing attached.
+    private _timer: GpuTimer | null = null;
+    private _gpuTiming: boolean;
     private _linearSampler!: GPUSampler;
 
     private _blitPass!: ComputePass;
@@ -225,9 +240,10 @@ export class Upscaler {
     // hasn't. Guards against double-encoding the guides stage.
     private _guidesPending = false;
 
-    constructor(options: { renderer: WebGPURenderer });
+    constructor(options: UpscalerOptions);
     constructor(options: UpscalerInternalOptions) {
         this._renderer = options.renderer;
+        this._gpuTiming = options.gpuTiming ?? false;
         // Any override must declare RCAS's alpha-source binding (4) — every
         // shader in rcas.ts does — because _encodeRcas always binds it.
         this._rcasShader = options._rcasShader ?? RCAS_SHADER;
@@ -243,7 +259,7 @@ export class Upscaler {
         const device = getDevice(this._renderer);
         this._device = device;
         this._constants = new ConstantsBuffer(device);
-        this._timer = new GpuTimer(device);
+        if (this._gpuTiming) this._timer = new GpuTimer(device);
         this._linearSampler = device.createSampler({
             label: 'upscale-linear-clamp',
             magFilter: 'linear',
@@ -304,6 +320,9 @@ export class Upscaler {
     configure(config: UpscalerConfig): void {
         if (!this._initialized) this.init();
 
+        // A new pass graph: samples still in flight from the old one must not
+        // land in gpuTimings after it.
+        this._timer?.reset();
         this._path = config.path ?? 'temporal';
         this._jitterEnabled = config.jitter ?? true;
         this._displayWidth = Math.max(1, Math.floor(config.displayWidth));
@@ -404,9 +423,39 @@ export class Upscaler {
         return this._guidesPending;
     }
 
-    /** Per-pass GPU times (ms) when timestamp queries are supported. */
+    /**
+     * Per-pass GPU times (ms) of the latest timed frame, keyed by pass label.
+     * Holds only the passes that frame ran, so summing it gives the frame's
+     * upscale cost. Empty while {@link gpuTiming} is off, without
+     * `timestamp-query` support, and for the first frame or so after timing
+     * starts.
+     */
     get gpuTimings(): ReadonlyMap<string, number> {
-        return this._timer.timings;
+        return this._timer?.timings ?? EMPTY_TIMINGS;
+    }
+
+    /**
+     * Whether per-pass GPU timing is collected. Off by default: nothing in the
+     * pipeline reads the timings, they exist for profiling. Each timed frame
+     * attaches timestamp writes to every pass, resolves the queries and maps a
+     * readback buffer; a timer holds 8 query sets and 16 buffers. Turning it
+     * off frees all of that and empties {@link gpuTimings}; turning it on
+     * allocates on the spot (or at `init()`), and timings start a frame or so
+     * later.
+     */
+    get gpuTiming(): boolean {
+        return this._gpuTiming;
+    }
+
+    set gpuTiming(enabled: boolean) {
+        if (enabled === this._gpuTiming) return;
+        this._gpuTiming = enabled;
+        if (!this._initialized) return;
+        if (enabled) this._timer = new GpuTimer(this._device);
+        else {
+            this._timer?.dispose();
+            this._timer = null;
+        }
     }
 
     /** Drops all temporal history on the next dispatch (camera cut etc.). */
@@ -495,7 +544,7 @@ export class Upscaler {
         const colorGPU = getGPUTexture(this._renderer, inputs.color);
         this._checkMsaa(colorGPU, 'color');
         const encoder = this._device.createCommandEncoder({ label: 'upscale' });
-        this._timer.beginFrame();
+        this._timer?.beginFrame(this._frameIndex);
 
         switch (this._path) {
             case 'bilinear':
@@ -514,9 +563,9 @@ export class Upscaler {
                 break;
         }
 
-        this._timer.resolve(encoder);
+        this._timer?.resolve(encoder);
         this._device.queue.submit([encoder.finish()]);
-        this._timer.readback();
+        this._timer?.readback();
 
         this._frameIndex++;
         this._pendingReset = false;
@@ -557,11 +606,12 @@ export class Upscaler {
         this._constants.upload();
 
         const encoder = this._device.createCommandEncoder({ label: 'upscale-guides' });
-        this._timer.beginFrame();
+        this._timer?.beginFrame(this._frameIndex);
         this._encodeGuides(encoder, inputs);
-        this._timer.resolve(encoder);
+        this._timer?.resolve(encoder);
         this._device.queue.submit([encoder.finish()]);
-        this._timer.readback();
+        // On the temporal path dispatchUpscale's submit finishes this frame.
+        this._timer?.readback(this._path === 'guides');
 
         if (this._path === 'guides') {
             // The frame ends here — there is no late stage.
@@ -605,11 +655,11 @@ export class Upscaler {
         const colorGPU = getGPUTexture(this._renderer, inputs.color);
         this._checkMsaa(colorGPU, 'color');
         const encoder = this._device.createCommandEncoder({ label: 'upscale-late' });
-        this._timer.beginFrame();
+        this._timer?.beginFrame(this._frameIndex);
         this._encodeLate(encoder, colorGPU, inputs);
-        this._timer.resolve(encoder);
+        this._timer?.resolve(encoder);
         this._device.queue.submit([encoder.finish()]);
-        this._timer.readback();
+        this._timer?.readback();
 
         this._guidesPending = false;
         this._frameIndex++;
@@ -624,6 +674,7 @@ export class Upscaler {
         this._constants?.dispose();
         this._reprojectBuffer?.destroy();
         this._timer?.dispose();
+        this._timer = null;
         this._initialized = false;
     }
 
@@ -649,7 +700,7 @@ export class Upscaler {
         ]);
         const pass = encoder.beginComputePass({
             label: 'upscale-blit',
-            timestampWrites: this._timer.passDescriptor('blit'),
+            timestampWrites: this._timer?.passDescriptor('blit'),
         });
         this._blitPass.dispatch(pass, bindGroup, this._displayWidth, this._displayHeight);
         pass.end();
@@ -664,7 +715,7 @@ export class Upscaler {
         ]);
         const easuPass = encoder.beginComputePass({
             label: 'upscale-easu',
-            timestampWrites: this._timer.passDescriptor('easu'),
+            timestampWrites: this._timer?.passDescriptor('easu'),
         });
         this._easuPass.dispatch(easuPass, easuBindGroup, this._displayWidth, this._displayHeight);
         easuPass.end();
@@ -747,7 +798,7 @@ export class Upscaler {
         ]);
         const reconstructPass = encoder.beginComputePass({
             label: 'upscale-reconstruct',
-            timestampWrites: this._timer.passDescriptor('reconstruct'),
+            timestampWrites: this._timer?.passDescriptor('reconstruct'),
         });
         this._reconstructPass.dispatch(reconstructPass, reconstructBindGroup, w, h);
         reconstructPass.end();
@@ -764,7 +815,7 @@ export class Upscaler {
         ]);
         const depthClipPass = encoder.beginComputePass({
             label: 'upscale-depth-clip',
-            timestampWrites: this._timer.passDescriptor('depthClip'),
+            timestampWrites: this._timer?.passDescriptor('depthClip'),
         });
         this._depthClipPass.dispatch(depthClipPass, depthClipBindGroup, w, h);
         depthClipPass.end();
@@ -795,7 +846,7 @@ export class Upscaler {
         const bindGroup = this._reconstructPass.createBindGroup(entries);
         const pass = encoder.beginComputePass({
             label: 'upscale-reconstruct',
-            timestampWrites: this._timer.passDescriptor('reconstruct'),
+            timestampWrites: this._timer?.passDescriptor('reconstruct'),
         });
         this._reconstructPass.dispatch(pass, bindGroup, this._renderWidth, this._renderHeight);
         pass.end();
@@ -874,7 +925,7 @@ export class Upscaler {
             ]);
             const genPass = encoder.beginComputePass({
                 label: 'upscale-gen-reactive',
-                timestampWrites: this._timer.passDescriptor('genReactive'),
+                timestampWrites: this._timer?.passDescriptor('genReactive'),
             });
             this._generateReactivePass.dispatch(
                 genPass,
@@ -913,7 +964,7 @@ export class Upscaler {
         ]);
         const exposurePass = encoder.beginComputePass({
             label: 'upscale-exposure',
-            timestampWrites: this._timer.passDescriptor('exposure'),
+            timestampWrites: this._timer?.passDescriptor('exposure'),
         });
         // One workgroup performs the whole reduction (see luminancePyramid.ts).
         this._exposurePass.dispatch(exposurePass, exposureBindGroup, 8, 8);
@@ -938,7 +989,7 @@ export class Upscaler {
             ]);
             const shadingPass = encoder.beginComputePass({
                 label: 'upscale-shading-change',
-                timestampWrites: this._timer.passDescriptor('shadingChange'),
+                timestampWrites: this._timer?.passDescriptor('shadingChange'),
             });
             // Half-resolution grid: one thread per 2×2 render block (the pass
             // covers a 16×16 render tile per workgroup — see shadingChange.ts).
@@ -970,7 +1021,7 @@ export class Upscaler {
         ]);
         const accumulatePass = encoder.beginComputePass({
             label: 'upscale-accumulate',
-            timestampWrites: this._timer.passDescriptor('accumulate'),
+            timestampWrites: this._timer?.passDescriptor('accumulate'),
         });
         this._accumulatePass.dispatch(
             accumulatePass,
@@ -996,7 +1047,7 @@ export class Upscaler {
             ]);
             const debugPass = encoder.beginComputePass({
                 label: 'upscale-debug',
-                timestampWrites: this._timer.passDescriptor('output'),
+                timestampWrites: this._timer?.passDescriptor('output'),
             });
             this._debugPass.dispatch(
                 debugPass,
@@ -1039,7 +1090,7 @@ export class Upscaler {
         ]);
         const pass = encoder.beginComputePass({
             label: 'upscale-rcas',
-            timestampWrites: this._timer.passDescriptor('rcas'),
+            timestampWrites: this._timer?.passDescriptor('rcas'),
         });
         rcasPass.dispatch(pass, bindGroup, this._displayWidth, this._displayHeight);
         pass.end();

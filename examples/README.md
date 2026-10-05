@@ -20,6 +20,10 @@ number so they sort apart from the single-purpose demos.
 
 | # | Showcase | Shows |
 |---|----------|-------|
+| S1 | **Reinvest the savings** (`s1-reinvest`) | The same GPU budget spent two ways, wiped by the mouse: upscaled from a reduced render scale with SSGI + SSR, vs native resolution with plain forward lighting. Each side's GPU ms is measured live (three's per-pass timestamps, attributed per side and read as a timeline, each side timed in isolation), and auto-balance bisects the render scale for the finest one whose effects + upscale fit inside native's cost. |
+| S2 | **Raymarched fractal** (`s2-fractal`) | A fullscreen raymarched Mandelbox where every pixel runs a long distance-estimator march (up to 256 steps plus normal, AO and soft-shadow marches), so a 2–3× render scale buys back most of the frame — with measured raymarch/upscale GPU ms and a one-click native comparison. The raymarcher supplies its own hardware depth and camera-reprojection motion vectors and marches the jittered projection, so the temporal path works without a single mesh. |
+| S3 | **How low can you go** (`s3-how-low`) | One log slider takes the render resolution from native to 1/8 per axis (1.6% of the pixels). The wipe is FSR temporal vs bilinear *from the same render resolution* (or vs native), so the difference is reconstruction, not render size; a nearest-neighbour loupe shows both sides pixel for pixel. Pause the orbit to watch it converge, and see where it stops holding up. |
+| S4 | **Watch it converge** (`s4-convergence`) | An interactive explainer on the real temporal pipeline, paused by default: step frames, flip between the jittered input, the output and every debug buffer of the *same* frame (read from `upscaler.guides`), watch the Halton jitter fill a pixel, and compare input vs output in a magnifier. A narrated walk through one frame, in dispatch order. |
 
 ## The demos
 
@@ -60,14 +64,17 @@ base render resolution, with the resulting size + base % shown in the HUD.
 The library already ships real per-pass GPU timing via WebGPU **`timestamp-query`**
 ([`src/internal/GpuTimer.ts`](../src/internal/GpuTimer.ts)) — `upscaler.gpuTimings`
 is a per-pass map of GPU milliseconds (reconstruct / exposure / shadingChange / accumulate / rcas / …),
-surfaced in the bench and `02` HUDs. This is the hard-to-get measurement; a scene
-inspector can't give you per-GPU-pass times. Notes for the DPR demo:
+surfaced in the bench and `02` HUDs. It's **off by default** (it costs GPU time
+every frame), so a demo that reads it opts in with `gpuTiming: true` — the examples
+that show timings do. This is the hard-to-get measurement; a scene inspector can't
+give you per-GPU-pass times. Notes for the DPR demo:
 
 - It times only the **FSR passes**. To show the upscale win you also need the
   **scene-render** GPU time — three's `WebGPURenderer` exposes its own GPU
   timestamps (`renderer.trackTimestamp` / `renderer.info.render.timestamp`, resolved
-  via `renderer.resolveTimestampsAsync()`); combine that with `gpuTimings` for a
-  scene + upscale total to compare against a native render.
+  via `renderer.resolveTimestampsAsync()`; `bootRenderer({ trackTimestamp: true })`
+  turns it on); combine that with `gpuTimings` for a scene + upscale total to
+  compare against a native render.
 - GPU times are noisy frame-to-frame — average over ~30 frames (the bench already
   accumulates) and let it warm up before reading.
 - `timestamp-query` may be absent on some mobile browsers; `GpuTimer` no-ops

@@ -16,7 +16,7 @@ import { assembleShader } from './wgsl';
  *   previous view (relative camera transform, one dot product) and THAT
  *   predicted depth is compared. Fixes camera motion at ~zero cost; object
  *   motion in depth still disoccludes. The measured alternative to the
- *   scatter (bench/docs/NEXT-STEPS.md §13).
+ *   scatter (bench/docs/NEXT-STEPS.md §14).
  */
 
 /**

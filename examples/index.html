@@ -163,6 +163,47 @@
                     rather than to test one feature.
                 </p>
                 <div class="grid">
+                    <a class="card" href="s1-reinvest/">
+                        <div class="num">S1</div>
+                        <div class="title">Reinvest the savings</div>
+                        <div class="desc">
+                            One GPU budget, two ways to spend it: render a quarter of the pixels and
+                            buy SSGI + SSR with the difference, or render every pixel plain. A mouse
+                            wipe compares them; each side's GPU milliseconds are measured live with
+                            timestamp queries, and auto-balance finds the render scale where the
+                            effects fit native's budget.
+                        </div>
+                        <span class="tag">budget</span>
+                    </a>
+                    <a class="card" href="s2-fractal/">
+                        <div class="num">S2</div>
+                        <div class="title">Raymarched fractal</div>
+                        <div class="desc">
+                            A Mandelbox flight where every pixel runs a long raymarch — a 2–3×
+                            render scale turns a slideshow into a smooth framerate. No meshes: the
+                            raymarcher supplies its own depth and motion vectors.
+                        </div>
+                        <span class="tag">per-pixel cost</span>
+                    </a>
+                    <a class="card" href="s3-how-low/">
+                        <div class="num">S3</div>
+                        <div class="title">How low can you go</div>
+                        <div class="desc">
+                            One slider drags the render resolution down to 1/8 per axis — 1.6% of
+                            the pixels. FSR vs bilinear from the same render, with a pixel loupe.
+                        </div>
+                        <span class="tag">stunt</span>
+                    </a>
+                    <a class="card" href="s4-convergence/">
+                        <div class="num">S4</div>
+                        <div class="title">Watch it converge</div>
+                        <div class="desc">
+                            Step the real temporal pipeline one frame at a time: the jittered
+                            low-res input, every debug buffer, the Halton jitter filling the pixel,
+                            and a magnifier where detail appears frame by frame.
+                        </div>
+                        <span class="tag">explainer</span>
+                    </a>
                 </div>
             </section>
             <h2 class="section-head">Examples</h2>

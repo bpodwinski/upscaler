@@ -140,7 +140,7 @@ function configure(): void {
     (spatialNode as unknown as { dispose?(): void } | null)?.dispose?.();
     // `ratio` only seeds the first configure; the node then sizes itself from
     // the input texture it actually receives.
-    spatialNode = upscaleSpatial(input, { ratio });
+    spatialNode = upscaleSpatial(input, { ratio, gpuTiming: true });
     pipeline.outputNode = spatialNode as unknown as THREE.Node;
     pipeline.needsUpdate = true;
 }

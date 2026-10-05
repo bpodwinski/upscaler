@@ -67,7 +67,7 @@ so each depth-clip texel empties its own slot of next frame's buffer — no clea
 Two measured divergences from upstream's vote are kept from the earlier form: the
 tolerance is widened by the 3×3 depth relief (grazing planes), and the best tap wins.
 
-**Measured (issue #67, `bench/docs/NEXT-STEPS.md` §13):** the scatter costs ~0.012 ms
+**Measured (issue #67, `bench/docs/NEXT-STEPS.md` §14):** the scatter costs ~0.012 ms
 per frame at ratio 2 (+30 µs in a worktree, ~2% of upscaler compute). Nearly all of it
 is the pass split itself; the atomics are close to free, and folding the clear into the
 depth clip removed a 24 µs pass. In return:

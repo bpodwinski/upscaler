@@ -181,8 +181,10 @@ function createProductionUpscaler(
     spatialRcasShader?: string,
     crossFrameReconstruct?: CrossFrameReconstruct,
 ): Upscaler {
+    // The bench always times: its HUD and the benchmark protocol read the timer.
     const options = {
         renderer,
+        gpuTiming: true,
         _rcasShader: rcasShader,
         _spatialRcasShader: spatialRcasShader,
         _crossFrameReconstruct: crossFrameReconstruct,

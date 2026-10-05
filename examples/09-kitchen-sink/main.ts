@@ -21,6 +21,7 @@ import { DebugView, upscale, type Upscaler } from '@pmndrs/upscaler';
 import { bootRenderer, displaySize } from '../shared/boot';
 import { addStudioLighting } from '../shared/props';
 import { addRenderScale, basePercent } from '../shared/ui';
+import { matchPassResolution } from '../shared/matchPassResolution';
 
 //* The "kitchen sink": a full screen-space stack — SSGI (indirect diffuse) + SSR
 //* (glossy reflections) — rendered at REDUCED resolution and upscaled to display
@@ -145,7 +146,7 @@ function configure(): void {
     if (state.ssgi) {
         // three r185's SSGINode splits its output into separate AO + GI nodes
         // (getAONode/getGINode) — the old single-texture getTextureNode() is gone.
-        const giPass = ssgi(beauty, depth, normal, camera);
+        const giPass = matchPassResolution(ssgi(beauty, depth, normal, camera), scenePass);
         // The rotating pattern is meant to be integrated by a temporal
         // resolver — FSR3 is one. The toggle A/Bs it against three's static
         // no-TRAA pattern.
@@ -160,7 +161,12 @@ function configure(): void {
         const mtl = diffuseTex.a;
         const rgh = normal.a;
         // three r185 moved SSR's material scalars + camera into an options object.
-        const ssrTex = texNode(ssr(beauty, depth, normal as never, { metalnessNode: mtl, roughnessNode: rgh, camera }));
+        const ssrTex = texNode(
+            matchPassResolution(
+                ssr(beauty, depth, normal as never, { metalnessNode: mtl, roughnessNode: rgh, camera }),
+                scenePass,
+            ),
+        );
         const refl = sw(denoise(ssrTex as never, depth, normal, camera));
         rgb = rgb.add(refl.rgb);
     }

@@ -33,7 +33,8 @@ re-verified on r186.1.
   `init()`. Await `renderer.init()` first.
 - **Browsers:** Chrome/Edge 113+. Other engines work to the extent their WebGPU
   implementation does; the project's GPU verification runs on Chrome.
-- **`timestamp-query`** is optional. Without it, `upscaler.gpuTimings` stays empty
+- **`timestamp-query`** is optional and only used when GPU timing is opted into
+  (`gpuTiming: true`; off by default). Without it, `upscaler.gpuTimings` stays empty
   and nothing else changes. It's often missing on mobile.
 - **Measured hardware.** Performance and quality measurements so far come from one
   adapter family (Apple Metal). Treat the published millisecond figures as indicative

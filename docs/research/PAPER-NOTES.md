@@ -68,7 +68,7 @@ behind moving silhouettes. Production now runs the scatter; with the clear
 folded into the depth clip (ping-pong buffers) it costs ~0.012 ms per frame,
 almost all of it pass-split overhead, not atomics. The "−22–30%" was a
 per-pass figure on a ~0.035 ms pass; the self-referencing property is worth
-far more than it. Evidence: `bench/docs/NEXT-STEPS.md` §13, bench Q18 +
+far more than it. Evidence: `bench/docs/NEXT-STEPS.md` §14, bench Q18 +
 `scripts/measure-receding-disocclusion.mjs`.
 
 **Evidence:** commit `b16274a`; [`src/shaders/reconstruct.ts`](../../src/shaders/reconstruct.ts)

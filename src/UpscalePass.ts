@@ -55,13 +55,15 @@ export class UpscalePass {
      * @param options.shareVelocityMatrix - Set false when several passes share
      *   one renderer and only one should own the global `velocity` node
      *   projection (default true).
+     * @param options.gpuTiming - Collect per-pass GPU times into
+     *   `upscaler.gpuTimings` — see {@link Upscaler.gpuTiming} (default false).
      */
     constructor(
         renderer: THREE.WebGPURenderer,
-        options: { shareVelocityMatrix?: boolean } = {},
+        options: { shareVelocityMatrix?: boolean; gpuTiming?: boolean } = {},
     ) {
         this._renderer = renderer;
-        this.upscaler = new Upscaler({ renderer });
+        this.upscaler = new Upscaler({ renderer, gpuTiming: options.gpuTiming });
         this.upscaler.init();
 
         // Motion vectors must be jitter-free — hand the velocity node the

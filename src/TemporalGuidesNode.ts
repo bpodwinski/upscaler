@@ -14,6 +14,15 @@ type TextureNodeLike = any;
 type GuideName = keyof TemporalGuides;
 type GuideTextureNode = ReturnType<typeof passTexture>;
 
+/** Options for {@link temporalGuides}. */
+export interface TemporalGuidesNodeOptions {
+    /**
+     * Collect per-pass GPU times into `node.upscaler.gpuTimings` — see
+     * {@link Upscaler.gpuTiming}. Defaults to `false`.
+     */
+    gpuTiming?: boolean;
+}
+
 /**
  * The {@link TemporalGuides} bundle as a TSL node for `THREE.RenderPipeline`
  * graphs — the upscaler's frame-property products (dilated motion/depth,
@@ -45,6 +54,7 @@ export class TemporalGuidesNode extends TempNode {
     private readonly _depth: TextureNodeLike;
     private readonly _velocity: TextureNodeLike;
     private readonly _camera: CameraLike;
+    private readonly _gpuTiming: boolean | undefined;
 
     private _upscaler: Upscaler | null = null;
     // Linked = an UpscalerNode adopted our upscaler and owns configuration
@@ -56,12 +66,18 @@ export class TemporalGuidesNode extends TempNode {
     private readonly _size = new Vector2();
     private _lastTime = 0;
 
-    constructor(depthNode: TextureNodeLike, velocityNode: TextureNodeLike, camera: CameraLike) {
+    constructor(
+        depthNode: TextureNodeLike,
+        velocityNode: TextureNodeLike,
+        camera: CameraLike,
+        options: TemporalGuidesNodeOptions = {},
+    ) {
         super('vec4');
         (this as unknown as { updateBeforeType: unknown }).updateBeforeType = NodeUpdateType.FRAME;
         this._depth = depthNode;
         this._velocity = velocityNode;
         this._camera = camera;
+        this._gpuTiming = options.gpuTiming;
     }
 
     /** The underlying upscaler — inspect `.guides`, `.gpuTimings`, etc. */
@@ -96,7 +112,7 @@ export class TemporalGuidesNode extends TempNode {
      */
     _acquireUpscaler(renderer: WebGPURenderer): Upscaler {
         if (!this._upscaler) {
-            this._upscaler = new Upscaler({ renderer });
+            this._upscaler = new Upscaler({ renderer, gpuTiming: this._gpuTiming });
             this._upscaler.init();
         }
         this._linked = true;
@@ -110,7 +126,7 @@ export class TemporalGuidesNode extends TempNode {
             //* Standalone — own a guides-only upscaler. Seeded at the drawing
             //* buffer size; corrected to the depth input's real size in
             //* updateBefore (mirrors UpscalerNode's seed-then-correct flow).
-            this._upscaler = new Upscaler({ renderer });
+            this._upscaler = new Upscaler({ renderer, gpuTiming: this._gpuTiming });
             this._upscaler.init();
             renderer.getDrawingBufferSize(this._size);
             this._configureStandalone(this._size.x, this._size.y);
@@ -260,10 +276,13 @@ export class TemporalGuidesNode extends TempNode {
  * @param depth - Render-res depth texture node (e.g. `pass.getTextureNode('depth')`)
  * @param velocity - Render-res jitter-free velocity texture node
  * @param camera - Scene camera (perspective or orthographic)
+ * @param options - See {@link TemporalGuidesNodeOptions}
  * @returns The guides node — call `.getTextureNode(name)` for the products
  */
 export const temporalGuides = (
     depth: TextureNodeLike,
     velocityNode: TextureNodeLike,
     camera: CameraLike,
-): TemporalGuidesNode => nodeObject(new TemporalGuidesNode(depth, velocityNode, camera)) as TemporalGuidesNode;
+    options: TemporalGuidesNodeOptions = {},
+): TemporalGuidesNode =>
+    nodeObject(new TemporalGuidesNode(depth, velocityNode, camera, options)) as TemporalGuidesNode;

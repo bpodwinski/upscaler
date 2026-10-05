@@ -1,8 +1,8 @@
-export { Upscaler } from './Upscaler';
+export { Upscaler, type UpscalerOptions } from './Upscaler';
 export { MomentsPass, type MomentsPassConfig, type MomentsSpace } from './MomentsPass';
 export { UpscalePass, type UpscalePassConfig } from './UpscalePass';
 export { UpscalerNode, upscale, upscaleSpatial, upscaleScene, type UpscalerNodeOptions } from './UpscalerNode';
-export { TemporalGuidesNode, temporalGuides } from './TemporalGuidesNode';
+export { TemporalGuidesNode, temporalGuides, type TemporalGuidesNodeOptions } from './TemporalGuidesNode';
 export {
     DebugView,
     QualityMode,

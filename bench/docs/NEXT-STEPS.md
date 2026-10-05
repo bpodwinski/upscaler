@@ -963,7 +963,7 @@ Reading it:
   cross-frame-gather divergence from FSR's same-frame scatter (CLAUDE.md, "depth separation"
   landmine), filed as [#54](https://github.com/pmndrs/upscaler/issues/54) for
   `reconstruct.ts`; the same dashes show on #22's thin bars.
-  **Resolved by §13 (2026-10-05):** the same-frame scatter reads 0 % disocclusion on
+  **Resolved by §14 (2026-10-05):** the same-frame scatter reads 0 % disocclusion on
   every emitter group.
 - **Shading change fires on 12–65 % of frames over black** (block means swing with the
   jitter phase) — [#22](https://github.com/pmndrs/upscaler/issues/22). Over texture it
@@ -1260,7 +1260,46 @@ to rebuild them. Drive `Upscaler` with `_rcasShader` set to `RCAS_SHADER` /
 `RCAS_PER_TAP_SHADER` / a main copy, `copyTextureToBuffer` the output, and decode the
 halves.
 
-## 13. Depth clip against a reconstructed previous depth — DONE (2026-10-05, issue #67)
+## 13. GPU timing overhead — DEFAULT OFF, clean measurement PENDING (2026-10-05, issues #69/#70)
+
+**Shipped:** `gpuTiming` (default **off**) on `Upscaler`, `UpscalePass`, the nodes and
+`temporalGuides()`; `upscaler.gpuTiming` toggles at runtime and frees the timer when
+off. The default was decided on design grounds, not on a number: nothing in the
+pipeline reads `gpuTimings`, so a production app should not pay for it. The bench and
+the examples with a timing readout opt in. Same change fixed #69: `gpuTimings` now
+holds only the latest frame's passes (per-frame merge, split frames held until the
+late submit reads back, `configure()` resets the timer).
+
+**Still owed: a clean overhead number.** The timer can't measure itself, so
+`scripts/measure-timer-overhead.mjs` (probe page `bench/timer-overhead.html`) measures
+wall-clock throughput with the GPU saturated, on vs off in ABBA blocks with a noise
+floor. The only runs so far (2026-10-05, Apple Metal-3, 1080p) were taken while two
+other measurement jobs shared the GPU, so they are **indicative, not evidence**:
+on was slower in nearly every block, by roughly 0.1–0.2 ms/frame on dispatch-only
+runs (temporal ratio 2 ≈ +10–15%), and that cost looked about the same for 1 pass
+(bilinear) as for ~6 (temporal) — i.e. mostly a fixed per-frame cost (resolve, copy,
+`mapAsync`), not per-pass. Self-disagreement was up to ±30% on some conditions.
+
+To get real numbers, run on an otherwise idle GPU (no other bench/measure jobs, no
+other headless Chrome), from the main checkout (worktree absolutes read slow — see
+CLAUDE.md):
+
+```bash
+# Headline: overhead of today's timer, plus the A/A control (should read ~0%)
+node scripts/measure-timer-overhead.mjs --attach-only --frames 200 --blocks 24 --inflight 8 \
+  --conditions temporal:2:dispatch,temporal:2:dispatch:none,temporal:2:frame,spatial:2:dispatch,bilinear:2:dispatch
+
+# Where the cost is: per-pass writes only / + resolve+copy / full timer every 8th frame
+node scripts/measure-timer-overhead.mjs --attach-only --frames 200 --blocks 24 --inflight 8 \
+  --conditions temporal:2:dispatch:writes,temporal:2:dispatch:resolve,temporal:2:dispatch:sampled:8
+```
+
+Trust a condition only when the A/A control reads near 0% and its overhead clears the
+reported noise floor. Record the result here. If most of the cost proves fixed per
+frame, `sampled:N` (time every Nth frame) is the candidate for a cheap always-on
+profiling mode; the default stays off either way.
+
+## 14. Depth clip against a reconstructed previous depth — DONE (2026-10-05, issue #67)
 
 **Problem.** The fused cross-frame depth clip compared this frame's dilated view depth
 with last frame's at the reprojected position. Those depths come from two camera
@@ -1309,6 +1348,24 @@ reveal plus the floor/sky horizon. Q18's back wall sits 23.6 units out, under th
 tolerance at 0.1 u/frame; a faster dolly would reproduce the issue's 97% wall case.
 Regenerate: `node scripts/measure-receding-disocclusion.mjs --variants baseline,reconstruct-cross-frame-v1,reconstruct-camera-v1 --stride 2`.
 
+**The issue's own repro (S4 explainer, converged still frame, one-frame moves through
+`window.__s4`; share of render pixels with disocclusion > 0.5, whole frame / interior
+with an 8% margin excluded).** Before (from the issue): dolly back 0.3 disoccluded 97% of
+the wall, orbit 1° a graded band over ~10% of the frame. After:
+
+| one-frame move | whole frame | interior |
+| --- | --- | --- |
+| still (converged) | 0.00% | 0.00% |
+| dolly back 0.3 | 4.92% | 1.89% |
+| dolly back 0.05 | 0.87% | 0.45% |
+| dolly forward 0.3 | 0.61% | 0.79% |
+| orbit 1° | 2.39% | 2.40% |
+| slide 0.1 | 0.74% | 0.52% |
+
+The wall's interior stays black on every move. What lights up is the border strip a
+dolly-out brings into view, the panel's outline where background is revealed, and slivers
+beside the wires: all genuine. The S4 narration's disocclusion step was rewritten to match.
+
 **Gates.** `measure-convergence.mjs` (40 pairs, `--variant`): Q1 consecutive churn
 0.1083 → 0.1076, phase-locked 0.0268 both; Q12 0.0219 / 0.0302 both; shading change 0%
 firing on all four runs. Q3 disocclusion now outlines the rotating knots and moving
@@ -1332,7 +1389,7 @@ upstream's vote. Re-time on a mobile tiler (atomics are architecture-sensitive).
 - Lanczos2/bicubic history filtering (+47% accumulate, no visible win).
 - Farthest depth / motion divergence signals (+30% prepareInputs, outputs unconsumed).
 - ~~Atomic depth scatter as a wholesale replacement for the fused reconstruct pass.~~
-  Adopted 2026-10-05 (§13): the fused form was not camera-invariant (issue #67).
+  Adopted 2026-10-05 (§14): the fused form was not camera-invariant (issue #67).
 - T&C as a distinct softer channel — revisit only on user demand with real content.
 - Conditioning-exposure history correction (beyond host pre-exposure): eased
   adaptation keeps the per-frame mismatch under the shading detector's threshold;
