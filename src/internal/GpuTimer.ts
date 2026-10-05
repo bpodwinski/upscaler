@@ -11,6 +11,7 @@ interface GpuTimerSlot {
     readBuffer: GPUBuffer;
     labels: string[];
     frameTag: number;
+    frame: number;
     sequence: number;
     epoch: number;
     state: 'idle' | 'encoding' | 'pending';
@@ -50,6 +51,9 @@ export class GpuTimer {
     private _status: GpuTimerStatus;
     private _active: GpuTimerSlot | null = null;
     private _results = new Map<string, number>();
+    // The frame whose samples are being collected: a split frame's two submits
+    // land here one at a time and publish together once the last one reads back.
+    private _building: { frame: number; passes: Map<string, number> } | null = null;
     private _samples: GpuTimerFrameSample[] = [];
     private _nextFrameTag: number | null = null;
     private _sequence = 0;
@@ -97,6 +101,7 @@ export class GpuTimer {
                     }),
                     labels: [],
                     frameTag: -1,
+                    frame: -1,
                     sequence: -1,
                     epoch: 0,
                     state: 'idle',
@@ -140,8 +145,14 @@ export class GpuTimer {
         if (authoritative && !this.enabled) throw this._unavailableError();
     }
 
-    /** Starts a new frame without replacing the latest completed interactive result. */
-    beginFrame(): void {
+    /**
+     * Starts timing one submit without replacing the latest completed
+     * interactive result.
+     * @param frame - The caller's frame index. Submits that share it (a split
+     * frame's early and late stage) are reported together in {@link timings};
+     * defaults to a fresh index per submit
+     */
+    beginFrame(frame?: number): void {
         this._active = null;
         this._throwAuthoritativeError();
         if (!this.enabled) {
@@ -160,6 +171,7 @@ export class GpuTimer {
 
         slot.labels = [];
         slot.frameTag = this._nextFrameTag ?? this._sequence;
+        slot.frame = frame ?? this._sequence;
         slot.sequence = this._sequence++;
         slot.epoch = this._epoch;
         slot.state = 'encoding';
@@ -197,8 +209,13 @@ export class GpuTimer {
         encoder.copyBufferToBuffer(slot.resolveBuffer, 0, slot.readBuffer, 0, count * 8);
     }
 
-    /** Kicks off asynchronous readback into the fresh-sample queue. */
-    readback(): void {
+    /**
+     * Kicks off asynchronous readback into the fresh-sample queue.
+     * @param completesFrame - `false` for the early submit of a split frame:
+     * its timings are held until the frame's last submit reads back, so
+     * {@link timings} never shows half a frame
+     */
+    readback(completesFrame = true): void {
         const slot = this._active;
         this._active = null;
         if (!slot) return;
@@ -210,6 +227,7 @@ export class GpuTimer {
 
         const labels = [...slot.labels];
         const frameTag = slot.frameTag;
+        const frame = slot.frame;
         const sequence = slot.sequence;
         const epoch = slot.epoch;
         const authoritative = this._authoritative;
@@ -229,13 +247,7 @@ export class GpuTimer {
                 this._samples.push({ frameTag, sequence, passes });
                 if (sequence <= this._latestCompletedSequence) return;
                 this._latestCompletedSequence = sequence;
-                // Merge (latest value per label) rather than replace: a split
-                // frame (dispatchGuides + dispatchUpscale) is two submits whose
-                // pass sets are disjoint — replacing would drop the early
-                // stage's timings from the interactive readout every frame.
-                const merged = new Map(this._results);
-                for (const pass of passes) merged.set(pass.label, pass.milliseconds);
-                this._results = merged;
+                this._collect(frame, passes, completesFrame);
             })
             .catch((error: unknown) => {
                 // dispose() destroys the buffers mid-map: an expected abort.
@@ -298,6 +310,7 @@ export class GpuTimer {
         this._epoch++;
         this._active = null;
         this._results = new Map();
+        this._building = null;
         this._samples = [];
         this._nextFrameTag = null;
         this._latestCompletedSequence = -1;
@@ -308,9 +321,28 @@ export class GpuTimer {
         }
     }
 
-    /** Latest complete resolved frame, retained for the interactive readout. */
+    /**
+     * Latest complete resolved frame, retained for the interactive readout.
+     * Holds exactly the passes that frame encoded: one that stops running
+     * drops out with the next frame.
+     */
     get timings(): ReadonlyMap<string, number> {
         return this._results;
+    }
+
+    private _collect(
+        frame: number,
+        passes: GpuTimerFrameSample['passes'],
+        completesFrame: boolean,
+    ): void {
+        // Merge only within one frame. A split frame's submits have disjoint
+        // pass sets, so replacing per submit would drop the early stage; but
+        // merging across frames kept a pass's last value forever once it
+        // stopped running (path change, a toggled-off pass) — issue #69.
+        if (!this._building || this._building.frame !== frame)
+            this._building = { frame, passes: new Map() };
+        for (const pass of passes) this._building.passes.set(pass.label, pass.milliseconds);
+        if (completesFrame) this._results = new Map(this._building.passes);
     }
 
     private _throwAuthoritativeError(): void {

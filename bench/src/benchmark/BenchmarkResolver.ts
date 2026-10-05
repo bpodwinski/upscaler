@@ -174,7 +174,13 @@ function createProductionUpscaler(
     rcasShader?: string,
     spatialRcasShader?: string,
 ): Upscaler {
-    const options = { renderer, _rcasShader: rcasShader, _spatialRcasShader: spatialRcasShader };
+    // The bench always times: its HUD and the benchmark protocol read the timer.
+    const options = {
+        renderer,
+        gpuTiming: true,
+        _rcasShader: rcasShader,
+        _spatialRcasShader: spatialRcasShader,
+    };
     return new Upscaler(options);
 }
 

@@ -106,7 +106,8 @@ upscaler.dispatchUpscale({ color: beautyColor, deltaTime }, camera); // + reacti
   `dispatchUpscale()` without a preceding `dispatchGuides()` throws too.
 - Frame-end bookkeeping (ping-pong flips, the history reset) happens once per frame: in
   `dispatch()`, in `dispatchUpscale()`, or, on the `guides` path, in `dispatchGuides()`.
-- `upscaler.gpuTimings` merges both submits' results.
+- `upscaler.gpuTimings` reports both submits together: the early stage's timings are held
+  until `dispatchUpscale()`'s submit reads back, so the map never shows half a frame.
 
 ## Guides-only path
 

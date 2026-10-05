@@ -64,14 +64,17 @@ base render resolution, with the resulting size + base % shown in the HUD.
 The library already ships real per-pass GPU timing via WebGPU **`timestamp-query`**
 ([`src/internal/GpuTimer.ts`](../src/internal/GpuTimer.ts)) — `upscaler.gpuTimings`
 is a per-pass map of GPU milliseconds (reconstruct / exposure / shadingChange / accumulate / rcas / …),
-surfaced in the bench and `02` HUDs. This is the hard-to-get measurement; a scene
-inspector can't give you per-GPU-pass times. Notes for the DPR demo:
+surfaced in the bench and `02` HUDs. It's **off by default** (it costs GPU time
+every frame), so a demo that reads it opts in with `gpuTiming: true` — the examples
+that show timings do. This is the hard-to-get measurement; a scene inspector can't
+give you per-GPU-pass times. Notes for the DPR demo:
 
 - It times only the **FSR passes**. To show the upscale win you also need the
   **scene-render** GPU time — three's `WebGPURenderer` exposes its own GPU
   timestamps (`renderer.trackTimestamp` / `renderer.info.render.timestamp`, resolved
-  via `renderer.resolveTimestampsAsync()`); combine that with `gpuTimings` for a
-  scene + upscale total to compare against a native render.
+  via `renderer.resolveTimestampsAsync()`; `bootRenderer({ trackTimestamp: true })`
+  turns it on); combine that with `gpuTimings` for a scene + upscale total to
+  compare against a native render.
 - GPU times are noisy frame-to-frame — average over ~30 frames (the bench already
   accumulates) and let it warm up before reading.
 - `timestamp-query` may be absent on some mobile browsers; `GpuTimer` no-ops

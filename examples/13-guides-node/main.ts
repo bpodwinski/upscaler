@@ -69,7 +69,7 @@ function configure(): void {
     (guidesNode as unknown as { dispose?(): void } | null)?.dispose?.();
 
     //* The guides node — same depth/velocity/camera as the upscale below.
-    guidesNode = temporalGuides(depth, vel, camera);
+    guidesNode = temporalGuides(depth, vel, camera, { gpuTiming: true });
 
     //* Toy consumer: paint the same-frame disocclusion product into the
     //* pre-upscale color. Any guide-fed effect (SSGI temporal reprojection,

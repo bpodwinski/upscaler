@@ -128,22 +128,91 @@ describe('GpuTimer', () => {
         expect(warn).not.toHaveBeenCalled();
     });
 
-    it('merges per-label results across the two submits of a split frame', async () => {
+    //* Result Bookkeeping (issue #69)
+
+    /** Times one submit of `frame` running `labels`, the way Upscaler encodes one. */
+    function submit(timer: GpuTimer, frame: number, labels: string[], completesFrame = true) {
+        timer.beginFrame(frame);
+        for (const label of labels) timer.passDescriptor(label);
+        timer.resolve(mockEncoder() as unknown as GPUCommandEncoder);
+        timer.readback(completesFrame);
+    }
+
+    it('combines the two submits of a split frame', async () => {
         const { device } = mockDevice();
         const timer = new GpuTimer(device);
         await timer.ready;
 
+        submit(timer, 0, ['reconstruct'], false);
+        submit(timer, 0, ['accumulate']);
+
+        await timer.drain();
+        expect([...timer.timings.keys()].sort()).toEqual(['accumulate', 'reconstruct']);
+    });
+
+    it('holds a split frame back until its last submit reads back', async () => {
+        const { device } = mockDevice();
+        const timer = new GpuTimer(device);
+        await timer.ready;
+
+        submit(timer, 0, ['reconstruct', 'accumulate']);
+        await timer.drain();
+        submit(timer, 1, ['reconstruct'], false);
+        await timer.drain();
+        // Frame 1 is half done: the readout still shows all of frame 0.
+        expect([...timer.timings.keys()]).toEqual(['reconstruct', 'accumulate']);
+        submit(timer, 1, ['rcas']);
+        await timer.drain();
+        expect([...timer.timings.keys()].sort()).toEqual(['rcas', 'reconstruct']);
+    });
+
+    it('drops a label once a later frame no longer runs that pass', async () => {
+        const { device } = mockDevice();
+        const timer = new GpuTimer(device);
+        await timer.ready;
+
+        submit(timer, 0, ['shadingChange', 'accumulate']);
+        await timer.drain();
+        expect([...timer.timings.keys()]).toEqual(['shadingChange', 'accumulate']);
+
+        submit(timer, 1, ['accumulate']);
+        await timer.drain();
+        expect([...timer.timings.keys()]).toEqual(['accumulate']);
+    });
+
+    it('treats untagged submits as separate frames', async () => {
+        const { device } = mockDevice();
+        const timer = new GpuTimer(device);
+        await timer.ready;
+
+        encodeFrame(timer);
         timer.beginFrame();
-        timer.passDescriptor('reconstruct');
-        timer.resolve(mockEncoder() as unknown as GPUCommandEncoder);
-        timer.readback();
-        timer.beginFrame();
-        timer.passDescriptor('accumulate');
+        timer.passDescriptor('blit');
         timer.resolve(mockEncoder() as unknown as GPUCommandEncoder);
         timer.readback();
 
         await timer.drain();
-        expect([...timer.timings.keys()].sort()).toEqual(['accumulate', 'reconstruct']);
+        expect([...timer.timings.keys()]).toEqual(['blit']);
+    });
+
+    it('reset() clears results and discards samples still in flight', async () => {
+        const { device } = mockDevice();
+        const timer = new GpuTimer(device);
+        await timer.ready;
+
+        submit(timer, 0, ['reconstruct', 'accumulate']);
+        await timer.drain();
+        expect(timer.timings.size).toBe(2);
+
+        submit(timer, 1, ['reconstruct', 'accumulate']);
+        timer.reset();
+        await timer.drain();
+        expect(timer.timings.size).toBe(0);
+        expect(timer.takeSamples()).toEqual([]);
+
+        submit(timer, 0, ['blit']);
+        await timer.drain();
+        expect([...timer.timings.keys()]).toEqual(['blit']);
     });
 
     it('stays a silent no-op without timestamp-query', async () => {
