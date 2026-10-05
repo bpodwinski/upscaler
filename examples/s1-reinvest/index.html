@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>S1 · Reinvest the savings</title>
+        <style>
+            html,
+            body {
+                margin: 0;
+                height: 100%;
+                overflow: hidden;
+                background: #0b0d10;
+                font: 12px/1.5 ui-monospace, Menlo, monospace;
+                color: #cfd8e3;
+            }
+            canvas {
+                display: block;
+            }
+            .label {
+                position: fixed;
+                top: 12px;
+                padding: 6px 10px;
+                background: rgba(8, 10, 14, 0.82);
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 7px;
+                pointer-events: none;
+                font-size: 11px;
+            }
+            .label b {
+                font-size: 12px;
+            }
+            #labA {
+                left: 12px;
+                color: #7dd3fc;
+            }
+            #labB {
+                right: 260px;
+                text-align: right;
+            }
+            #hud {
+                position: fixed;
+                left: 50%;
+                bottom: 14px;
+                transform: translateX(-50%);
+                width: min(640px, calc(100vw - 24px));
+                box-sizing: border-box;
+                padding: 10px 14px 9px;
+                background: rgba(8, 10, 14, 0.86);
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 9px;
+                font-size: 11px;
+                white-space: pre;
+            }
+            #hud .cols {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 18px;
+            }
+            #hud .h {
+                margin-bottom: 3px;
+                font-weight: bold;
+            }
+            #hud .h.a {
+                color: #7dd3fc;
+            }
+            #hud .bar {
+                display: flex;
+                height: 8px;
+                margin-top: 6px;
+                background: rgba(255, 255, 255, 0.06);
+                border-radius: 3px;
+                overflow: hidden;
+            }
+            #hud .seg {
+                display: block;
+                height: 100%;
+            }
+            #hud .foot {
+                margin-top: 8px;
+                padding-top: 6px;
+                border-top: 1px solid rgba(255, 255, 255, 0.08);
+                white-space: pre-wrap;
+            }
+            #hud .na {
+                white-space: normal;
+                color: #fda4af;
+                margin-bottom: 8px;
+            }
+            #hud .good {
+                color: #86efac;
+            }
+            #hud .bad {
+                color: #fda4af;
+            }
+            #hud .busy {
+                color: #fcd34d;
+            }
+            #hud .dim {
+                color: #8592a3;
+            }
+            #hint {
+                position: fixed;
+                left: 12px;
+                top: 64px;
+                color: #8592a3;
+                pointer-events: none;
+                font-size: 11px;
+            }
+            @media (max-width: 720px) {
+                #labB {
+                    right: 12px;
+                    top: 64px;
+                }
+                #hint {
+                    display: none;
+                }
+                #hud {
+                    font-size: 10px;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="label" id="labA"></div>
+        <div class="label" id="labB"></div>
+        <div id="hint">move the mouse to wipe · same GPU, two ways to spend it</div>
+        <div id="hud"></div>
+        <script type="module" src="./main.ts"></script>
+    </body>
+</html>
