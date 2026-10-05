@@ -75,6 +75,9 @@ type UpscalerInternalOptions = UpscalerOptions & {
     // memory at 9 / 10 included) — the NEXT-STEPS §14 candidates and the
     // frozen pre-memory identity in bench/src/candidates/shaders/shadingChangeRange.ts.
     _shadingChangeShader?: string;
+    // Bench-only: a depth-clip shader with production's bindings — the
+    // issue #79 variants in shaders/reconstructVariants.ts.
+    _depthClipShader?: string;
     // Bench-only: a single-pass cross-frame reconstruct (the frozen pre-#67
     // form, or its camera-compensated variant — shaders/reconstructVariants.ts)
     // in place of the production scatter + depth clip pair.
@@ -135,6 +138,7 @@ export class Upscaler {
     private readonly _rcasShader: string;
     private readonly _spatialRcasShader: string | null;
     private readonly _shadingChangeShader: string | null;
+    private readonly _depthClipShader: string | null;
     private readonly _crossFrameReconstruct: { shader: string; cameraCompensated: boolean } | null;
     private _device!: GPUDevice;
     private _constants!: ConstantsBuffer;
@@ -260,6 +264,7 @@ export class Upscaler {
         this._rcasShader = options._rcasShader ?? RCAS_SHADER;
         this._spatialRcasShader = options._spatialRcasShader ?? null;
         this._shadingChangeShader = options._shadingChangeShader ?? null;
+        this._depthClipShader = options._depthClipShader ?? null;
         this._crossFrameReconstruct = options._crossFrameReconstruct ?? null;
     }
 
@@ -302,7 +307,11 @@ export class Upscaler {
             }
         } else {
             this._reconstructPass = new ComputePass(device, 'reconstruct', RECONSTRUCT_SHADER);
-            this._depthClipPass = new ComputePass(device, 'depth-clip', DEPTH_CLIP_SHADER);
+            this._depthClipPass = new ComputePass(
+                device,
+                'depth-clip',
+                this._depthClipShader ?? DEPTH_CLIP_SHADER,
+            );
         }
         this._accumulatePass = new ComputePass(device, 'accumulate', ACCUMULATE_SHADER, {
             shaderKey: 'baseline:accumulate',

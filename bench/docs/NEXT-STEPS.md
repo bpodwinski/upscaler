@@ -1607,9 +1607,69 @@ binding fader over black, §11). Switch-off: floating emitters now fade like dec
 (e.g. 1 px L1 22.6 → 38.1 frames to < 10%) — the false disocclusion used to clear them
 by accident.
 
-**Open.** Whether the relief widening and the best-tap vote (both cross-frame
-stabilizers) are still needed under the scatter; dropping them would move toward
-upstream's vote. Re-time on a mobile tiler (atomics are architecture-sensitive).
+**Follow-up — issue #79 (2026-10-05, idle GPU).**
+
+*Timing.* `node scripts/run-benchmark.mjs --smoke --ratios 1,2,3 --blocks 8 --variant baseline --comparison reconstruct-cross-frame-v1`
+on an otherwise idle machine (worktree; raw under `bench/results/raw/issue79/`). Per-pass
+medians per repetition; the A/A column is the harness disagreeing with itself:
+
+| ratio | render | cross-frame | scatter | Δ per frame | A/A | ≈ share of upscaler compute |
+| --- | --- | --- | --- | --- | --- | --- |
+| 3 | 640×360 | 27.3 µs | 33.7 µs | **+6.2 µs** | 0.5 µs | 0.8% |
+| 2 | 960×540 | 62.5 µs | 75.8 µs | **+13.3 µs** (first run: +12.6) | 3.3 µs | 1.3% |
+| 1 | 1920×1080 | 226 µs | 353 µs | **+133 µs** | 27 µs | 4.7% |
+
+Ratios 2 and 3 confirm the noisy-run estimate. Ratio 1 (NativeAA) costs ~2.5× more than
+pixel count predicts; the depth-clip pass alone is 149 µs there against 27 µs at ratio 2.
+The two ping-pong scatter buffers are 8.3 MB each at 1080p, so cache spill is the likely
+cause — unverified, and the obvious lever if NativeAA cost ever matters. Mobile is still
+unmeasured (#4: needs a device).
+
+*Dropping the cross-frame stabilizers.* Bench identities `depth-clip-*`
+(`buildDepthClipVariant` in `src/shaders/reconstructVariants.ts`) swap only the depth-clip
+pass. Upstream's `ComputeDepthClip` (ffx_fsr2_depth_clip.h, read 2026-10-05) differs from
+ours in four places: its `fHalfViewportWidth` is `length(RenderSize())` — the **full**
+diagonal, so our port's literal half made our tolerance 2× tighter — times
+`Kfov = |corner| / |center|` (≈1.38 at the bench's 50° FOV), so **our tolerance is ≈2.8×
+upstream's**; it raises the confidence ratio to a power ramping 1 → 3 with render size; it
+averages only positive-separation taps (weighted mean); and its `EvaluateSurface` zeroes
+disocclusion on a monotonically receding depth column (its grazing-plane answer, where
+ours is the relief widening). Q19 at `--stride 1`, interior mean disocclusion % (interior
+frame-to-frame flicker %):
+
+| segment | production | no relief | mean vote | upstream tolerance | full upstream |
+| --- | --- | --- | --- | --- | --- |
+| dolly back | 0.32 (0.54) | 0.38 (0.62) | 2.59 (3.14) | 0.31 (0.52) | 2.30 (2.81) |
+| fast dolly back | 0.49 (0.93) | 0.55 (1.01) | 2.49 (3.73) | 0.47 (0.89) | 2.06 (3.14) |
+| dolly forward | 0.33 (0.56) | 0.50 (0.74) | 2.68 (3.32) | 0.32 (0.53) | 2.37 (2.90) |
+| orbit left | 1.35 (1.84) | 1.51 (2.04) | 3.31 (3.70) | 1.31 (1.78) | 3.20 (3.45) |
+| slide | 0.65 (1.24) | 0.68 (1.29) | 2.50 (4.36) | 0.63 (1.20) | 2.29 (4.01) |
+| scene recedes | 0.22 (0.37) | 0.28 (0.43) | 2.43 (2.88) | 0.21 (0.35) | 2.03 (2.31) |
+
+Still segments read 0.000% with zero flicker in every variant, and Q1 / Q12 convergence is
+identical across all five (0.1077 / 0.0268 and 0.0219 / 0.0302): under the scatter a still
+scene never disoccludes, so the still-scene gates no longer separate depth-clip forms —
+motion does.
+
+- **Relief widening: kept.** Without it motion disocclusion rises 10–50% (dolly forward
+  0.33 → 0.50, scene approach 0.25 → 0.40), on sloped surfaces whose neighbours scatter
+  one texel of slope into each other's footprints.
+- **Best-tap vote: kept.** The upstream mean vote rings *both* sides of every moving
+  silhouette (Q19 slide: full outlines on the knots, spheres and every post), where
+  production marks only the trailing side. A foreground edge advancing over background
+  has valid history at its reprojected position, so the leading-side ring is false
+  rejection: 2–8× the disocclusion and 2–3× the flicker. Upstream's surface check and
+  wider tolerance only take a fraction of it back (full upstream ≈ 0.9× the mean vote).
+- **Upstream tolerance scale: measured, not adopted.** 3–6% fewer disoccluded pixels and
+  slightly less flicker on every motion segment, no regression. Adopting it needs the
+  camera's FOV for `Kfov`, which `FsrConstants` doesn't carry (the variant hardcodes the
+  bench's 50° as a pipeline override); a constants change re-fingerprints every shader.
+  Worth folding into the next change that touches the UBO anyway.
+
+*Fast dolly.* Q19 gained `dolly-back-fast` / `dolly-forward-fast` (0.3 u/frame, frames
+960–979 and 1040–1059, after the recorded segments). It reproduces #67's headline case: the
+cross-frame identity disoccludes **44.4%** of the interior (80% of pixels young, mean age
+0.21); production **0.49%** (mean age 0.75).
 
 ## Explicitly not planned (measured against)
 

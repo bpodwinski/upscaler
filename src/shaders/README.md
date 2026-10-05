@@ -335,6 +335,12 @@ when drawing to the screen; library users may instead continue linear post-proce
   Q19 interior disocclusion: dolly-back 1.03% → 0.33%, scene receding 1.31% → 0.24%,
   still 0.029% → 0.000%. Q1/Q12 convergence unchanged; Q3 outlines rotating knots the
   cross-frame form missed; #54's emitter false disocclusion 7–34% → 0% of frames.
+- **Measured divergences (#79):** our tolerance is ≈2.8× tighter than upstream's
+  (upstream's `fHalfViewportWidth` is the full diagonal, times `Kfov`) — loosening it
+  gains 3–6% in motion, deferred to the next constants-buffer change. Upstream's
+  weighted-mean vote + `EvaluateSurface` in place of best-tap + relief rings both sides of
+  every moving silhouette (2–8× the disocclusion): rejected. Bench identities
+  `depth-clip-*`, built by `buildDepthClipVariant` in `reconstructVariants.ts`.
 - **Superseded form:** the fused cross-frame gather (2026-07-21 → 10-05) compared
   against last frame's dilated depth, which needed four stabilizers (best-tap vote,
   jitter-delta-compensated reprojection, relief-widened tolerance, motion-only

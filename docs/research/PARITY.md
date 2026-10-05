@@ -85,6 +85,15 @@ depth clip removed a 24 µs pass. In return:
 - **Sub-pixel floating emitters no longer false-disocclude** on jitter miss phases
   (issue #54: 7–34% of frames → 0%).
 
+**Tolerance and vote, measured against upstream (#79).** Upstream's
+`fHalfViewportWidth` is in fact `length(RenderSize())`, the full diagonal, multiplied by a
+`Kfov` FOV factor, so our tolerance is ≈2.8× tighter than upstream's. Loosening it to
+upstream's measured only 3–6% fewer disoccluded pixels in motion (it needs the FOV in the
+constants buffer, so it waits for the next constants change). Upstream's weighted-mean
+vote and `EvaluateSurface` surface check were also measured in place of our best-tap vote
+and relief widening: they ring both sides of every moving silhouette, 2–8× the
+disocclusion, so ours stay (`bench/docs/NEXT-STEPS.md` §15).
+
 A camera-matrix compensation of the cross-frame compare was also built and measured
 (~0 µs): it fixes camera motion but not object motion, and needs far-plane texels
 excluded. It stays as the `reconstruct-camera-v1` bench identity.

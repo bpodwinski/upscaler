@@ -4,6 +4,7 @@ import * as variants from '../benchmark/variants';
 import {
     createBaselineResolver,
     createRcasExperimentResolver,
+    createDepthClipVariantResolver,
     createReconstructExperimentResolver,
     createRcasNumericParityResolver,
     createSourceBundleResolver,
@@ -264,5 +265,13 @@ describe('benchmark resolver ownership', () => {
 
         for (const id of ['reconstruct-cross-frame-v1', 'reconstruct-camera-v1'] as const)
             expect(resolveFactory?.(id)).toBe(createReconstructExperimentResolver);
+
+        for (const id of [
+            'depth-clip-no-relief-v1',
+            'depth-clip-mean-vote-v1',
+            'depth-clip-upstream-tolerance-v1',
+            'depth-clip-upstream-v1',
+        ] as const)
+            expect(resolveFactory?.(id)).toBe(createDepthClipVariantResolver);
     });
 });

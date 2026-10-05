@@ -2,6 +2,7 @@ import {
     createBaselineResolver,
     createRcasExperimentResolver,
     createRcasNumericParityResolver,
+    createDepthClipVariantResolver,
     createReconstructExperimentResolver,
     createShadingMemoryResolver,
     createSourceBundleResolver,
@@ -37,6 +38,10 @@ const RESOLVER_FACTORIES = {
     'rcas-tonemap-space-v1': createRcasExperimentResolver,
     'reconstruct-cross-frame-v1': createReconstructExperimentResolver,
     'reconstruct-camera-v1': createReconstructExperimentResolver,
+    'depth-clip-no-relief-v1': createDepthClipVariantResolver,
+    'depth-clip-mean-vote-v1': createDepthClipVariantResolver,
+    'depth-clip-upstream-tolerance-v1': createDepthClipVariantResolver,
+    'depth-clip-upstream-v1': createDepthClipVariantResolver,
     'source-filter-bundle-v1': createSourceBundleResolver,
     'source-structural-bundle-v1': createSourceBundleResolver,
     'source-spd-resolver-bundle-v1': createSourceBundleResolver,
@@ -84,6 +89,7 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
     const rcasNumericParity = rcasLimiterParity || id === 'rcas-fsr315-numeric' || rcasExperiment;
     const rcasDenoise = id === 'rcas-fsr315-numeric';
     const reconstructExperiment = id.startsWith('reconstruct-');
+    const depthClipVariant = id.startsWith('depth-clip-');
     const shadingMemory = id.startsWith('shading-memory-') || id === 'shading-frame-pair-v1';
     const sourceResourceGraph = spdResolver
         ? [
@@ -156,6 +162,8 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
                     ? 'Cross-frame depth clip (pre-#67 production)'
                   : id === 'reconstruct-camera-v1'
                     ? 'Cross-frame depth clip, camera-motion compensated (#67)'
+                  : depthClipVariant
+                    ? `Depth clip variant (#79): ${id.slice('depth-clip-'.length)}`
                   : id === 'shading-frame-pair-v1'
                     ? 'Shading change, frame pair only (pre block memory)'
                   : shadingMemory
@@ -180,7 +188,8 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
         },
         resourceGraph: sourceBundle ? sourceResourceGraph : RESOURCE_GRAPH,
         pipeline: {
-            shaderKey: sourceBundle || rcasExperiment || shadingMemory || reconstructExperiment
+            shaderKey:
+                sourceBundle || rcasExperiment || shadingMemory || reconstructExperiment || depthClipVariant
                 ? id
                 : rcasNumericParity
                 ? rcasDenoise

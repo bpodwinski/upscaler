@@ -2,8 +2,10 @@ import type * as THREE from 'three/webgpu';
 
 import { Upscaler } from '@pmndrs/upscaler';
 import {
+    DEPTH_CLIP_VARIANTS,
     RECONSTRUCT_CAMERA_SHADER,
     RECONSTRUCT_CROSS_FRAME_SHADER,
+    buildDepthClipVariant,
 } from '../../../src/shaders/reconstructVariants';
 
 type CrossFrameReconstruct = { shader: string; cameraCompensated: boolean };
@@ -185,6 +187,7 @@ function createProductionUpscaler(
     spatialRcasShader?: string,
     shadingChangeShader?: string,
     crossFrameReconstruct?: CrossFrameReconstruct,
+    depthClipShader?: string,
 ): Upscaler {
     // The bench always times: its HUD and the benchmark protocol read the timer.
     const options = {
@@ -194,6 +197,7 @@ function createProductionUpscaler(
         _spatialRcasShader: spatialRcasShader,
         _shadingChangeShader: shadingChangeShader,
         _crossFrameReconstruct: crossFrameReconstruct,
+        _depthClipShader: depthClipShader,
     };
     return new Upscaler(options);
 }
@@ -223,6 +227,7 @@ export class BaselineBenchmarkResolver extends BenchmarkResolverAdapter {
         spatialRcasShader?: string,
         shadingChangeShader?: string,
         crossFrameReconstruct?: CrossFrameReconstruct,
+        depthClipShader?: string,
     ) {
         super(
             createProductionUpscaler(
@@ -231,6 +236,7 @@ export class BaselineBenchmarkResolver extends BenchmarkResolverAdapter {
                 spatialRcasShader,
                 shadingChangeShader,
                 crossFrameReconstruct,
+                depthClipShader,
             ),
             metadata,
         );
@@ -391,5 +397,29 @@ export function createReconstructExperimentResolver(
         RCAS_SHADER,
         undefined,
         variant,
+    );
+}
+
+/**
+ * Creates an issue #79 depth-clip variant: the `baseline` pipeline with only
+ * the depth-clip pass swapped (relief widening, best-tap vote and tolerance
+ * scale toggled toward upstream FSR2 — see buildDepthClipVariant).
+ * @param renderer - Initialized three WebGPU renderer
+ * @param metadata - Registry metadata carrying the variant identity
+ * @returns One variant resolver instance
+ */
+export function createDepthClipVariantResolver(
+    renderer: unknown,
+    metadata: BenchmarkVariantMetadata,
+): BenchmarkResolver {
+    const options = DEPTH_CLIP_VARIANTS[metadata.id as keyof typeof DEPTH_CLIP_VARIANTS];
+    return new BaselineBenchmarkResolver(
+        renderer as THREE.WebGPURenderer,
+        metadata,
+        RCAS_LEGACY_SHADER,
+        RCAS_SHADER,
+        undefined,
+        undefined,
+        buildDepthClipVariant(options),
     );
 }

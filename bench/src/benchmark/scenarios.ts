@@ -210,14 +210,21 @@ export const Q19_SEGMENTS = [
     { name: 'hold-6', start: 780, end: 839 },
     { name: 'scene-approach', start: 840, end: 899 },
     { name: 'hold-7', start: 900, end: 959 },
+    // Issue #79: #67's headline case. At 0.1 u/frame the back wall (23.6 units
+    // out) stays under the tolerance; 0.3 u/frame is #67's one-frame dolly.
+    { name: 'dolly-back-fast', start: 960, end: 979 },
+    { name: 'hold-8', start: 980, end: 1039 },
+    { name: 'dolly-forward-fast', start: 1040, end: 1059 },
+    { name: 'hold-9', start: 1060, end: 1119 },
 ] as const;
 /** Q19 per-frame speeds: 0.1 world units/frame (6 u/s) along the view axis. */
 const Q19_DOLLY_STEP = 0.1;
 const Q19_ORBIT_STEP = (0.5 * Math.PI) / 180;
 const Q19_SLIDE_STEP = 0.05;
+const Q19_FAST_DOLLY_STEP = 0.3;
 
 function q19(frame: number): BenchmarkFrameState {
-    const ramp = (start: number) => Math.min(Math.max(frame - start + 1, 0), 60);
+    const ramp = (start: number, length = 60) => Math.min(Math.max(frame - start + 1, 0), length);
     const target = BASE_TARGET;
     const offset = [
         BASE_POSITION[0] - target[0],
@@ -228,7 +235,9 @@ function q19(frame: number): BenchmarkFrameState {
     const back = offset.map((value) => value / distance);
 
     // Dolly back then forward: net zero after frame 299.
-    const dolly = Q19_DOLLY_STEP * (ramp(120) - ramp(240));
+    const dolly =
+        Q19_DOLLY_STEP * (ramp(120) - ramp(240)) +
+        Q19_FAST_DOLLY_STEP * (ramp(960, 20) - ramp(1040, 20));
     // Orbit left then right about the target's vertical axis: net zero after 539.
     const yaw = Q19_ORBIT_STEP * (ramp(360) - ramp(480));
     const cos = Math.cos(yaw);
@@ -606,7 +615,7 @@ const SCENARIOS: Record<BenchmarkScenarioId, BenchmarkScenarioDefinition> = {
         id: 'Q19',
         name: 'receding-disocclusion',
         // Capture-only: measure with scripts/measure-receding-disocclusion.mjs.
-        endFrame: 959,
+        endFrame: 1119,
         captures: ['0', '119', '121', '179', '241', '299', '361', '419', '601', '721', '779'],
         debugViews: ['final', 'motion-vectors', 'disocclusion', 'accumulation-age'],
         rois: { full: [0, 0, 1, 1] },
