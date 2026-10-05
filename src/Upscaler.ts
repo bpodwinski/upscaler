@@ -270,6 +270,9 @@ export class Upscaler {
     configure(config: UpscalerConfig): void {
         if (!this._initialized) this.init();
 
+        // A new pass graph: samples still in flight from the old one must not
+        // land in gpuTimings after it.
+        this._timer.reset();
         this._path = config.path ?? 'temporal';
         this._jitterEnabled = config.jitter ?? true;
         this._displayWidth = Math.max(1, Math.floor(config.displayWidth));
@@ -370,7 +373,12 @@ export class Upscaler {
         return this._guidesPending;
     }
 
-    /** Per-pass GPU times (ms) when timestamp queries are supported. */
+    /**
+     * Per-pass GPU times (ms) of the latest timed frame, keyed by pass label.
+     * Holds only the passes that frame ran, so summing it gives the frame's
+     * upscale cost. Empty without `timestamp-query` support and for the first
+     * frame or so.
+     */
     get gpuTimings(): ReadonlyMap<string, number> {
         return this._timer.timings;
     }
@@ -461,7 +469,7 @@ export class Upscaler {
         const colorGPU = getGPUTexture(this._renderer, inputs.color);
         this._checkMsaa(colorGPU, 'color');
         const encoder = this._device.createCommandEncoder({ label: 'upscale' });
-        this._timer.beginFrame();
+        this._timer.beginFrame(this._frameIndex);
 
         switch (this._path) {
             case 'bilinear':
@@ -523,11 +531,12 @@ export class Upscaler {
         this._constants.upload();
 
         const encoder = this._device.createCommandEncoder({ label: 'upscale-guides' });
-        this._timer.beginFrame();
+        this._timer.beginFrame(this._frameIndex);
         this._encodeGuides(encoder, inputs);
         this._timer.resolve(encoder);
         this._device.queue.submit([encoder.finish()]);
-        this._timer.readback();
+        // On the temporal path dispatchUpscale's submit finishes this frame.
+        this._timer.readback(this._path === 'guides');
 
         if (this._path === 'guides') {
             // The frame ends here — there is no late stage.
@@ -571,7 +580,7 @@ export class Upscaler {
         const colorGPU = getGPUTexture(this._renderer, inputs.color);
         this._checkMsaa(colorGPU, 'color');
         const encoder = this._device.createCommandEncoder({ label: 'upscale-late' });
-        this._timer.beginFrame();
+        this._timer.beginFrame(this._frameIndex);
         this._encodeLate(encoder, colorGPU, inputs);
         this._timer.resolve(encoder);
         this._device.queue.submit([encoder.finish()]);
