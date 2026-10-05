@@ -166,11 +166,11 @@ work did not change, the rest of the frame got cheaper.
 
 ---
 
-## Scenarios (Q0–Q17)
+## Scenarios (Q0–Q18)
 
 Scripted camera and scene animations, defined in
 `bench/src/benchmark/scenarios.ts`. Performance runs use the default; capture
-runs select Q0–Q11 (the E00 manifest's set) with `--scenarios`. Q12–Q17 are
+runs select Q0–Q11 (the E00 manifest's set) with `--scenarios`. Q12–Q18 are
 capture-only through the `measure-*` scripts (`measure-convergence.mjs
 --scenario <id>` and the scripts named in their rows); `run-benchmark.mjs` drops
 them from `--scenarios` without an error.
@@ -195,6 +195,7 @@ them from `--scenarios` without an error.
 | Q15 | `sub-detector-lighting-drift` | Still camera, sun ramps 8 → 2 (120–188) and back 2 → 8 (240–308), exponentially at ~2 %/frame: half the shading detector's flattest floor, so the detector stays silent and only the variance clip limits lag. Measure with `scripts/measure-drift-lag.mjs`. |
 | Q16 | `sparse-wires-empty-background` | Issue #22: fans of sub-texel bars (about 0.5–1 render px at ratio 2, 0.35–0.7 at ratio 3) over an opaque black background, still camera, plus a solid knot as a control. The jitter phase decides whether a bar lands in a texel, so block means swing although nothing changed: the shading-change view must stay black until the fans' light drops to a quarter at frame 300. Measure with `measure-convergence.mjs --scenario Q16 --shading-frames 32` (and `measure-drift-lag.mjs --frames 296:356:2` for the step). |
 | Q17 | `subpixel-emitter-retention` | Issue #51: still camera onto unlit discs of 0.3–1.5 render-px diameter and 0.5 px lines, over black and over a textured backdrop, each floating (depth edge) or as a decal (no depth edge). Measure with `scripts/measure-emitter-retention.mjs` (per-emitter retention vs input coverage, flicker, switch-off ghost) and `measure-convergence.mjs --scenario Q17`. |
+| Q18 | `receding-disocclusion` | Issue #67: converge, then dolly back / forward, orbit left / right, slide, and the scene receding / approaching under a still camera, each followed by a 60-frame hold; a frontal textured wall stands behind the props. A camera-invariant depth clip keeps receding surfaces' history. Measure with `scripts/measure-receding-disocclusion.mjs --variants baseline,reconstruct-cross-frame-v1` (per-segment disocclusion and accumulation age; the interior crop excludes the border strip entering view). |
 
 ---
 
@@ -294,6 +295,7 @@ several runs — or several worktrees — can share a machine without colliding.
 | `measure-drift-lag.mjs` | bench, `http://127.0.0.1:5199` | `--port` (9333) |
 | `measure-exposure-ceiling.mjs` | bench, `http://127.0.0.1:5199` | `--port` (9333) |
 | `measure-emitter-retention.mjs` | bench, `http://127.0.0.1:5199` | `--port` (9333) |
+| `measure-receding-disocclusion.mjs` | bench, `http://127.0.0.1:5199` | `--port` (9333) |
 | `verify-packed-guides.mjs` | its own `vite preview` on `--port` (a free port) | `--cdp-port` (a free port) |
 
 ```bash

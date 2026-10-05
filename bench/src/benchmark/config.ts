@@ -7,6 +7,8 @@ const VARIANTS = [
     'rcas-fsr315-numeric',
     'rcas-hoisted-exposure-v1',
     'rcas-tonemap-space-v1',
+    'reconstruct-cross-frame-v1',
+    'reconstruct-camera-v1',
     'source-filter-bundle-v1',
     'source-structural-bundle-v1',
     'source-spd-resolver-bundle-v1',
@@ -15,6 +17,7 @@ const SCENARIOS = [
     'Q0', 'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6', 'Q7', 'Q8', 'Q9', 'Q10', 'Q11', 'Q12', 'Q13', 'Q14', 'Q15',
     'Q16',
     'Q17',
+    'Q18',
 ] as const;
 
 function numberParam(params: URLSearchParams, name: string, fallback: number): number {

@@ -48,19 +48,22 @@ color ─┬──────────────────────�
        │                                             ▼
 depth ─┤  reconstruct ─► dilatedMotion ─┬──────► accumulate ─► history ─► RCAS (or blit) ─► output
 veloc ─┘  (dilate +      dilatedDepth   │        Lanczos2 upsample        └─ debug view instead,
-          depth clip)    disocclusion ──┤        Catmull-Rom history         when debugView ≠ None
+          scatter→clip)  disocclusion ──┤        Catmull-Rom history         when debugView ≠ None
                                         │        YCoCg variance clip
           generateReactive ─► reactive ─┤        locks · alpha resolve
           exposure (1×1)  ─► exposure  ─┤
           shadingChange   ─► response  ─┘
 ```
 
-1. **Reconstruct** (`reconstruct.ts`): one fused render-resolution pass. Nearest-depth
-   3×3 dilation of depth and motion, then disocclusion by per-bilinear-tap
-   confidence voting against last frame's dilated depth, using AMD's
-   viewport/depth-scaled tolerance. The reprojection is jitter-delta-compensated, but
-   the off-screen test uses the motion-only reprojection so a still camera's border
-   doesn't read as disoccluded. This is the whole early stage of a split frame.
+1. **Reconstruct + depth clip** (`reconstruct.ts`): two render-resolution passes. The
+   first dilates depth and motion over 3×3 (nearest depth) and scatters this frame's
+   depth into each pixel's previous position (`atomicMin` into a storage buffer: the
+   "reconstructed previous depth"). The second votes disocclusion per bilinear tap
+   against that same-frame buffer, using AMD's viewport/depth-scaled tolerance widened
+   by the 3×3 depth relief; the best tap wins. Comparing same-frame depths makes the
+   test invariant to camera and object motion along the view axis (issue #67). The
+   scatter buffers ping-pong, and the depth clip empties the next one, so there is no
+   clear pass. This is the whole early stage of a split frame.
 2. **Generate reactive** (`generateReactive.ts`): only when `reactiveOpaqueColor` is
    given. It max-merges any incoming mask.
 3. **Exposure** (`luminancePyramid.ts`): a single 1×1 log-average with eye
@@ -96,8 +99,8 @@ sharpening off on every edge that crosses 1.0. It then inverts once, anchored on
 linear center and under the same lobe cap, computed on the linear taps. That input has no
 pre-exposure bounding it, so a plain inversion would clip near 1000 and turn isolated
 peaks into fireflies.
-The divergences from FSR 3.1.5's own pass graph (the fused reconstruct, the fused
-shading detector, conditioned-space RCAS) were measured, not assumed; see
+The divergences from FSR 3.1.5's own pass graph (the fused shading detector,
+conditioned-space RCAS, the ping-pong-cleared depth scatter) were measured, not assumed; see
 [PARITY.md](research/PARITY.md).
 
 ## Color domains

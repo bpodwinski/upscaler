@@ -34,7 +34,7 @@
  * Usage:
  *   node scripts/measure-emitter-retention.mjs [--ratio 2] [--settle 180]
  *     [--frames 64] [--ghost 48] [--label baseline] [--settings '{"autoExposure":false}']
- *     [--url http://127.0.0.1:5199] [--port 9333]
+ *     [--url http://127.0.0.1:5199] [--port 9333] [--variant reconstruct-cross-frame-v1]
  *
  * Starts the bench dev server on --url's port if nothing answers there. Writes
  * summary.json under bench/results/raw/emitters/<label>-<ratio>x/.
@@ -94,6 +94,7 @@ const settle = Number(cli.settle ?? 180);
 const frames = Number(cli.frames ?? 64);
 const ghost = Number(cli.ghost ?? 48);
 const label = cli.label ?? 'baseline';
+const variant = typeof cli.variant === 'string' ? cli.variant : null;
 const port = parsePort(cli.port, '--port') ?? 9333;
 const settings = typeof cli.settings === 'string' ? JSON.parse(cli.settings) : {};
 const outputDirectory = join(ROOT, 'bench/results/raw/emitters', `${label}-${String(ratio).replace('.', '_')}x`);
@@ -409,6 +410,7 @@ async function main() {
         url.searchParams.set('ratio', String(ratio));
         url.searchParams.set('width', '1280');
         url.searchParams.set('height', '720');
+        if (variant) url.searchParams.set('variant', variant);
         await client.call('Page.navigate', { url: url.href });
         for (let attempt = 0; ; attempt++) {
             if ((await evaluate(client, 'window.__UPSCALER_BENCH__?.ready === true')) === true) break;

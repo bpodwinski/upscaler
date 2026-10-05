@@ -48,7 +48,7 @@ from FSR 3.1.5 and has measurements showing the difference is an improvement on 
 platform. Each was validated on GPU with the deterministic capture harness (byte-level
 RMSE gates) in addition to timing.
 
-### 1. Fused single-pass depth reconstruction & disocclusion
+### 1. Depth reconstruction & disocclusion — the scatter, re-derived
 
 **Upstream:** three stages — "reconstruct previous depth" (an atomic floating-point
 scatter into a previous-depth buffer), "dilate depth & motion", and "depth clip"
@@ -56,43 +56,45 @@ scatter into a previous-depth buffer), "dilate depth & motion", and "depth clip"
 floating-point storage atomics, so the scatter must be emulated through `u32`
 storage-buffer atomics.
 
-**Ours:** one render-resolution dispatch (`reconstruct.ts`). The key observation: depth
-clip only ever reads the current pixel's own dilated depth and motion — both already
-in-register after the dilate step — plus last frame's dilated depth, which a gather
-(read the previous frame's output) provides without any scatter. We kept AMD's
-*math* — the viewport/depth-scaled disocclusion tolerance
-(`1.37e-5 · halfViewportWidth · maxDepth`) with per-bilinear-tap confidence voting from
-`ffx_fsr2_depth_clip.h` — inside our fused structure.
+**Ours (since 2026-10-05, issue #67):** two dispatches (`reconstruct.ts`). The first
+dilates and scatters this frame's linear depth into each pixel's previous-position
+footprint (`atomicMin` on the f32 bits, which order like the floats for positive
+depths). The second is the depth clip with AMD's viewport/depth-scaled tolerance
+(`1.37e-5 · halfViewportWidth · maxDepth`, per-bilinear-tap voting from
+`ffx_fsr2_depth_clip.h`). Two re-derivations make it cheaper than upstream's three
+stages: the scatter rides in the dilation pass, and the two scatter buffers ping-pong
+so each depth-clip texel empties its own slot of next frame's buffer — no clear pass.
+Two measured divergences from upstream's vote are kept from the earlier form: the
+tolerance is widened by the 3×3 depth relief (grazing planes), and the best tap wins.
 
-**Measured:** the source-style scatter + separate passes cost +30% (prepareInputs) and
-+22% (depthClip) in the structural candidate with no visual difference; the fused pass
-runs in 0.035 ms at ratio 2 with disocclusion output validated identical in behavior
-(thin stable silhouette outlines, quiet still scenes, age resets confined to
-disocclusion trails).
+**Measured (issue #67, `bench/docs/NEXT-STEPS.md` §13):** the scatter costs ~0.012 ms
+per frame at ratio 2 (+30 µs in a worktree, ~2% of upscaler compute). Nearly all of it
+is the pass split itself; the atomics are close to free, and folding the clear into the
+depth clip removed a 24 µs pass. In return:
 
-**The price of skipping the scatter, and its fix (2026-07-22):** upstream's scatter
-compares each pixel against *same-frame* depth values relocated to their previous
-positions, so a continuously-visible surface effectively compares against itself. Our
-gather form compares against *last frame's* depth texture, which carries sub-texel
-sampling mismatch (bilinear taps, jitter phase). On steep depth gradients — a ground
-plane at grazing incidence — neighboring taps differ by tens of view units, far beyond
-the ~3-unit tolerance, and the pass shipped with a full-flicker artifact there
-(12–14% of disocclusion pixels flipping per jitter phase, found via the temporal-guides
-example). Three compensations restore stability at zero measurable cost: a tap
-at/behind the current surface must not veto the pixel (the original port's running-AND
-veto was itself a misreading of upstream), jitter-delta-compensated reprojection, and a
-separation tolerance widened by the 3×3 ring's own depth relief (available free from the
-dilation loop). All are geometry-derived; no scene-tuned constants were added. Genuine
-disocclusion (Q3's fence trails and silhouettes) is unchanged.
+- **Camera and object motion along the view axis cancel.** The fused cross-frame form
+  this replaced compared this frame's depth with last frame's — two different cameras —
+  so a dolly-out disoccluded 97% of a frontal wall, and any object receding from a still
+  camera lost its history. Interior disocclusion on bench Q18: dolly-back 1.03% → 0.33%,
+  scene receding under a still camera 1.31% → 0.24%.
+- **Still scenes read exactly zero** (0.029% → 0.000%): the cross-frame form's sub-texel
+  sampling residue is gone. Q1/Q12 convergence unchanged or slightly better.
+- **Genuine reveals behind moving silhouettes are found.** Q3's rotating knots and
+  Q18's lateral slide now get continuous trailing outlines; the cross-frame best-tap
+  vote let ~1 px/frame reveals through (one tap always landed on the old background).
+- **Sub-pixel floating emitters no longer false-disocclude** on jitter miss phases
+  (issue #54: 7–34% of frames → 0%).
 
-**Amended 2026-07-24 (still-scene convergence).** The first form of the no-veto rule
-*skipped* agreeing taps, which left a lone tap straddling the previous frame's
-texel-quantized silhouette as the only voter — so still silhouettes re-disoccluded every
-jitter phase. Production now lets every valid tap vote (a tap at/behind the surface
-votes full confidence) and takes the **best** tap (max aggregation, not a weighted
-mean): if any footprint tap recognizes the current surface, it is the same surface,
-while a genuine trail has every tap on the old occluder and still reads ~1. Evidence:
-[`bench/docs/NEXT-STEPS.md`](../../bench/docs/NEXT-STEPS.md) §5.
+A camera-matrix compensation of the cross-frame compare was also built and measured
+(~0 µs): it fixes camera motion but not object motion, and needs far-plane texels
+excluded. It stays as the `reconstruct-camera-v1` bench identity.
+
+**History (2026-07-18 → 10-05):** the parity program measured the source-style scatter at
++30% (prepareInputs) / +22% (depthClip) *per pass* inside a larger candidate bundle
+(+0.056 ms for that whole bundle step) and kept a fused cross-frame gather. That gather
+needed three stabilizers for sub-texel sampling mismatch (no-veto best-tap vote,
+jitter-delta-compensated reprojection, relief-widened tolerance) and was still not
+camera-invariant — the #67 finding.
 
 ### 2. RCAS in conditioned tonemap space
 
@@ -188,8 +190,8 @@ supplied.
   (The load domain diverges — see enhancement 2 above.)
 - **Host pre-exposure (`DeltaPreExposure`).** The `preExposureTexture` dispatch input is
   honored end-to-end with upstream's contract (see enhancement 4).
-- **Viewport/depth-scaled disocclusion.** AMD's threshold formulation, kept inside our
-  fused reconstruction pass (see enhancement 1).
+- **Viewport/depth-scaled disocclusion against a reconstructed previous depth.** AMD's
+  threshold formulation and same-frame scatter structure (see enhancement 1).
 - **Color and exposure domains.** Like upstream, the upscaler applies no tone mapping or
   output encoding — input and output are the caller's linear/HDR domain, and internal
   conditioning exposure is divided back out before output. An earlier internal ACES/sRGB

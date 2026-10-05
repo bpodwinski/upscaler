@@ -15,6 +15,7 @@
  *     [--views final,accumulation-age] [--label baseline] [--port 9333]
  *     [--url http://127.0.0.1:5199] [--subrun static]
  *     [--settings '{"detectShadingChanges":false}'] [--shading-frames 32]
+ *     [--variant reconstruct-cross-frame-v1]
  *
  * --url is the bench origin to drive; if nothing answers there, the bench dev
  * server is started on exactly that host + port. --port is Chrome's DevTools
@@ -79,6 +80,8 @@ if (cli.help || cli.h) {
   --width <px> --height <px>   canvas size (default 1280x720)
   --views <list>         debug views to capture (default final,accumulation-age)
   --label <name>         output folder prefix (default baseline)
+  --variant <id>         bench variant to drive (default baseline = production),
+                         e.g. reconstruct-cross-frame-v1 for an A/B
   --url <origin>         bench origin (default ${DEFAULT_BENCH_URL}); if nothing answers,
                          the bench dev server is started on that host + port (--strictPort)
   --port <n>             Chrome DevTools (CDP) port (default 9333)
@@ -101,6 +104,7 @@ const pairs = Number(cli.pairs ?? 12);
 const width = Number(cli.width ?? 1280);
 const height = Number(cli.height ?? 720);
 const label = cli.label ?? 'baseline';
+const variant = typeof cli.variant === 'string' ? cli.variant : null;
 const port = parsePort(cli.port, '--port') ?? 9333;
 const views = (cli.views ?? 'final,accumulation-age').split(',').filter(Boolean);
 const subrun = typeof cli.subrun === 'string' ? cli.subrun : null;
@@ -359,6 +363,7 @@ async function main() {
         url.searchParams.set('width', String(width));
         url.searchParams.set('height', String(height));
         if (subrun) url.searchParams.set('subrun', subrun);
+        if (variant) url.searchParams.set('variant', variant);
         await client.call('Page.navigate', { url: url.href });
         for (let attempt = 0; ; attempt++) {
             const ready = await evaluate(client, 'window.__UPSCALER_BENCH__?.ready === true');
@@ -500,6 +505,7 @@ async function main() {
         const summary = {
             scenario,
             subrun,
+            variant: variant ?? 'baseline',
             settings: captureSettings,
             ratio,
             settle,

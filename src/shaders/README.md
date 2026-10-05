@@ -315,40 +315,32 @@ when drawing to the screen; library users may instead continue linear post-proce
 
 #### Reconstruction and disocclusion (`reconstruct.ts`)
 
-- **Current status:** Hybrid — fused pass structure kept (measured faster), AMD's
-  threshold formulation adopted (2026-07-21, NEXT-STEPS item 3), plus the
-  2026-07-22 cross-frame stability fix (below).
-- **Local implementation:** One fused render-resolution pass: nearest-depth dilation,
-  then per-bilinear-tap disocclusion voting against last frame's dilated depth using
-  AMD's viewport/depth-scaled tolerance
-  (`1.37e-5 · halfViewportWidth · max(depth)` — `ffx_fsr2_depth_clip.h`
-  `ComputeDepthClip`, taken from the GPU-verified candidate port). Because the
-  comparison is cross-frame (no same-frame scatter), four stabilizers apply
-  (2026-07-22, the first amended 2026-07-24, the fourth added 2026-10-03): taps at/behind the current surface
-  never veto the pixel — every valid tap votes (at/behind = full confidence) and the
-  **best tap wins** (max aggregation), because the first form, which *skipped*
-  agreeing taps, let one tap straddling the previous frame's texel-quantized
-  silhouette re-disocclude still edges every jitter phase (NEXT-STEPS §5); the reprojection
-  is jitter-delta-compensated (same derivation as `shadingChange.ts`); and the
-  tolerance is widened by the 3×3 ring's own depth relief (free from the dilation
-  loop), so a slope's legitimate per-texel depth change is not read as
-  separation; and the off-screen test uses the motion-only reprojection, before
-  the jitter-delta shift, so the shift can't push border texels past the edge
-  (a still camera's viewport border read disoccluded on 14.4% of frames → 0.02%,
-  #58). Without these, grazing-incidence planes (a ground plane near the
-  horizon) flickered fully disoccluded per jitter phase — measured 12–14% of
-  disocclusion-view pixels flipping >32/255 per frame in example 12, ~1.5%
-  (moving-content baseline) after.
+- **Current status:** Source structure adopted (2026-10-05, issue #67) — dilate +
+  reconstructed-previous-depth scatter, then a separate depth clip — with AMD's
+  threshold formulation and two local divergences (relief-widened tolerance, best-tap
+  vote) carried over from the cross-frame form it replaced.
+- **Local implementation:** `RECONSTRUCT_SHADER` dilates (nearest depth over 3×3) and
+  `atomicMin`-scatters this frame's linear depth (u32 bits) into the bilinear
+  footprint of each pixel's motion-only previous position. `DEPTH_CLIP_SHADER` gathers
+  the same footprint and votes per tap with AMD's viewport/depth-scaled tolerance
+  (`1.37e-5 · halfViewportWidth · max(depth)`), widened by the 3×3 depth relief
+  (carried in `dilatedMotion.z`); the best tap wins. Two scatter buffers ping-pong:
+  each depth-clip texel writes `+inf` into its own slot of next frame's buffer (before
+  the off-screen early return), so there is no clear dispatch; both start at `+inf`.
 - **FSR 3.1.5 behavior:** Scatters nearest current depth into previous-frame positions
   with atomics, then evaluates reconstructed samples with the same viewport- and
-  depth-scaled thresholds in a separate pass.
-- **Evidence — Measured:** The atomic scatter + separate depth-clip pass was benchmarked
-  in the structural candidate: +30% prepareInputs and +22% depthClip with no visible
-  win on Q3 (see PARITY-DECISIONS). The fused pass with AMD's thresholds shows the
-  expected debug signature (thin stable silhouette outlines, near-black still scenes,
-  age resets confined to trails) and shifts finals by RMSE ≤ 1.1/255 versus the old
-  fixed-threshold guess. Reconstruct pass time unchanged (0.035 ms at ratio 2).
-  The remaining divergence from source is scatter coverage semantics only.
+  depth-scaled thresholds in a separate pass (weighted mean of positive separations).
+- **Evidence — Measured:** +30 µs per frame in a worktree at ratio 2 (~0.012 ms at
+  repo clocks); the pass split is ≈ all of it, atomics ~free (NEXT-STEPS §13). Bench
+  Q18 interior disocclusion: dolly-back 1.03% → 0.33%, scene receding 1.31% → 0.24%,
+  still 0.029% → 0.000%. Q1/Q12 convergence unchanged; Q3 outlines rotating knots the
+  cross-frame form missed; #54's emitter false disocclusion 7–34% → 0% of frames.
+- **Superseded form:** the fused cross-frame gather (2026-07-21 → 10-05) compared
+  against last frame's dilated depth, which needed four stabilizers (best-tap vote,
+  jitter-delta-compensated reprojection, relief-widened tolerance, motion-only
+  off-screen test) and still read camera motion along the view axis as separation.
+  Frozen as `RECONSTRUCT_CROSS_FRAME_SHADER` (`reconstructVariants.ts`, bench identity
+  `reconstruct-cross-frame-v1`).
 
 #### Farthest depth and motion divergence
 

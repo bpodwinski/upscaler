@@ -29,7 +29,8 @@ import {
     RCAS_SHADER,
     RCAS_TONEMAP_SPACE_SHADER,
 } from './rcas';
-import { RECONSTRUCT_SHADER } from './reconstruct';
+import { DEPTH_CLIP_SHADER, RECONSTRUCT_SHADER } from './reconstruct';
+import { RECONSTRUCT_CROSS_FRAME_SHADER } from './reconstructVariants';
 import { SHADING_CHANGE_SHADER } from './shadingChange';
 import { assembleShader } from './wgsl';
 
@@ -38,6 +39,9 @@ const ALL_SHADERS: Record<string, string> = {
     easu: EASU_SHADER,
     rcas: RCAS_SHADER,
     reconstruct: RECONSTRUCT_SHADER,
+    depthClip: DEPTH_CLIP_SHADER,
+    // Frozen bench identity (reconstruct-cross-frame-v1), pre-#67 production.
+    reconstructCrossFrame: RECONSTRUCT_CROSS_FRAME_SHADER,
     shadingChange: SHADING_CHANGE_SHADER,
     accumulate: ACCUMULATE_SHADER,
     luminancePyramid: LUMINANCE_PYRAMID_SHADER,
@@ -51,7 +55,10 @@ const BASELINE_BINDING_COUNTS: Record<string, number> = {
     blit: 6,
     easu: 3,
     rcas: 5,
-    reconstruct: 7,
+    // 6 since 2026-10-05: dilate + scatter, depth clip split out (issue #67).
+    reconstruct: 6,
+    depthClip: 6,
+    reconstructCrossFrame: 7,
     shadingChange: 9,
     accumulate: 13,
     luminancePyramid: 7,
@@ -79,7 +86,11 @@ const BASELINE_FINGERPRINTS: Record<string, string> = {
     // neighborhood-relief-widened separation tolerance (grazing-angle planes).
     // 2026-10-03: off-screen test on the motion-only reprojection (viewport
     // border no longer reads disoccluded under jitter).
-    reconstruct: 'd944fd8f',
+    // 2026-10-05: reconstructed-previous-depth scatter (issue #67) — the
+    // depth clip moved to its own pass; the old fused form is frozen below.
+    reconstruct: '193dec98',
+    depthClip: '800a41f5',
+    reconstructCrossFrame: 'd944fd8f',
     // Added 2026-07-21: multi-scale shading-change detector (NEXT-STEPS item 4);
     // 2026-10-03: the contrast floor reads both frames' spread, not just the
     // current frame's (issue #22, NEXT-STEPS §9); 2026-10-03: the compared
@@ -591,5 +602,27 @@ describe('auto-exposure clamp', () => {
         expect(LUMINANCE_PYRAMID_SHADER).toContain(
             'clamp(EXPOSURE_KEY / max(avgLum, 1.0e-4), EXPOSURE_MIN, EXPOSURE_MAX)',
         );
+    });
+});
+
+describe('reconstructed previous depth (issue #67)', () => {
+    it('scatters and gathers the same footprint', () => {
+        // Same weight floor and the same motion-only previous position on
+        // both sides; a mismatch would let a pixel miss its own scatter.
+        const floor = /DEPTH_TAP_WEIGHT_FLOOR : f32 = ([\d.e-]+);/;
+        expect(RECONSTRUCT_SHADER.match(floor)?.[1]).toBe(DEPTH_CLIP_SHADER.match(floor)?.[1]);
+        expect(RECONSTRUCT_SHADER).toMatch(/let prevUV = \(vec2f\(gid\.xy\) \+ 0\.5\) \* C\.renderSizeInv - uvDelta;/);
+        expect(DEPTH_CLIP_SHADER).toMatch(/let prevUV = uv - uvDelta;/);
+        expect(DEPTH_CLIP_SHADER.split('fn main')[1]).not.toMatch(/jitterPrev/);
+    });
+
+    it('keeps the nearest depth and empties the next buffer before any early return', () => {
+        expect(RECONSTRUCT_SHADER).toMatch(/atomicMin\(&reconstructedDepth/);
+        const body = DEPTH_CLIP_SHADER.split('fn main')[1] ?? '';
+        const clear = body.indexOf('nextReconstructedDepth[');
+        expect(clear).toBeGreaterThan(0);
+        // Off-screen pixels return early but must still empty their slot.
+        expect(clear).toBeLessThan(body.indexOf('if (any(prevUV'));
+        expect(DEPTH_CLIP_SHADER).toMatch(/EMPTY_DEPTH : u32 = 0x7f800000u/);
     });
 });

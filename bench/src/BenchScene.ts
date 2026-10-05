@@ -432,6 +432,22 @@ export function createBenchScene(): BenchScene {
     floor.rotation.x = -Math.PI / 2;
     scene.add(floor);
 
+    //* Q18 backdrop — a frontal textured wall behind the props (issue #67's
+    // case: a surface square-on to a receding camera has no depth relief).
+    const wallTexture = createGridTexture();
+    wallTexture.wrapS = wallTexture.wrapT = THREE.RepeatWrapping;
+    wallTexture.repeat.set(8, 4);
+    const q18Wall = new THREE.Mesh(
+        new THREE.PlaneGeometry(80, 40),
+        new THREE.MeshStandardMaterial({ map: wallTexture, roughness: 0.85 }),
+    );
+    // Faces the base camera (9, 6, 12) from 8 units behind the base target.
+    const toCamera = new THREE.Vector3(9, 4.4, 12).normalize();
+    q18Wall.position.set(0, 1.6, 0).addScaledVector(toCamera, -8);
+    q18Wall.lookAt(new THREE.Vector3(9, 6, 12));
+    q18Wall.visible = false;
+    scene.add(q18Wall);
+
     //* Torus Knots — specular aliasing + rotation motion
     const knots: THREE.Mesh[] = [];
     const knotMaterial = new THREE.MeshStandardMaterial({
@@ -658,6 +674,8 @@ export function createBenchScene(): BenchScene {
         reactiveParticles.visible = frame.particlesVisible;
         mergeGroup.visible = frame.reactiveMerge === true;
         mergeCoverage.visible = frame.reactiveMerge === true;
+        scene.position.fromArray(frame.sceneOffset ?? [0, 0, 0]);
+        q18Wall.visible = frame.backdrop === true;
         sun.intensity = frame.directionalIntensity;
         sparseLight.intensity = frame.directionalIntensity;
         // The Q11 host pre-exposure multiplier lives in the MRT output node,

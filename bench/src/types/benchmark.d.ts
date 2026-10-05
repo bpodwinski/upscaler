@@ -7,6 +7,8 @@ declare type BenchmarkVariantId =
     | 'rcas-fsr315-numeric'
     | 'rcas-hoisted-exposure-v1'
     | 'rcas-tonemap-space-v1'
+    | 'reconstruct-cross-frame-v1'
+    | 'reconstruct-camera-v1'
     | 'source-filter-bundle-v1'
     | 'source-structural-bundle-v1'
     | 'source-spd-resolver-bundle-v1';
@@ -28,7 +30,8 @@ declare type BenchmarkScenarioId =
     | 'Q14'
     | 'Q15'
     | 'Q16'
-    | 'Q17';
+    | 'Q17'
+    | 'Q18';
 declare type BenchmarkDebugView =
     | 'final'
     | 'motion-vectors'
@@ -213,6 +216,10 @@ declare interface BenchmarkFrameState {
     particlesVisible: boolean;
     /** App-baked exposure factor driven into the scene color + resolver (Q11). */
     hostPreExposure?: number;
+    /** Q18: world translation of the main scene root (object motion in depth). */
+    sceneOffset?: readonly [number, number, number];
+    /** Q18: show the frontal backdrop wall behind the props. */
+    backdrop?: boolean;
     /** Scene rendered as the upscaler input; defaults to the main torture scene. */
     scene?: 'main' | 'cornell' | 'sparse-wires' | 'emitters';
     /**

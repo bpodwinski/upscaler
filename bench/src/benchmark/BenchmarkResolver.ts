@@ -1,6 +1,12 @@
 import type * as THREE from 'three/webgpu';
 
 import { Upscaler } from '@pmndrs/upscaler';
+import {
+    RECONSTRUCT_CAMERA_SHADER,
+    RECONSTRUCT_CROSS_FRAME_SHADER,
+} from '../../../src/shaders/reconstructVariants';
+
+type CrossFrameReconstruct = { shader: string; cameraCompensated: boolean };
 import { CandidateUpscaler } from '../candidates/CandidateUpscaler';
 import {
     RCAS_HOISTED_EXPOSURE_SHADER,
@@ -173,8 +179,14 @@ function createProductionUpscaler(
     renderer: THREE.WebGPURenderer,
     rcasShader?: string,
     spatialRcasShader?: string,
+    crossFrameReconstruct?: CrossFrameReconstruct,
 ): Upscaler {
-    const options = { renderer, _rcasShader: rcasShader, _spatialRcasShader: spatialRcasShader };
+    const options = {
+        renderer,
+        _rcasShader: rcasShader,
+        _spatialRcasShader: spatialRcasShader,
+        _crossFrameReconstruct: crossFrameReconstruct,
+    };
     return new Upscaler(options);
 }
 
@@ -201,8 +213,12 @@ export class BaselineBenchmarkResolver extends BenchmarkResolverAdapter {
         metadata: BenchmarkVariantMetadata,
         rcasShader?: string,
         spatialRcasShader?: string,
+        crossFrameReconstruct?: CrossFrameReconstruct,
     ) {
-        super(createProductionUpscaler(renderer, rcasShader, spatialRcasShader), metadata);
+        super(
+            createProductionUpscaler(renderer, rcasShader, spatialRcasShader, crossFrameReconstruct),
+            metadata,
+        );
     }
 }
 
@@ -295,4 +311,31 @@ export function createSourceBundleResolver(
     metadata: BenchmarkVariantMetadata,
 ): BenchmarkResolver {
     return new CandidateBenchmarkResolver(renderer as THREE.WebGPURenderer, metadata);
+}
+
+/**
+ * Creates an issue #67 depth-clip identity: the `baseline` pipeline (same
+ * frozen temporal RCAS, production spatial RCAS) with the reconstruct stage
+ * swapped for the pre-#67 cross-frame form or its camera-compensated variant
+ * (see src/shaders/reconstructVariants.ts).
+ * @param renderer - Initialized three WebGPU renderer
+ * @param metadata - Registry metadata carrying the experiment identity
+ * @returns One experiment resolver instance
+ */
+export function createReconstructExperimentResolver(
+    renderer: unknown,
+    metadata: BenchmarkVariantMetadata,
+): BenchmarkResolver {
+    const camera = metadata.id === 'reconstruct-camera-v1';
+    const variant: CrossFrameReconstruct = {
+        shader: camera ? RECONSTRUCT_CAMERA_SHADER : RECONSTRUCT_CROSS_FRAME_SHADER,
+        cameraCompensated: camera,
+    };
+    return new BaselineBenchmarkResolver(
+        renderer as THREE.WebGPURenderer,
+        metadata,
+        RCAS_LEGACY_SHADER,
+        RCAS_SHADER,
+        variant,
+    );
 }
