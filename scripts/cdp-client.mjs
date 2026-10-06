@@ -35,4 +35,3 @@ export class CDP {
     }
     close() { this.socket.close(); }
 }
-
