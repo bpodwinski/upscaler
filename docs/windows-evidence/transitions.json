@@ -1,0 +1,78 @@
+[
+  {
+    "demo": "02-fsr1-vs-fsr3",
+    "run": 0,
+    "resize": true,
+    "dpr": true,
+    "controls": [
+      "Bilinear (naive)",
+      "FSR1 spatial (EASU+RCAS)",
+      "FSR3 temporal",
+      "Off",
+      "Motion vectors",
+      "Disocclusion",
+      "Depth",
+      "Accumulation age",
+      "Locks",
+      "Exposure",
+      "Shading change"
+    ],
+    "issues": []
+  },
+  {
+    "demo": "13-guides-node",
+    "run": 0,
+    "resize": true,
+    "dpr": true,
+    "controls": [],
+    "issues": []
+  },
+  {
+    "demo": "15-transparent-canvas",
+    "run": 0,
+    "resize": true,
+    "dpr": true,
+    "controls": [
+      "temporal",
+      "spatial",
+      "1.0x (native AA)",
+      "1.5x",
+      "2.0x",
+      "3.0x",
+      "Off",
+      "Motion vectors",
+      "Disocclusion",
+      "Accumulation age",
+      "Locks",
+      "grid",
+      "light",
+      "photo"
+    ],
+    "issues": []
+  },
+  {
+    "demo": "16-spatial-node",
+    "run": 0,
+    "resize": true,
+    "dpr": true,
+    "controls": [
+      "pass() in-graph",
+      "texture() external"
+    ],
+    "issues": []
+  },
+  {
+    "demo": "s4-convergence",
+    "run": 0,
+    "resize": true,
+    "dpr": true,
+    "controls": [
+      "1× (native AA)",
+      "1.5×",
+      "2×",
+      "3×",
+      "4×"
+    ],
+    "issues": []
+  }
+]

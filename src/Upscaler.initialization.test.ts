@@ -11,7 +11,7 @@ function deferred<T>() {
 }
 function fixture() {
     const lost = deferred<GPUDeviceLostInfo>();
-    const jobs: Array<{ label: string; resolve(value: GPUComputePipeline): void }> = [];
+    const jobs: Array<{ label: string; resolve(value: GPUComputePipeline): void; reject(error: unknown): void }> = [];
     const resource = (descriptor: { size?: number; width?: number; height?: number } = {}) => ({
         width: descriptor.width ?? 16, height: descriptor.height ?? 16, sampleCount: 1,
         format: 'rgba16float', createView: () => ({}), destroy: vi.fn(),
@@ -35,7 +35,7 @@ function fixture() {
         queue: { writeBuffer: vi.fn(), writeTexture: vi.fn(), submit: vi.fn() },
         createShaderModule: vi.fn(resource),
         createComputePipelineAsync: vi.fn((descriptor: GPUComputePipelineDescriptor) =>
-            new Promise<GPUComputePipeline>(resolve => jobs.push({ label: descriptor.label!, resolve }))),
+            new Promise<GPUComputePipeline>((resolve, reject) => jobs.push({ label: descriptor.label!, resolve, reject }))),
         createBuffer: resource, createSampler: resource, createTexture: resource,
         createBindGroup: resource, createCommandEncoder: () => encoder,
     };
@@ -128,6 +128,29 @@ describe('Upscaler preparation', () => {
         expect(upscaler.activeDebugView).toBe(DebugView.MotionVectors);
         upscaler.dispatch({ color, depth, velocity }, camera);
         expect(upscaler.activeDebugView).toBe(DebugView.None);
+    });
+
+    it('prepares only geometry for guides-only consumers', async () => {
+        const { upscaler, device, finish } = fixture();
+        upscaler.configure({ displayWidth: 32, displayHeight: 32, path: 'guides' });
+        const ready = upscaler.init(); await finish(); await ready;
+        expect(device.createComputePipelineAsync.mock.calls.map(([d]) => d.label).sort())
+            .toEqual(['upscale-depth-clip', 'upscale-reconstruct']);
+        expect(upscaler.guides.dilatedDepth).toBeDefined();
+    });
+
+    it('retries failures only through explicit preparation', async () => {
+        const { upscaler, device, finish, jobs } = fixture();
+        upscaler.configure({ displayWidth: 32, displayHeight: 32, path: 'bilinear' });
+        const rejected = expect(upscaler.init()).rejects.toThrow('injected failure');
+        jobs.splice(0).forEach(job => job.reject(new Error('injected failure')));
+        await rejected;
+        upscaler.configure({ displayWidth: 64, displayHeight: 64, path: 'bilinear' });
+        await Promise.resolve();
+        expect(device.createComputePipelineAsync).toHaveBeenCalledTimes(1);
+        const retry = upscaler.prepare(); await finish(); await retry;
+        expect(device.createComputePipelineAsync).toHaveBeenCalledTimes(2);
+        expect(upscaler.isReady).toBe(true);
     });
 
     it('invalidates readiness on device loss', async () => {

@@ -57,6 +57,29 @@ describe('async compute pipeline cache', () => {
         expect(new Set(passes.map(pass => pass.pipeline)).size).toBe(4);
     });
 
+    it('keeps signed-zero specialization values distinct', async () => {
+        const { device, spy, jobs } = mockDevice();
+        const positive = ComputePass.create(device, 'a', 'source', { constants: { A: 0 } });
+        const negative = ComputePass.create(device, 'a', 'source', { constants: { A: -0 } });
+        expect(spy.createComputePipelineAsync).toHaveBeenCalledTimes(2);
+        jobs.forEach(job => job.resolve(pipeline()));
+        const [a, b] = await Promise.all([positive, negative]);
+        expect(a.pipeline).not.toBe(b.pipeline);
+        expect(Object.is(b.metadata.constants.A, -0)).toBe(true);
+    });
+
+    it('snapshots metadata before awaiting compilation', async () => {
+        const { device, jobs } = mockDevice();
+        const options = { constants: { A: 1 }, assembledChunks: ['original'] };
+        const request = ComputePass.create(device, 'a', 'source', options);
+        options.constants.A = 2;
+        options.assembledChunks.push('changed');
+        jobs[0].resolve(pipeline());
+        const pass = await request;
+        expect(pass.metadata.constants).toEqual({ A: 1 });
+        expect(pass.metadata.assembledChunks).toEqual(['original']);
+    });
+
     it('limits compilation to four requests across callers', async () => {
         const { device, spy, jobs } = mockDevice();
         const requests = Array.from({ length: 9 }, (_, i) => ComputePass.create(device, String(i), String(i)));

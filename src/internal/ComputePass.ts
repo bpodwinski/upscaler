@@ -53,7 +53,9 @@ function compile(device: GPUDevice, label: string, code: string, options: Comput
     const cache = deviceCache(device);
     if (cache.lost) return Promise.reject(new Error('@pmndrs/upscaler: GPU device lost.'));
     const constants = Object.fromEntries(Object.entries(options.constants ?? {}).sort(([a], [b]) => a.localeCompare(b)));
-    const key = JSON.stringify([code, 'main', 'auto', constants]);
+    const key = JSON.stringify([code, 'main', 'auto', Object.entries(constants).map(
+        ([name, value]) => [name, typeof value, Object.is(value, -0) ? '-0' : String(value)],
+    )]);
     const existing = cache.pipelines.get(key);
     if (existing) return existing;
     const pipeline = new Promise<GPUComputePipeline>((resolve, reject) => {

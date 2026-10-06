@@ -31,6 +31,7 @@ Maintained, for contributors:
 
 - [Contributing](contributing.md): the dev loop, the bench, verifying on a real GPU,
   and how releases are cut.
+- [Windows audit and roadmap](windows-audit.md): async startup evidence, browser/demo coverage, native tooling gaps and prioritized follow-ups.
 - [Architecture](architecture.md): the layers, the pass graph, color domains and the
   shared constants buffer.
 - [`src/shaders/README.md`](../src/shaders/README.md): the per-pass audit against
