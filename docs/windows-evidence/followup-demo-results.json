@@ -1,0 +1,361 @@
+{
+  "browser": "Chrome/154.0.8037.98",
+  "records": [
+    {
+      "demo": "01-hello",
+      "cache": "cold",
+      "sync": 0,
+      "async": 8,
+      "submits": 1021,
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "01-hello",
+      "cache": "warm",
+      "sync": 0,
+      "async": 8,
+      "submits": 825,
+      "issues": []
+    },
+    {
+      "demo": "02-fsr1-vs-fsr3",
+      "cache": "cold",
+      "sync": 0,
+      "async": 8,
+      "submits": 1021,
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "02-fsr1-vs-fsr3",
+      "cache": "warm",
+      "sync": 0,
+      "async": 8,
+      "submits": 825,
+      "issues": []
+    },
+    {
+      "demo": "03-split-compare",
+      "cache": "cold",
+      "sync": 0,
+      "async": 8,
+      "submits": 1309,
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "03-split-compare",
+      "cache": "warm",
+      "sync": 0,
+      "async": 8,
+      "submits": 1075,
+      "issues": []
+    },
+    {
+      "demo": "04-aliasing-torture",
+      "cache": "cold",
+      "sync": 0,
+      "async": 8,
+      "submits": 1021,
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "04-aliasing-torture",
+      "cache": "warm",
+      "sync": 0,
+      "async": 8,
+      "submits": 793,
+      "issues": []
+    },
+    {
+      "demo": "05-transparency",
+      "cache": "cold",
+      "sync": 0,
+      "async": 8,
+      "submits": 1276,
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "05-transparency",
+      "cache": "warm",
+      "sync": 0,
+      "async": 8,
+      "submits": 986,
+      "issues": []
+    },
+    {
+      "demo": "06-screenspace-gi",
+      "cache": "cold",
+      "sync": 0,
+      "async": 8,
+      "submits": 1533,
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "06-screenspace-gi",
+      "cache": "warm",
+      "sync": 0,
+      "async": 8,
+      "submits": 1287,
+      "issues": []
+    },
+    {
+      "demo": "07-tsl-node",
+      "cache": "cold",
+      "sync": 0,
+      "async": 8,
+      "submits": 751,
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "07-tsl-node",
+      "cache": "warm",
+      "sync": 0,
+      "async": 8,
+      "submits": 627,
+      "issues": []
+    },
+    {
+      "demo": "08-tsl-compose",
+      "cache": "cold",
+      "sync": 0,
+      "async": 8,
+      "submits": 765,
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "08-tsl-compose",
+      "cache": "warm",
+      "sync": 0,
+      "async": 8,
+      "submits": 637,
+      "issues": []
+    },
+    {
+      "demo": "09-kitchen-sink",
+      "cache": "cold",
+      "sync": 0,
+      "async": 8,
+      "submits": 2808,
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "09-kitchen-sink",
+      "cache": "warm",
+      "sync": 0,
+      "async": 8,
+      "submits": 2303,
+      "issues": []
+    },
+    {
+      "demo": "10-ssgi-denoise",
+      "cache": "cold",
+      "sync": 0,
+      "async": 8,
+      "submits": 2887,
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "10-ssgi-denoise",
+      "cache": "warm",
+      "sync": 0,
+      "async": 8,
+      "submits": 2435,
+      "issues": []
+    },
+    {
+      "demo": "11-node-reactive",
+      "cache": "cold",
+      "sync": 0,
+      "async": 8,
+      "submits": 1006,
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "11-node-reactive",
+      "cache": "warm",
+      "sync": 0,
+      "async": 8,
+      "submits": 817,
+      "issues": []
+    },
+    {
+      "demo": "12-temporal-guides",
+      "cache": "cold",
+      "sync": 0,
+      "async": 8,
+      "submits": 886,
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "12-temporal-guides",
+      "cache": "warm",
+      "sync": 0,
+      "async": 8,
+      "submits": 946,
+      "issues": []
+    },
+    {
+      "demo": "13-guides-node",
+      "cache": "cold",
+      "sync": 0,
+      "async": 8,
+      "submits": 990,
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "13-guides-node",
+      "cache": "warm",
+      "sync": 0,
+      "async": 8,
+      "submits": 970,
+      "issues": []
+    },
+    {
+      "demo": "14-pathtracer-alpha",
+      "cache": "cold",
+      "sync": 0,
+      "async": 15,
+      "submits": 3059,
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "14-pathtracer-alpha",
+      "cache": "warm",
+      "sync": 0,
+      "async": 15,
+      "submits": 2835,
+      "issues": []
+    },
+    {
+      "demo": "15-transparent-canvas",
+      "cache": "cold",
+      "sync": 0,
+      "async": 8,
+      "submits": 856,
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "15-transparent-canvas",
+      "cache": "warm",
+      "sync": 0,
+      "async": 8,
+      "submits": 848,
+      "issues": []
+    },
+    {
+      "demo": "16-spatial-node",
+      "cache": "cold",
+      "sync": 0,
+      "async": 3,
+      "submits": 766,
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "16-spatial-node",
+      "cache": "warm",
+      "sync": 0,
+      "async": 3,
+      "submits": 583,
+      "issues": []
+    },
+    {
+      "demo": "s1-reinvest",
+      "cache": "cold",
+      "sync": 0,
+      "async": 8,
+      "submits": 1586,
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "s1-reinvest",
+      "cache": "warm",
+      "sync": 0,
+      "async": 8,
+      "submits": 2224,
+      "issues": []
+    },
+    {
+      "demo": "s2-fractal",
+      "cache": "cold",
+      "sync": 0,
+      "async": 8,
+      "submits": 1166,
+      "issues": []
+    },
+    {
+      "demo": "s2-fractal",
+      "cache": "warm",
+      "sync": 0,
+      "async": 8,
+      "submits": 1062,
+      "issues": []
+    },
+    {
+      "demo": "s3-how-low",
+      "cache": "cold",
+      "sync": 0,
+      "async": 8,
+      "submits": 1455,
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "s3-how-low",
+      "cache": "warm",
+      "sync": 0,
+      "async": 8,
+      "submits": 1707,
+      "issues": []
+    },
+    {
+      "demo": "s4-convergence",
+      "cache": "cold",
+      "sync": 0,
+      "async": 8,
+      "submits": 421,
+      "issues": []
+    },
+    {
+      "demo": "s4-convergence",
+      "cache": "warm",
+      "sync": 0,
+      "async": 8,
+      "submits": 397,
+      "issues": []
+    }
+  ]
+}

@@ -3,6 +3,9 @@
 2026-10-06 — [issue #82](https://github.com/pmndrs/upscaler/issues/82), [draft PR #83](https://github.com/pmndrs/upscaler/pull/83).
 Baseline: v0.4.0 / bfb343c. Startup implementation: 3d018e1.
 
+Current implementation status: [Windows follow-ups completed](windows-followups.md).
+The observations below are the original audit snapshot.
+
 ## Result and measurements
 
 Default temporal startup now creates eight async pipelines, spatial creates three,

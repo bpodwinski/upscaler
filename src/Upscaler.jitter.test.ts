@@ -130,6 +130,8 @@ describe('Upscaler jitter accessors', async () => {
         }
         const constants = writes.find((data) => data.length === 64);
         expect(constants).toBeDefined();
+        // Exposure reads the fixed metering bound from the final reserved UBO slot.
+        expect(new Uint32Array(constants!.buffer)[23]).toBe(32);
         expect([constants![8], constants![9]]).toEqual([
             Math.fround(upscaler.jitter.x),
             Math.fround(upscaler.jitter.y),

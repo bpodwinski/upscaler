@@ -1,0 +1,34 @@
+[
+  {
+    "demo": "14-pathtracer-alpha",
+    "cache": "cold",
+    "sync": 0,
+    "async": 15,
+    "issues": [
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ]
+  },
+  {
+    "demo": "14-pathtracer-alpha",
+    "cache": "warm",
+    "sync": 0,
+    "async": 15,
+    "issues": []
+  },
+  {
+    "demo": "14-pathtracer-alpha",
+    "exercise": {
+      "resize": true,
+      "dpr": true,
+      "controls": [
+        "1.0x (native)",
+        "1.5x",
+        "2.0x",
+        "3.0x"
+      ],
+      "primitives": null,
+      "syncComputeCalls": 0
+    },
+    "issues": []
+  }
+]

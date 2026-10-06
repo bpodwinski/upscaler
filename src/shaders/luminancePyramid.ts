@@ -35,7 +35,10 @@ import { assembleShader } from './wgsl';
  *      dummy (no input) publishes 1.0, keeping the correction inert.
  */
 export const LUMINANCE_PYRAMID_SHADER = assembleShader(
-    WGSL_CONSTANTS,
+    // Exposure names the final reserved slot of the shared 96-byte layout.
+    // Other passes keep it as padding; the writer always supplies 32 here.
+    WGSL_CONSTANTS.replace('_pad            : u32,    // offset 92',
+        'exposureTaps    : u32,    // offset 92 — fixed metering grid, uniform loop bound'),
     WGSL_COLOR,
     /* wgsl */ `
 @group(0) @binding(1) var inputColor : texture_2d<f32>;
@@ -76,7 +79,7 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     // Geometric mean of luminance (average in log space) resists a few bright
     // pixels dragging the whole exposure, matching FSR2's log-average.
     var logSum = 0.0;
-    for (var y = 0u; y < EXPOSURE_TAPS; y = y + 1u) {
+    for (var y = 0u; y < C.exposureTaps; y = y + 1u) {
         for (var x = 0u; x < EXPOSURE_TAPS; x = x + 1u) {
             let uv = (vec2f(f32(x), f32(y)) + 0.5) / f32(EXPOSURE_TAPS);
             let c = textureSampleLevel(inputColor, linearSampler, uv, 0.0).rgb;
