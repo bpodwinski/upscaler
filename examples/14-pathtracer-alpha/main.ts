@@ -1,3 +1,4 @@
+import { prepareComputeAction } from '../shared/prepareComputeAction';
 import * as THREE from 'three/webgpu';
 import { texture } from 'three/tsl';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -120,7 +121,8 @@ const upscaler = new Upscaler({ renderer });
 // target behind our back (the latter drops to a quarter while the camera
 // moves); the upscaler is configured for one fixed render size, so both are
 // off and `setSize` is driven from the upscaler's own render resolution.
-const pathTracer = new WebGPUPathTracer(renderer);
+status.textContent = 'preparing path-tracer resources…';
+const pathTracer = await prepareComputeAction(renderer, () => new WebGPUPathTracer(renderer));
 pathTracer.synchronizeRenderSize = false;
 pathTracer.dynamicLowRes = false;
 pathTracer.renderDelay = 0;
@@ -128,7 +130,7 @@ pathTracer.minSamples = 0;
 // Upstream's default: clamps the glossy lobe so specular fireflies do not
 // stay in the running average for thousands of samples.
 pathTracer.filterGlossyFactor = 1;
-pathTracer.setScene(scene, camera);
+await prepareComputeAction(renderer, () => pathTracer.setScene(scene, camera));
 
 //* Present — the upscaled RGBA, blended over the page.
 // `transparent` puts the quad on three's blended pass with premultiplied
@@ -164,7 +166,25 @@ function configure(): void {
     presentMaterial.colorNode = texture(upscaler.outputTexture);
     presentMaterial.needsUpdate = true;
 }
-configure();
+await prepareComputeAction(renderer, configure);
+
+let pendingPreparations = 0;
+let preparation = Promise.resolve();
+function schedulePreparation(action: () => void): void {
+    pendingPreparations++;
+    controls.enabled = false;
+    status.textContent = 'preparing path-tracer shaders…';
+    preparation = preparation.then(() => prepareComputeAction(renderer, () => {
+        action();
+        pathTracer.renderSample();
+    })).then(() => { pathTracer.reset(); }).catch(error => {
+        console.error(error);
+        showFatal('Could not prepare the path tracer: ' + String(error));
+    }).finally(() => {
+        pendingPreparations--;
+        if (!pendingPreparations) { controls.enabled = true; status.textContent = ''; }
+    });
+}
 
 //* UI
 const gui = new GUI({ title: 'pathtracer + alpha' });
@@ -174,8 +194,7 @@ gui.add(settings, 'upscale')
 gui.add(settings, 'ratio', { '1.0x (native)': 1, '1.5x': 1.5, '2.0x': 2, '3.0x': 3 })
     .name('render ratio')
     .onChange(() => {
-        configure();
-        pathTracer.reset();
+        schedulePreparation(configure);
     });
 gui.add(settings, 'sharpness', 0, 1, 0.05).name('RCAS sharpness');
 gui.add(settings, 'bounces', 1, 10, 1)
@@ -195,11 +214,12 @@ function switchPageStyle(): void {
 controls.addEventListener('change', () => pathTracer.updateCamera());
 
 window.addEventListener('resize', () => {
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    configure();
-    pathTracer.reset();
+    schedulePreparation(() => {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        configure();
+    });
 });
 
 //* Loop
@@ -211,10 +231,13 @@ Object.assign(window, {
     __pathtracerAlphaFrames: () => frames,
 });
 
+status.textContent = 'compiling path-tracer shaders…';
 await Promise.all([upscaler.init()]);
+await prepareComputeAction(renderer, () => pathTracer.renderSample());
+pathTracer.reset();
 
 renderer.setAnimationLoop(() => {
-    if (!upscaler.isReady) return;
+    if (pendingPreparations || !upscaler.isReady) return;
     controls.update();
     upscaler.settings.sharpness = settings.sharpness;
 

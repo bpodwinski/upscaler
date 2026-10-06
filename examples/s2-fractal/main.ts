@@ -62,7 +62,7 @@ controls.maxDistance = 22;
 controls.enabled = false;
 
 //* Upscaler — raw driver: we produce color/depth/velocity ourselves.
-const upscaler = new Upscaler({ renderer });
+const upscaler = new Upscaler({ renderer, gpuTiming: true });
 
 //* Raymarch uniforms, refreshed every frame between beginFrame/endFrame.
 const uInvProjection = uniform(new THREE.Matrix4()); // JITTERED inverse projection → primary rays
