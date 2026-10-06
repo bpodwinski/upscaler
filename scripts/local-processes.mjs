@@ -7,7 +7,8 @@
  */
 import { spawn } from 'node:child_process';
 import { rm } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { join, resolve, sep } from 'node:path';
+import { tmpdir } from 'node:os';
 import process from 'node:process';
 
 const ROOT = resolve(import.meta.dirname, '..');
@@ -133,6 +134,16 @@ export async function stopChild(child, { graceMs = 3000, killMs = 2000 } = {}) {
     if (!child || child.exitCode !== null || child.signalCode !== null) return;
     const exited = new Promise((resolveExit) => child.once('exit', () => resolveExit(true)));
     const timeout = (ms) => new Promise((resolveWait) => setTimeout(() => resolveWait(false), ms));
+    if (process.platform === 'win32' && Number.isInteger(child.pid) && child.pid > 0) {
+        const killer = spawn(join(process.env.SystemRoot ?? 'C:/Windows', 'System32/taskkill.exe'),
+            ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+        await Promise.race([
+            new Promise(resolveKill => { killer.once('exit', resolveKill); killer.once('error', resolveKill); }),
+            timeout(killMs),
+        ]);
+        await Promise.race([exited, timeout(killMs)]);
+        return;
+    }
     child.kill('SIGTERM');
     if (await Promise.race([exited, timeout(graceMs)])) return;
     child.kill('SIGKILL');
@@ -149,6 +160,14 @@ export async function stopChild(child, { graceMs = 3000, killMs = 2000 } = {}) {
  */
 export async function removeTempDirectory(path, label = 'temp directory') {
     if (!path) return true;
+    const target = resolve(path);
+    const temporaryRoot = resolve(tmpdir());
+    const normalize = value => process.platform === 'win32' ? value.toLowerCase() : value;
+    if (normalize(target) === normalize(temporaryRoot) ||
+        !normalize(target).startsWith(normalize(temporaryRoot + sep))) {
+        console.warn('warning: refusing to remove a directory outside the temporary root: ' + target);
+        return false;
+    }
     try {
         await rm(path, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
         return true;

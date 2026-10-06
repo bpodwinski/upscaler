@@ -1,3 +1,4 @@
+import { browserExecutable } from './browser-executable.mjs';
 import { npmInvocation } from './npm-command.mjs';
 import { spawn, spawnSync } from 'node:child_process';
 import {
@@ -197,21 +198,7 @@ async function freePort() {
     });
 }
 
-function chromeExecutable(explicit) {
-    const candidates = [
-        explicit,
-        process.env.CHROME_PATH,
-        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-        '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
-        '/Applications/Chromium.app/Contents/MacOS/Chromium',
-        '/usr/bin/google-chrome',
-        '/usr/bin/chromium',
-    ].filter(Boolean);
-    const executable = candidates.find(existsSync);
-    if (!executable)
-        throw new Error('Chrome was not found. Pass --chrome /path/to/chrome.');
-    return executable;
-}
+const chromeExecutable = explicit => browserExecutable(explicit);
 
 class CdpClient {
     constructor(url) {

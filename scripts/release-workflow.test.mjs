@@ -18,6 +18,8 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 import { afterEach, describe, expect, test } from 'vitest';
+import { bash, shellEnvironment, shellPath, shellQuote, which } from './test-shell.mjs';
+import { npmInvocation } from './npm-command.mjs';
 
 const SLOW = 60_000;
 
@@ -29,8 +31,8 @@ afterEach(() => new Promise((resolve) => setImmediate(resolve)));
 const workflow = readFileSync(
     new URL('../.github/workflows/publish.yml', import.meta.url),
     'utf8',
-);
-const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+).replaceAll('\r\n', '\n');
+const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8').replaceAll('\r\n', '\n');
 
 //* Workflow Parsing ===
 
@@ -130,7 +132,6 @@ function commit(directory, message) {
     return git(directory, ['rev-parse', 'HEAD']);
 }
 
-const which = (command) => spawnSync('sh', ['-c', `command -v ${command}`], { encoding: 'utf8' }).stdout.trim();
 
 const FAKE_NPM = `#!/usr/bin/env bash
 set -euo pipefail
@@ -244,10 +245,16 @@ function createFixture({ tag, offMain } = {}) {
     git(seed, ['remote', 'add', 'origin', origin]);
     git(seed, ['push', '-q', 'origin', 'main', '--tags']);
 
-    writeFileSync(join(bin, 'npm'), FAKE_NPM, { mode: 0o755 });
-    writeFileSync(join(bin, 'gh'), FAKE_GH, { mode: 0o755 });
-    writeFileSync(join(bin, 'git'), GIT_WRAPPER, { mode: 0o755 });
-    return { root, origin, seed, bin, runs: 0 };
+    writeFileSync(join(bin, 'npm'), FAKE_NPM.replaceAll('\r\n', '\n'), { mode: 0o755 });
+    writeFileSync(join(bin, 'gh'), FAKE_GH.replaceAll('\r\n', '\n'), { mode: 0o755 });
+    writeFileSync(join(bin, 'git'), GIT_WRAPPER.replaceAll('\r\n', '\n'), { mode: 0o755 });
+    const realNpm = process.platform === 'win32' ? join(bin, 'real-npm') : which('npm');
+    if (process.platform === 'win32') {
+        const [command, args] = npmInvocation([]);
+        const script = '#!/usr/bin/env bash\nexec ' + [command, ...args].map(value => shellQuote(shellPath(value))).join(' ') + ' "$@"\n';
+        writeFileSync(realNpm, script);
+    }
+    return { root, origin, seed, bin, realNpm, runs: 0 };
 }
 
 function withFixture(options, callback) {
@@ -335,6 +342,17 @@ function runJob(
         configureUser(raceClone);
     }
 
+    if (process.platform === 'win32' && race) {
+        // Native Git cannot execute the extensionless Bash shim.
+        // Its pre-push hook injects the same race before refs are updated.
+        const hooks = join(fixture.root, 'hooks-' + run);
+        mkdirSync(hooks);
+        const hook = GIT_WRAPPER.replace('if [[ "$1" == "push" && -n', 'if [[ -n')
+            .replace('exec "$REAL_GIT" "$@"', 'exit 0').replaceAll('\r\n', '\n');
+        writeFileSync(join(hooks, 'pre-push'), hook);
+        git(work, ['config', 'core.hooksPath', hooks]);
+    }
+
     const npmLog = join(fixture.root, `npm-${run}.log`);
     const ghLog = join(fixture.root, `gh-${run}.log`);
     let failed = null;
@@ -347,26 +365,24 @@ function runJob(
         const env = Object.fromEntries(
             Object.entries(current.env).map(([key, value]) => [key, interpolate(value, context)]),
         );
-        const result = spawnSync('bash', ['-e', '-o', 'pipefail', '-c', current.run], {
+        const result = spawnSync(bash, ['-e', '-o', 'pipefail', '-c', current.run], {
             cwd: work,
             encoding: 'utf8',
-            env: {
-                ...process.env,
+            env: shellEnvironment({
                 ...env,
-                PATH: `${fixture.bin}:${process.env.PATH}`,
                 REAL_GIT: which('git'),
-                REAL_NPM: which('npm'),
-                RUNNER_TEMP: temp,
-                GITHUB_OUTPUT: outputPath,
-                NPM_LOG: npmLog,
-                GH_LOG: ghLog,
+                REAL_NPM: shellPath(fixture.realNpm),
+                RUNNER_TEMP: shellPath(temp),
+                GITHUB_OUTPUT: shellPath(outputPath),
+                NPM_LOG: shellPath(npmLog),
+                GH_LOG: shellPath(ghLog),
                 NPM_MODE: npm,
                 NPM_LATEST_MODE: npmLatest,
                 GH_MODE: gh,
                 NPM_PUBLISH_MODE: publish,
-                RACE_FILE: race ? raceFile : '',
-                RACE_CLONE: raceClone,
-            },
+                RACE_FILE: race ? shellPath(raceFile) : '',
+                RACE_CLONE: shellPath(raceClone),
+            }, [fixture.bin]),
         });
         output += result.stdout + result.stderr;
         if (current.id)

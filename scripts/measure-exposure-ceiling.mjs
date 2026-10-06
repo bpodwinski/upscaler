@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { browserExecutable } from './browser-executable.mjs';
 /**
  * Dark-scene HDR highlight meter (issue #49). Drives bench/exposure-ceiling.html
  * over CDP: emissive squares at 0.25 / 1 / 4 / 16 / 64 linear in three sizes
@@ -30,7 +31,6 @@
  * Writes bench/results/raw/exposure-ceiling/<label>/summary.json.
  */
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -77,17 +77,7 @@ const port = parsePort(cli.port, '--port') ?? 9333;
 const server = resolveServerUrl(cli.url, DEFAULT_BENCH_URL);
 const outputDirectory = join(ROOT, 'bench/results/raw/exposure-ceiling', label);
 
-function chromeExecutable() {
-    const candidates = [
-        process.env.CHROME_PATH,
-        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-        '/usr/bin/google-chrome',
-        '/usr/bin/chromium',
-    ].filter(Boolean);
-    const executable = candidates.find((candidate) => existsSync(candidate));
-    if (!executable) throw new Error('Chrome was not found. Set CHROME_PATH.');
-    return executable;
-}
+const chromeExecutable = () => browserExecutable();
 
 //* CDP
 class CdpClient {

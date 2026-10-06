@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { browserExecutable } from './browser-executable.mjs';
 /**
  * GPU-timing overhead meter (issue #70). Drives bench/timer-overhead.html over
  * CDP and measures what per-pass timestamp profiling costs, from outside the
@@ -27,7 +28,6 @@
  * Writes bench/results/raw/timer-overhead/<label>/summary.json.
  */
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -87,17 +87,7 @@ const port = parsePort(cli.port, '--port') ?? 9333;
 const server = resolveServerUrl(cli.url, DEFAULT_BENCH_URL);
 const outputDirectory = join(ROOT, 'bench/results/raw/timer-overhead', label);
 
-function chromeExecutable() {
-    const candidates = [
-        process.env.CHROME_PATH,
-        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-        '/usr/bin/google-chrome',
-        '/usr/bin/chromium',
-    ].filter(Boolean);
-    const executable = candidates.find((candidate) => existsSync(candidate));
-    if (!executable) throw new Error('Chrome was not found. Set CHROME_PATH.');
-    return executable;
-}
+const chromeExecutable = () => browserExecutable();
 
 //* CDP
 class CdpClient {

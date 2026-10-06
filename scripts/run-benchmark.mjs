@@ -1,6 +1,6 @@
+import { browserExecutable } from './browser-executable.mjs';
 import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -206,20 +206,7 @@ async function currentWorkingTreeDigest() {
     return hashWorkingTreeEntries(entries);
 }
 
-function chromeExecutable(explicit) {
-    const candidates = [
-        explicit,
-        process.env.CHROME_PATH,
-        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-        '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
-        '/Applications/Chromium.app/Contents/MacOS/Chromium',
-        '/usr/bin/google-chrome',
-        '/usr/bin/chromium',
-    ].filter(Boolean);
-    const executable = candidates.find(existsSync);
-    if (!executable) throw new Error('Chrome was not found. Pass --chrome /path/to/chrome.');
-    return executable;
-}
+const chromeExecutable = explicit => browserExecutable(explicit);
 
 async function waitForUrl(url, attempts = 100) {
     for (let attempt = 0; attempt < attempts; attempt++) {

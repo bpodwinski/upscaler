@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 
 import {
     DEFAULT_BENCH_URL,
@@ -97,4 +97,12 @@ test('removeTempDirectory removes a tree and never throws', async () => {
     expect(await removeTempDirectory(directory)).toBe(true);
     expect(existsSync(directory)).toBe(false);
     expect(await removeTempDirectory(undefined)).toBe(true);
+});
+
+test('refuses to remove the temporary root or an outside directory', async () => {
+    const warn=vi.spyOn(console,'warn').mockImplementation(()=>{});
+    try {
+        expect(await removeTempDirectory(tmpdir())).toBe(false);
+        expect(await removeTempDirectory(join(tmpdir(),'..','outside'))).toBe(false);
+    } finally { warn.mockRestore(); }
 });

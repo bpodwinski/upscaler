@@ -1,3 +1,5 @@
+import { CDP } from './cdp-client.mjs';
+import { browserExecutable } from './browser-executable.mjs';
 /**
  * Reproducible Chrome/Edge demo smoke capture. Use an explicit browser executable.
  * Profiles and screenshots belong to this run; no personal browser profile is used.
@@ -11,54 +13,17 @@ import { parseFlags } from './cli-flags.mjs';
 import { removeTempDirectory, spawnVite, stopChild, waitForUrl } from './local-processes.mjs';
 
 const options = parseFlags(process.argv.slice(2), ['browser', 'out', 'demos', 'port', 'cdp-port', 'runs', 'trace', 'exercise', 'help']);
-if (options.help || !options.browser) {
+if (options.help) {
     console.log('Usage: node scripts/audit-windows.mjs --browser <chrome.exe|msedge.exe> [--demos 01-hello,07-tsl-node] [--runs 3] [--trace] [--out directory]');
-    process.exit(options.help ? 0 : 1);
+    process.exit(0);
 }
+const selectedBrowser = browserExecutable(options.browser);
 const demos = String(options.demos ?? '01-hello,02-fsr1-vs-fsr3,03-split-compare,04-aliasing-torture,05-transparency,06-screenspace-gi,07-tsl-node,08-tsl-compose,09-kitchen-sink,10-ssgi-denoise,11-node-reactive,12-temporal-guides,13-guides-node,14-pathtracer-alpha,15-transparent-canvas,16-spatial-node,s1-reinvest,s2-fractal,s3-how-low,s4-convergence').split(',');
 const out = resolve(String(options.out ?? 'bench/results/windows-local'));
 const port = Number(options.port ?? 5301);
 const cdpPort = Number(options['cdp-port'] ?? 9341);
 const runs = Number(options.runs ?? 1);
 await mkdir(out, { recursive: true });
-
-class CDP {
-    id = 0; requests = new Map(); events = [];
-    constructor(socket) {
-        this.socket = socket;
-        socket.addEventListener('message', event => {
-            const message = JSON.parse(event.data);
-            if (message.id) {
-                const request = this.requests.get(message.id);
-                this.requests.delete(message.id);
-                if (message.error) request?.reject(new Error(JSON.stringify(message.error)));
-                else request?.resolve(message.result);
-            } else this.events.push(message);
-        });
-    }
-    static async connect(url) {
-        const socket = new WebSocket(url);
-        await new Promise((resolve, reject) => {
-            socket.addEventListener('open', resolve, { once: true });
-            socket.addEventListener('error', reject, { once: true });
-        });
-        return new CDP(socket);
-    }
-    send(method, params = {}, timeoutMs = 45000) {
-        const id = ++this.id;
-        return new Promise((resolve, reject) => {
-            const timer = setTimeout(() => { this.requests.delete(id); reject(new Error(method + ' timed out')); }, timeoutMs);
-            this.requests.set(id, { resolve: value => { clearTimeout(timer); resolve(value); }, reject: error => { clearTimeout(timer); reject(error); } });
-            this.socket.send(JSON.stringify({ id, method, params }));
-        });
-    }
-    async evaluate(expression) {
-        const result = await this.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
-        if (result.exceptionDetails) throw new Error(result.exceptionDetails.text);
-        return result.result.value;
-    }
-    close() { this.socket.close(); }
-}
 
 const instrumentation = `
 (() => {
@@ -88,13 +53,13 @@ const instrumentation = `
 `;
 
 const server = spawnVite('examples/vite.config.ts', { hostname: '127.0.0.1', port });
-const report = { date: new Date().toISOString(), browser: String(options.browser), node: process.version, platform: process.platform, records: [] };
+const report = { date: new Date().toISOString(), browser: selectedBrowser, node: process.version, platform: process.platform, records: [] };
 try {
     await waitForUrl('http://127.0.0.1:' + port, { child: server });
     for (let run = 0; run < runs; run++) {
       for (const demo of demos) {
         const profile = await mkdtemp(join(tmpdir(), 'upscaler-audit-'));
-        const browser = spawn(String(options.browser), ['--headless=new', '--enable-unsafe-webgpu', '--no-first-run', '--no-default-browser-check',
+        const browser = spawn(selectedBrowser, ['--headless=new', '--enable-unsafe-webgpu', '--no-first-run', '--no-default-browser-check',
             '--remote-debugging-port=' + cdpPort, '--user-data-dir=' + profile, '--window-size=960,640', 'about:blank'], { stdio: 'ignore', windowsHide: true });
         let browserClient;
         try {
@@ -194,7 +159,8 @@ try {
                         const errors = client.events.filter(e => e.method === 'Runtime.exceptionThrown' ||
                             (e.method === 'Log.entryAdded' && e.params.entry.level === 'error' && !e.params.entry.url?.endsWith('/favicon.ico')) ||
                             (e.method === 'Runtime.consoleAPICalled' && e.params.type === 'error'));
-                        report.records.push({ demo, run, exercise: { resize: true, dpr: true, controls, primitives }, issues: errors });
+                        const finalAudit = await client.evaluate("window.__audit");
+                        report.records.push({ demo, run, exercise: { resize: true, dpr: true, controls, primitives, syncComputeCalls: finalAudit.sync }, issues: errors });
                         console.log(JSON.stringify({ demo, run, exercise: true, controls: controls.length, errors: errors.length }));
                     }
                     if (options.trace) {

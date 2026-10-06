@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { browserExecutable } from './browser-executable.mjs';
 /**
  * Still-scene ALPHA convergence meter — the alpha counterpart of
  * measure-convergence.mjs. Drives examples/15-transparent-canvas (sub-texel
@@ -32,7 +33,6 @@
  * bench/results/raw/alpha-convergence/<label>-<path>-<ratio>x/.
  */
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -100,18 +100,7 @@ const outputDirectory = join(
 );
 
 //* CDP plumbing (subset of run-benchmark.mjs)
-function chromeExecutable() {
-    const candidates = [
-        process.env.CHROME_PATH,
-        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-        '/Applications/Chromium.app/Contents/MacOS/Chromium',
-        '/usr/bin/google-chrome',
-        '/usr/bin/chromium',
-    ].filter(Boolean);
-    const executable = candidates.find(existsSync);
-    if (!executable) throw new Error('Chrome was not found. Set CHROME_PATH.');
-    return executable;
-}
+const chromeExecutable = () => browserExecutable();
 
 async function waitForUrl(url, attempts = 150) {
     for (let attempt = 0; attempt < attempts; attempt++) {

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { browserExecutable } from './browser-executable.mjs';
 /**
  * Still-scene convergence meter — quantifies temporal churn on a deterministic
  * benchmark scenario by stepping the bench frame-by-frame and measuring the
@@ -29,7 +30,6 @@
  * bench/results/raw/convergence/<label>-<scenario>[-<subrun>]-<ratio>x/.
  */
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -228,18 +228,7 @@ function regionStats(image, roi, metric) {
 }
 
 //* CDP plumbing (subset of run-benchmark.mjs)
-function chromeExecutable() {
-    const candidates = [
-        process.env.CHROME_PATH,
-        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-        '/Applications/Chromium.app/Contents/MacOS/Chromium',
-        '/usr/bin/google-chrome',
-        '/usr/bin/chromium',
-    ].filter(Boolean);
-    const executable = candidates.find(existsSync);
-    if (!executable) throw new Error('Chrome was not found. Set CHROME_PATH.');
-    return executable;
-}
+const chromeExecutable = () => browserExecutable();
 
 async function waitForUrl(url, attempts = 100) {
     for (let attempt = 0; attempt < attempts; attempt++) {

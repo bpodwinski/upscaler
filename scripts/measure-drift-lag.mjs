@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { browserExecutable } from './browser-executable.mjs';
 /**
  * Lighting-drift lag meter: how far the temporal output trails a lighting ramp
  * on a still camera. Written for STILL_CLAMP_RELAX (issue #5): widening the
@@ -53,7 +54,6 @@
  * bench/results/raw/drift-lag/<label>-<scenario>-<ratio>x/.
  */
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -225,18 +225,7 @@ function brightness(image, roi) {
 }
 
 //* CDP plumbing (subset of run-benchmark.mjs)
-function chromeExecutable() {
-    const candidates = [
-        process.env.CHROME_PATH,
-        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-        '/Applications/Chromium.app/Contents/MacOS/Chromium',
-        '/usr/bin/google-chrome',
-        '/usr/bin/chromium',
-    ].filter(Boolean);
-    const executable = candidates.find(existsSync);
-    if (!executable) throw new Error('Chrome was not found. Set CHROME_PATH.');
-    return executable;
-}
+const chromeExecutable = () => browserExecutable();
 
 class CdpClient {
     constructor(url) {
