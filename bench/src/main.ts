@@ -152,6 +152,7 @@ function resizeBenchmark(dimensions: BenchmarkDimensions): void {
 
 if (automated) {
     resizeBenchmark(config.dimensions);
+    await pipeline?.resolver.prepare();
     await pipeline?.prepareEffectReadiness(camera);
     pipeline?.reset(bench.scene, camera, 0);
 }
@@ -265,6 +266,7 @@ if (!automated && pipeline && controls) {
             detectShadingChanges: state.detectShadingChanges,
             debugView: state.debugView,
         });
+        if (!pipeline.resolver.isReady) return;
         pipeline.render(bench.scene, camera, dt, interactiveFrame++);
         updateStats(dt);
     });

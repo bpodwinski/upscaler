@@ -20,6 +20,7 @@ function mockRenderer() {
         destroy: () => {},
     });
     const device = {
+        lost: new Promise<GPUDeviceLostInfo>(() => {}),
         features: new Set<string>(),
         queue: {
             writeBuffer: vi.fn((_buffer: unknown, _offset: number, data: ArrayBuffer) => {
@@ -29,7 +30,7 @@ function mockRenderer() {
             submit: vi.fn(),
         },
         createShaderModule: resource,
-        createComputePipeline: resource,
+        createComputePipelineAsync: async () => resource(),
         createSampler: resource,
         createBuffer: resource,
         createTexture: resource,
@@ -48,11 +49,12 @@ function mockRenderer() {
     return { renderer, writes };
 }
 
-function configured(path: UpscalePath = 'temporal', jitter = true) {
+async function configured(path: UpscalePath = 'temporal', jitter = true) {
     const { renderer, writes } = mockRenderer();
     const upscaler = new Upscaler({ renderer });
-    upscaler.init();
+
     upscaler.configure({ displayWidth: 1280, displayHeight: 720, customUpscaleRatio: 2, path, jitter });
+    await upscaler.init();
     return { upscaler, writes };
 }
 
@@ -62,7 +64,7 @@ const camera = () => {
     return c;
 };
 
-describe('Upscaler jitter accessors', () => {
+describe('Upscaler jitter accessors', async () => {
     beforeEach(() => {
         vi.stubGlobal('GPUBufferUsage', { MAP_READ: 1, COPY_SRC: 4, COPY_DST: 8, UNIFORM: 64, STORAGE: 128 });
         vi.stubGlobal('GPUTextureUsage', { TEXTURE_BINDING: 4, STORAGE_BINDING: 8 });
@@ -73,8 +75,8 @@ describe('Upscaler jitter accessors', () => {
         vi.restoreAllMocks();
     });
 
-    it('follows generateJitterSequence over a full cycle, phase by phase', () => {
-        const { upscaler } = configured();
+    it('follows generateJitterSequence over a full cycle, phase by phase', async () => {
+        const { upscaler } = await configured();
         const cam = camera();
         const sequence = generateJitterSequence(upscaler.jitterPhaseCount);
         let previous = sequence[0];
@@ -90,8 +92,8 @@ describe('Upscaler jitter accessors', () => {
         }
     });
 
-    it('matches the offset beginFrame applies to the camera view', () => {
-        const { upscaler } = configured();
+    it('matches the offset beginFrame applies to the camera view', async () => {
+        const { upscaler } = await configured();
         const cam = camera();
         upscaler.beginFrame(cam);
         expect(cam.view?.offsetX).toBe(upscaler.jitter.x);
@@ -99,8 +101,8 @@ describe('Upscaler jitter accessors', () => {
         upscaler.endFrame(cam);
     });
 
-    it('reports the pure jitter under an app-set view offset', () => {
-        const { upscaler } = configured();
+    it('reports the pure jitter under an app-set view offset', async () => {
+        const { upscaler } = await configured();
         const cam = camera();
         // A tiled setup: this camera renders the right half of a 2× wider wall
         // at twice the render resolution, so one render pixel is 2 view units.
@@ -115,8 +117,8 @@ describe('Upscaler jitter accessors', () => {
         expect(cam.view?.offsetX).toBe(1280);
     });
 
-    it('agrees with the jitter staged into the constants buffer', () => {
-        const { upscaler, writes } = configured();
+    it('agrees with the jitter staged into the constants buffer', async () => {
+        const { upscaler, writes } = await configured();
         const cam = camera();
         upscaler.beginFrame(cam);
         writes.length = 0;
@@ -138,8 +140,8 @@ describe('Upscaler jitter accessors', () => {
         ]);
     });
 
-    it('restarts the phase on resetHistory()', () => {
-        const { upscaler } = configured();
+    it('restarts the phase on resetHistory()', async () => {
+        const { upscaler } = await configured();
         const cam = camera();
         for (let i = 0; i < 5; i++) {
             upscaler.beginFrame(cam);
@@ -156,8 +158,8 @@ describe('Upscaler jitter accessors', () => {
         ['temporal with jitter: false', 'temporal', false],
         ['spatial', 'spatial', true],
         ['bilinear', 'bilinear', true],
-    ] as const)('reads (0, 0) and phase 0 on %s', (_label, path, jitter) => {
-        const { upscaler } = configured(path, jitter);
+    ] as const)('reads (0, 0) and phase 0 on %s', async (_label, path, jitter) => {
+        const { upscaler } = await configured(path, jitter);
         const cam = camera();
         upscaler.beginFrame(cam);
         expect(upscaler.jitter).toEqual({ x: 0, y: 0 });
@@ -167,8 +169,8 @@ describe('Upscaler jitter accessors', () => {
         upscaler.endFrame(cam);
     });
 
-    it('returns stable objects', () => {
-        const { upscaler } = configured();
+    it('returns stable objects', async () => {
+        const { upscaler } = await configured();
         const cam = camera();
         const first = upscaler.jitter;
         upscaler.beginFrame(cam);

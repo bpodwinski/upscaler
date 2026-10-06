@@ -142,6 +142,13 @@ describe('assembleShader', () => {
         expect(out.match(/fn shared/g)).toHaveLength(1);
     });
 
+    it('assembles deterministically across repeated calls', () => {
+        for (const source of [BLIT_SHADER, EASU_SHADER, RCAS_SHADER, ACCUMULATE_SHADER,
+            RECONSTRUCT_SHADER, DEPTH_CLIP_SHADER, DEBUG_SHADER, LUMINANCE_PYRAMID_SHADER]) {
+            expect(assembleShader(source)).toBe(assembleShader(source));
+        }
+    });
+
     it('drops empty parts', () => {
         expect(assembleShader('', 'fn a() {}', '  ')).toBe('fn a() {}\n');
     });
@@ -579,17 +586,18 @@ describe('E00 benchmark foundation', () => {
         expect(summary.computeSum.samples).toEqual([2]);
     });
 
-    it('threads optional pipeline constants and metadata', () => {
+    it('threads optional pipeline constants and metadata', async () => {
         let descriptor: GPUComputePipelineDescriptor | null = null;
         const pipeline = { getBindGroupLayout: () => ({}) } as unknown as GPUComputePipeline;
         const device = {
             createShaderModule: () => ({}),
-            createComputePipeline: (value: GPUComputePipelineDescriptor) => {
+            lost: new Promise<GPUDeviceLostInfo>(() => {}),
+            createComputePipelineAsync: (value: GPUComputePipelineDescriptor) => {
                 descriptor = value;
                 return pipeline;
             },
         } as unknown as GPUDevice;
-        const pass = new ComputePass(device, 'test', '@compute fn main() {}', {
+        const pass = await ComputePass.create(device, 'test', '@compute fn main() {}', {
             constants: { SAMPLE_COUNT: 4 },
             shaderKey: 'test-key',
             assembledChunks: ['common', 'body'],

@@ -93,6 +93,7 @@ LEVELS.forEach((level, column) => {
 
 const pass = new UpscalePass(renderer);
 pass.configure({ displayWidth: DISPLAY, displayHeight: DISPLAY, ratio: RATIO });
+await pass.init();
 const nativeTarget = new THREE.RenderTarget(DISPLAY, DISPLAY, { type: THREE.FloatType });
 
 function halfToFloat(bits: number): number {

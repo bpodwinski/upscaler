@@ -113,6 +113,8 @@ window.addEventListener('resize', () => {
 
 //* Loop — draw both offscreen, then composite to the canvas.
 const timer = new THREE.Timer();
+await Promise.all([fsr.init(), native.init()]);
+
 renderer.setAnimationLoop(() => {
     timer.update();
     const dt = Math.min(timer.getDelta(), 0.1);

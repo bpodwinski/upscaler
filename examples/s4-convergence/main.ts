@@ -52,7 +52,6 @@ renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
 
 //* Upscaler — raw driver, temporal path
 const upscaler = new Upscaler({ renderer });
-upscaler.init();
 // Motion vectors must be jitter-free, or every frame's jitter reads as motion.
 velocity.setProjectionMatrix(upscaler.unjitteredProjectionMatrix);
 // MRT output count must match the render target's attachment count (CLAUDE.md #7).
@@ -448,7 +447,10 @@ configure();
 setLayer('output');
 requestSteps(1);
 
+await Promise.all([upscaler.init()]);
+
 renderer.setAnimationLoop(() => {
+    if (!upscaler.isReady) return;
     // At most one pipeline frame per animation frame: three's velocity node
     // rolls its previous-camera matrices once per renderer frame, so two scene
     // renders in one tick would see a stale previous camera.

@@ -172,6 +172,9 @@ export class CandidateUpscaler {
     private _historyIndex = 0;
     private _depthIndex = 0;
     private _initialized = false;
+    private _preparing: Promise<void> | null = null;
+    private _generation = 0;
+    private _deviceLost = false;
 
     // GPU-side working set (owned raw textures + the three-visible output)
     private _output: StorageTexture | null = null;
@@ -272,9 +275,22 @@ export class CandidateUpscaler {
     /**
      * Compiles all compute pipelines. Call once after `renderer.init()`.
      */
-    init(): void {
-        if (this._initialized) return;
+    get isReady(): boolean { return this._initialized && !this._deviceLost; }
+
+    prepare(): Promise<void> { return this.init(); }
+
+    init(): Promise<void> {
+        if (this._deviceLost) return Promise.reject(new Error("Candidate GPU device lost."));
+        if (this._initialized) return Promise.resolve();
+        if (this._preparing) return this._preparing;
+        this._preparing = this._compile();
+        return this._preparing;
+    }
+
+    private async _compile(): Promise<void> {
+        const generation = this._generation;
         const device = getDevice(this._renderer);
+        void device.lost.then(() => { if (generation === this._generation) this._deviceLost = true; });
         this._device = device;
         this._constants = new ConstantsBuffer(device);
         this._timer = new GpuTimer(device);
@@ -286,8 +302,15 @@ export class CandidateUpscaler {
             addressModeV: 'clamp-to-edge',
         });
 
-        this._blitPass = new ComputePass(device, 'blit', BLIT_SHADER);
-        this._easuPass = new ComputePass(
+        this._jitter = new JitterSequence(this._ratio);
+        const create = async (...args: Parameters<typeof ComputePass.create>): Promise<ComputePass> => {
+            const pass = await ComputePass.create(...args);
+            if (generation !== this._generation || this._deviceLost) throw new Error('Candidate preparation cancelled.');
+            return pass;
+        };
+
+        this._blitPass = await create(device, 'blit', BLIT_SHADER);
+        this._easuPass = await create(
             device,
             'easu',
             this._candidateBundle ? EASU_SOURCE_APPROX_SHADER : EASU_SHADER,
@@ -298,8 +321,8 @@ export class CandidateUpscaler {
                   }
                 : {},
         );
-        this._rcasPass = new ComputePass(device, 'rcas', this._rcasShader);
-        this._reconstructPass = new ComputePass(
+        this._rcasPass = await create(device, 'rcas', this._rcasShader);
+        this._reconstructPass = await create(
             device,
             'reconstruct',
             this._candidateBundle ? PREPARE_INPUTS_SOURCE_SHADER : RECONSTRUCT_SHADER,
@@ -326,7 +349,7 @@ export class CandidateUpscaler {
               : this._candidateBundle
                 ? ACCUMULATE_SOURCE_FILTER_SHADER
                 : ACCUMULATE_SHADER;
-        this._accumulatePass = new ComputePass(device, 'accumulate', accumulateShader, {
+        this._accumulatePass = await create(device, 'accumulate', accumulateShader, {
             shaderKey: this._candidateBundle
                 ? this._usesSourceResolver
                     ? 'fsr315-source-resolver-v1'
@@ -338,7 +361,7 @@ export class CandidateUpscaler {
                 ? ['constants', 'color', 'tonemap', 'candidate-accumulate']
                 : [],
         });
-        this._exposurePass = new ComputePass(
+        this._exposurePass = await create(
             device,
             'exposure',
             this._usesSourceResolver
@@ -355,8 +378,8 @@ export class CandidateUpscaler {
                   }
                 : {},
         );
-        this._shadingChangePass = new ComputePass(device, 'shading-change', SHADING_CHANGE_SHADER);
-        this._generateReactivePass = new ComputePass(
+        this._shadingChangePass = await create(device, 'shading-change', SHADING_CHANGE_SHADER);
+        this._generateReactivePass = await create(
             device,
             'gen-reactive',
             this._usesStructuralInputs
@@ -384,7 +407,7 @@ export class CandidateUpscaler {
               : this._candidateBundle
                 ? DEBUG_SOURCE_FILTER_SHADER
                 : DEBUG_SHADER;
-        this._debugPass = new ComputePass(device, 'debug', debugShader, {
+        this._debugPass = await create(device, 'debug', debugShader, {
             shaderKey: this._candidateBundle
                 ? `${this._candidateBundle}:debug-v1`
                 : 'baseline:debug',
@@ -393,7 +416,7 @@ export class CandidateUpscaler {
                 : [],
         });
         if (this._candidateBundle) {
-            this._depthClipPass = new ComputePass(device, 'depth-clip', DEPTH_CLIP_SOURCE_SHADER, {
+            this._depthClipPass = await create(device, 'depth-clip', DEPTH_CLIP_SOURCE_SHADER, {
                 shaderKey: this._usesStructuralInputs
                     ? 'fsr315-depth-clip-structural-v1'
                     : 'fsr315-depth-clip-filter-v1',
@@ -404,7 +427,7 @@ export class CandidateUpscaler {
             });
         }
         if (this._usesStructuralInputs) {
-            this._prepareReactivityPass = new ComputePass(
+            this._prepareReactivityPass = await create(
                 device,
                 'prepare-reactivity',
                 PREPARE_REACTIVITY_SOURCE_SHADER,
@@ -415,7 +438,7 @@ export class CandidateUpscaler {
             );
         }
         if (this._usesSourceResolver) {
-            this._shadingSpdPass = new ComputePass(
+            this._shadingSpdPass = await create(
                 device,
                 'shading-spd',
                 SHADING_CHANGE_SPD_SOURCE_SHADER,
@@ -424,7 +447,7 @@ export class CandidateUpscaler {
                     assembledChunks: ['constants', 'shading-change-spd'],
                 },
             );
-            this._shadingResolvePass = new ComputePass(
+            this._shadingResolvePass = await create(
                 device,
                 'shading-resolve',
                 SHADING_CHANGE_RESOLVE_SOURCE_SHADER,
@@ -433,7 +456,7 @@ export class CandidateUpscaler {
                     assembledChunks: ['constants', 'shading-change-resolve'],
                 },
             );
-            this._lumaInstabilityPass = new ComputePass(
+            this._lumaInstabilityPass = await create(
                 device,
                 'luma-instability',
                 LUMA_INSTABILITY_SOURCE_SHADER,
@@ -454,7 +477,7 @@ export class CandidateUpscaler {
      * @param config - Display size, quality mode/ratio, and pipeline path
      */
     configure(config: UpscalerConfig): void {
-        if (!this._initialized) this.init();
+        if (!this._preparing) void this.init().catch(error => console.error(error));
 
         this._path = config.path ?? 'temporal';
         this._jitterEnabled = config.jitter ?? true;
@@ -764,6 +787,8 @@ export class CandidateUpscaler {
 
     /** Releases all GPU resources. */
     dispose(): void {
+        this._generation++;
+        this._preparing = null;
         this._destroyTextures();
         this._constants?.dispose();
         this._timer?.dispose();

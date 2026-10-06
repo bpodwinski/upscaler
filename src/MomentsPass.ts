@@ -39,6 +39,7 @@ export interface MomentsPassConfig {
  * ```ts
  * const moments = new MomentsPass({ renderer });
  * moments.configure({ width, height, space: 'ycocg' });
+ * await moments.init();
  * moments.dispatch({ source: giTexture });   // per frame
  * // sample moments.moments (.rg) / moments.coarseMoments
  * ```
@@ -48,6 +49,9 @@ export class MomentsPass {
     private _device: GPUDevice | null = null;
     private _constants: ConstantsBuffer | null = null;
     private _pass: ComputePass | null = null;
+    private _preparing: Promise<void> | null = null;
+    private _generation = 0;
+    private _lost = false;
     private _space: MomentsSpace = 'linear';
     private _width = 0;
     private _height = 0;
@@ -63,6 +67,29 @@ export class MomentsPass {
         this._renderer = options.renderer;
     }
 
+    /** Compile asynchronously. Configure first, then await before dispatch. */
+    init(): Promise<void> {
+        if (this._pass && !this._lost) return Promise.resolve();
+        if (this._preparing) return this._preparing;
+        if (!this._device) {
+            this._device = getDevice(this._renderer);
+            this._constants = new ConstantsBuffer(this._device);
+        }
+        const generation = this._generation;
+        this._preparing = ComputePass.create(this._device, 'moments', MOMENTS_SHADER).then(pass => {
+            if (generation !== this._generation || this._lost) throw new Error('MomentsPass preparation cancelled.');
+            this._pass = pass;
+        }).catch(error => {
+            if (generation === this._generation) this._preparing = null;
+            throw error;
+        });
+        void this._device.lost.then(() => { if (generation === this._generation) this._lost = true; });
+        return this._preparing;
+    }
+
+    /** Mandatory pipeline readiness. */
+    get isReady(): boolean { return this._pass !== null && !this._lost; }
+
     /**
      * (Re)configures size and scalar space and allocates the output
      * textures. The space is a runtime flag, so one pipeline serves both.
@@ -74,7 +101,7 @@ export class MomentsPass {
             this._constants = new ConstantsBuffer(this._device);
         }
         this._space = config.space ?? 'linear';
-        this._pass ??= new ComputePass(this._device, 'moments', MOMENTS_SHADER);
+
         this._width = Math.max(1, Math.floor(config.width));
         this._height = Math.max(1, Math.floor(config.height));
         this._constants!.setRenderSize(this._width, this._height);
@@ -120,6 +147,7 @@ export class MomentsPass {
      *   never filtered — any float format works)
      */
     dispatch(inputs: { source: Texture }): void {
+        if (!this.isReady) throw new Error("@pmndrs/upscaler: await MomentsPass.init() before dispatch().");
         if (!this._pass || !this._momentsGPU || !this._coarseGPU) {
             throw new Error('@pmndrs/upscaler: MomentsPass.configure() must run before dispatch().');
         }
@@ -148,6 +176,9 @@ export class MomentsPass {
 
     /** Releases the output textures and GPU resources. */
     dispose(): void {
+        this._generation++;
+        this._preparing = null;
+        this._lost = false;
         this._destroyOutputs();
         this._constants?.dispose();
         this._constants = null;

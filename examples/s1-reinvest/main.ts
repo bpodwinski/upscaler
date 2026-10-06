@@ -104,7 +104,6 @@ placeOrbitCamera();
 
 //* Side A — the raw upscaler (this example drives the passes itself).
 const upscaler = new Upscaler({ renderer });
-upscaler.init();
 upscaler.settings.rcasDenoise = true; // the reduced-res effects are noisy
 // Motion vectors must be jitter-free. Side B renders without an MRT, so the
 // global velocity node is A's alone (see 03's note on sharing it).
@@ -460,7 +459,10 @@ function isBacked(tex: THREE.Texture | null | undefined): boolean {
 //* Loop.
 const timer = new THREE.Timer();
 let hudClock = 0;
+await Promise.all([upscaler.init()]);
+
 renderer.setAnimationLoop(() => {
+    if (!upscaler.isReady) return;
     timer.update();
     const dt = Math.min(timer.getDelta(), 0.1);
     const { sides, tag } = cycle.frame();

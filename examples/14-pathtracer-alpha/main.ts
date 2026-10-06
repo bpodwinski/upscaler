@@ -114,7 +114,6 @@ controls.update();
 
 //* Upscaler — spatial (FSR1: EASU + RCAS), no history, no motion vectors.
 const upscaler = new Upscaler({ renderer });
-upscaler.init();
 
 //* Path tracer — sized by us, not by the canvas.
 // `synchronizeRenderSize` and `dynamicLowRes` both resize the accumulation
@@ -212,7 +211,10 @@ Object.assign(window, {
     __pathtracerAlphaFrames: () => frames,
 });
 
+await Promise.all([upscaler.init()]);
+
 renderer.setAnimationLoop(() => {
+    if (!upscaler.isReady) return;
     controls.update();
     upscaler.settings.sharpness = settings.sharpness;
 

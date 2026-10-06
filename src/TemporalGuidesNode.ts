@@ -113,7 +113,7 @@ export class TemporalGuidesNode extends TempNode {
     _acquireUpscaler(renderer: WebGPURenderer): Upscaler {
         if (!this._upscaler) {
             this._upscaler = new Upscaler({ renderer, gpuTiming: this._gpuTiming });
-            this._upscaler.init();
+
         }
         this._linked = true;
         return this._upscaler;
@@ -127,7 +127,7 @@ export class TemporalGuidesNode extends TempNode {
             //* buffer size; corrected to the depth input's real size in
             //* updateBefore (mirrors UpscalerNode's seed-then-correct flow).
             this._upscaler = new Upscaler({ renderer, gpuTiming: this._gpuTiming });
-            this._upscaler.init();
+
             renderer.getDrawingBufferSize(this._size);
             this._configureStandalone(this._size.x, this._size.y);
         }
@@ -151,7 +151,7 @@ export class TemporalGuidesNode extends TempNode {
     updateBefore(frame: any): any {
         const renderer = frame.renderer as WebGPURenderer;
         const upscaler = this._upscaler;
-        if (!upscaler) return;
+        if (!upscaler?.isReady) return;
 
         const depth = this._texture(this._depth);
         const velocity = this._texture(this._velocity);

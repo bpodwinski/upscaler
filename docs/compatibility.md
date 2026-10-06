@@ -30,7 +30,8 @@ re-verified on r186.1.
 
 - **WebGPU backend required.** There is no WebGL fallback, and none is planned: the
   pipeline is WGSL compute. If three falls back to WebGL, the upscaler throws at
-  `init()`. Await `renderer.init()` first.
+  `init()`. Await `renderer.init()` first, configure the desired path, then await
+  `upscaler.init()`. Raw dispatch no longer compiles synchronously.
 - **Browsers:** Chrome/Edge 113+. Other engines work to the extent their WebGPU
   implementation does; the project's GPU verification runs on Chrome.
 - **`timestamp-query`** is optional and only used when GPU timing is opted into

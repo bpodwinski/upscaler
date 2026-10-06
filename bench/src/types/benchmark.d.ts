@@ -112,6 +112,8 @@ declare interface BenchmarkResolverDispatch {
 }
 
 declare interface BenchmarkResolver {
+    prepare(): Promise<void>;
+    readonly isReady: boolean;
     readonly metadata: BenchmarkVariantMetadata;
     readonly outputTexture: unknown;
     readonly renderWidth: number;

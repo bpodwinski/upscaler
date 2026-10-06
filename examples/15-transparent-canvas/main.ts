@@ -122,6 +122,8 @@ const badge = document.getElementById('badge')!;
 
 //* Loop
 const timer = new THREE.Timer();
+await Promise.all([pass.init()]);
+
 renderer.setAnimationLoop(() => {
     timer.update();
     const dt = Math.min(timer.getDelta(), 0.1);

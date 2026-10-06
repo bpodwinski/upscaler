@@ -60,6 +60,8 @@ window.addEventListener('resize', () => {
 
 //* Loop — orbit the camera slowly so the temporal history keeps working.
 const timer = new THREE.Timer();
+await Promise.all([presenter.init()]);
+
 renderer.setAnimationLoop(() => {
     timer.update();
     const dt = Math.min(timer.getDelta(), 0.1);

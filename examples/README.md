@@ -139,3 +139,5 @@ upstream (meshopt → Draco) mid-development, which broke a `main`-branch URL wi
 change on our side; a commit URL is immutable, so the example keeps needing exactly the
 decoder it ships with. Both `DRACOLoader` and `MeshoptDecoder` are attached anyway, so
 re-pointing `MODEL_URL` at another model in that data set needs no code change.
+
+Raw and presenter examples configure first and await `init()` before their animation loop. TSL factories stay synchronous and render their input while pipelines prepare.

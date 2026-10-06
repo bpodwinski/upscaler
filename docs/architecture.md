@@ -140,3 +140,20 @@ structural tests in `src/shaders/shaders.test.ts` enforce most of this without a
   Adoption record: [`bench/docs/NEXT-STEPS.md`](../bench/docs/NEXT-STEPS.md).
   Parity decisions: [`bench/docs/PARITY-DECISIONS.md`](../bench/docs/PARITY-DECISIONS.md).
   Findings worth publishing: [PAPER-NOTES](research/PAPER-NOTES.md).
+
+## Pipeline preparation and ownership
+
+ComputePass.create() compiles asynchronously through a device-scoped four-slot queue.
+A WeakMap shares modules by source and pipelines by source, entry point, auto-layout
+policy, and sorted constants. Each instance retains its own textures, uniforms,
+bind groups, temporal state, and timing resources. Disposal cannot invalidate another
+instance's cached pipeline. Device loss clears cached resources and invalidates readiness.
+
+Configuration allocates independently of compilation. Bilinear, spatial, guides,
+and temporal paths prepare their own required sets. Debug and disabled shading-change
+passes remain lazy. Exposure stays mandatory on temporal frames because its published
+value includes manual/external exposure and host pre-exposure as well as metering.
+
+Optional activation happens at dispatch boundaries. A split frame uses one effective
+settings snapshot from its guides stage through its upscale stage. Async completions
+are guarded by an instance generation so disposed instances cannot regain readiness.
