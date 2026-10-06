@@ -88,9 +88,9 @@ Demos `01`–`05` drive the library through [`shared/UpscalePresenter.ts`](share
 now a re-export of the library's `UpscalePass` (`15` imports `UpscalePass` directly),
 which encapsulates the whole imperative integration recipe (jitter-free velocity,
 MRT output count matched to the render-target attachment count, float depth, the
-linear/HDR output, and renderer-owned presentation). `06`, `12`, and `14` drive the raw
-`Upscaler` directly (an external effect graph, the split guides frame, and a
-path-traced RGBA buffer).
+linear/HDR output, and renderer-owned presentation). `06` and `12` drive the raw
+`Upscaler` directly (an external effect graph and the split guides frame).
+`14` uses the path tracer's optional `FSRUpscaler` with our injected class and awaits its spatial driver.
 `07`–`11`, `13` and `16` are the TSL-node surface — no presenter at all, the node owns
 the recipe inside the post graph. New imperative demos should reuse the presenter
 rather than re-deriving the wiring; new graph demos should start from `07`.
@@ -125,7 +125,9 @@ Three things have to line up:
    other example paints `scene.background`, which is what keeps it opaque.
 2. The input the upscaler is handed must actually carry that alpha — for `14` that
    is the path tracer's own RGBA accumulation target.
-3. The present must keep it. `UpscalePass.present()` already does (its quad is
+3. The present must keep it. `14` uses the path tracer's alpha-preserving output
+   quad for the returned FSR texture. For imperative integrations,
+   `UpscalePass.present()` already does this (its quad is
    `transparent: true` + `NoBlending` — a full-screen present is an overwrite, and
    an opaque material would resolve alpha to 1); a hand-rolled present quad needs
    the same two flags. The TSL nodes need nothing special.
@@ -141,3 +143,5 @@ decoder it ships with. Both `DRACOLoader` and `MeshoptDecoder` are attached anyw
 re-pointing `MODEL_URL` at another model in that data set needs no code change.
 
 Raw and presenter examples configure first and await `init()` before their animation loop. TSL factories stay synchronous and render their input while pipelines prepare.
+
+Example 14 uses a pinned upstream development commit and the optional FSR adapter. See [current path-tracer integration](../docs/pathtracer-current.md) for readiness, ownership and lifecycle evidence.

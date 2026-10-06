@@ -128,6 +128,34 @@ try {
                         })()`);
                         await delay(1000);
                         let primitives = null;
+                        let optionalUpscaler = null;
+                        if (demo === '14-pathtracer-alpha') {
+                            optionalUpscaler = await client.evaluate(`(async () => {
+                                const api = window.__pathtracerAlphaExample;
+                                if (!api?.setUpscale) return null;
+                                const wait = async () => {
+                                    for (let i=0;i<200&&!api.ready();i++) await new Promise(r=>setTimeout(r,50));
+                                    if (!api.ready()) throw new Error('Optional upscaler preparation timed out.');
+                                    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+                                };
+                                await wait();
+                                const initial = api.renderer.info.memory.textures;
+                                const counts = [];
+                                for (let i=0;i<4;i++) {
+                                    api.setUpscale(false); await wait();
+                                    if (api.optionalUpscaler !== null || api.upscaler !== null) throw new Error('Detached upscaler was retained.');
+                                    api.setUpscale(true); await wait();
+                                    if (!api.upscaler?.isReady) throw new Error('Attached upscaler is not ready.');
+                                    counts.push(api.renderer.info.memory.textures);
+                                }
+                                // Exercise the upstream settled-render bounce reset fix.
+                                await new Promise(r=>setTimeout(r,500));
+                                api.setBounces(3); await wait();
+                                api.setBounces(5); await wait();
+                                return { cycles:4, texturesBefore:initial, texturesAfterEachCycle:counts,
+                                    activeAdapter:api.optionalUpscaler.constructor.name, driverReady:api.upscaler.isReady };
+                            })()`);
+                        }
                         if (demo === '13-guides-node') {
                             const libraryUrl = '/@fs/' + resolve(import.meta.dirname, '../src/index.ts').replaceAll('\\', '/');
                             primitives = await client.evaluate(`(async () => {
@@ -160,7 +188,7 @@ try {
                             (e.method === 'Log.entryAdded' && e.params.entry.level === 'error' && !e.params.entry.url?.endsWith('/favicon.ico')) ||
                             (e.method === 'Runtime.consoleAPICalled' && e.params.type === 'error'));
                         const finalAudit = await client.evaluate("window.__audit");
-                        report.records.push({ demo, run, exercise: { resize: true, dpr: true, controls, primitives, syncComputeCalls: finalAudit.sync }, issues: errors });
+                        report.records.push({ demo, run, exercise: { resize: true, dpr: true, controls, primitives, optionalUpscaler, syncComputeCalls: finalAudit.sync }, issues: errors });
                         console.log(JSON.stringify({ demo, run, exercise: true, controls: controls.length, errors: errors.length }));
                     }
                     if (options.trace) {
