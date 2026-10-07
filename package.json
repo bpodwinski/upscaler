@@ -69,6 +69,7 @@
         "examples": "vite --config examples/vite.config.ts",
         "examples:build": "vite build --config examples/vite.config.ts",
         "examples:preview": "vite preview --config examples/vite.config.ts",
+        "verify:babylon-examples:gpu": "npm run examples:build && node scripts/verify-babylon-examples.mjs",
         "build": "vite build && tsc --declaration --emitDeclarationOnly -p tsconfig.build.json && node scripts/verify-artifacts.mjs",
         "verify:packed-guides": "node scripts/verify-packed-guides.mjs --build-only",
         "verify:packed-guides:gpu": "node scripts/verify-packed-guides.mjs",
