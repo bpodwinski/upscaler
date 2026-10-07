@@ -24,7 +24,7 @@ La future migration Exokosm devra confirmer : unité et fond de profondeur, sign
 
 ## Exemples avec des meshes
 
-La galerie comporte huit adaptations des démonstrations Three, construites sur
+La galerie comporte douze adaptations des démonstrations Three, construites sur
 le même [présentateur Babylon](../examples/shared/babylon/BabylonScenePresenter.ts) :
 
 | Exemple | Ce qu'il permet d'observer |
@@ -37,6 +37,10 @@ le même [présentateur Babylon](../examples/shared/babylon/BabylonScenePresente
 | [24 — Composition](../examples/24-babylon-compose/main.ts) | Vignette dans une tâche du graphe consommant la sortie de l'upscaler |
 | [25 — Masque dessiné](../examples/25-babylon-reactive-mask/main.ts) | Couverture des meshes transparents, occlusion par la profondeur opaque et affichage du masque |
 | [26 — Canvas transparent](../examples/26-babylon-transparent-canvas/main.ts) | Reconstruction de l'alpha des silhouettes et composition sur le contenu HTML |
+| [27 — Effets écran](../examples/27-babylon-screen-effects/main.ts) | SSAO ou SSR Babylon à basse résolution avant reconstruction |
+| [28 — Effets combinés](../examples/28-babylon-effect-stack/main.ts) | SSAO, SSR et bloom HDR activables séparément |
+| [29 — Guides temporels](../examples/29-babylon-temporal-guides/main.ts) | Disocclusion, profondeur dilatée, mouvement dilaté et sortie finale |
+| [30 — Guides partagés](../examples/30-babylon-guides-compose/main.ts) | Coloration des disocclusions entre production des guides et upscale final |
 
 Ces exemples partagent leurs scènes et leur interface dans `examples/shared/babylon`.
 Ils adaptent le but des exemples Three ; ils ne reproduisent pas leurs matériaux
@@ -99,6 +103,65 @@ sortie de la page. Après perte du device, l'interface demande de recharger.
 Les points d'entrée utilisent un bootstrap asynchrone sans top-level await pour
 permettre le chargement des shaders Babylon dans le build de production.
 
+## Effets écran et guides partagés
+
+Les exemples 27 et 28 utilisent les tâches natives `FrameGraphSSAO2RenderingPipelineTask`,
+`FrameGraphSSRRenderingPipelineTask` et `FrameGraphBloomTask`. Les effets traitent le
+G-buffer dans son orientation Babylon ; la normalisation des entrées intervient
+ensuite. Normales en espace vue et réflectivité complètent le rendu géométrique.
+Sur ces deux pages, le mouvement géométrique est RG16F pour respecter le budget
+MRT WebGPU par défaut. La profondeur géométrique conserve sa précision R32F
+jusqu'au cœur. Une passe prépare une copie filtrable en RGBA16F de la profondeur
+pour les effets natifs, avec un fond à 120 unités et une normale valide : cela
+évite les reconstructions indéfinies à profondeur nulle dans le SSAO. Cette copie
+réduit uniquement la précision des effets écran, dans la portée courte de la démo.
+Le présentateur conserve explicitement ces dépendances jusqu'à la présentation,
+y compris les textures relues par le combinateur de flou SSR de Babylon 9.29.
+
+SSAO fournit de l'occlusion ambiante, pas l'éclairage indirect diffus SSGI des
+exemples Three. SSR est limité aux surfaces visibles à l'écran. Le bloom est
+spatial et l'upscaler reste l'unique reconstruction temporelle de cette pile.
+Ces pages ne portent pas le débruiteur SSGI expérimental ni le path tracer Three.
+
+Le chemin temporel expose `task.guides` : `dilatedDepth`, `dilatedMotion` et
+`disocclusion`, trois handles stables appartenant au texture manager. Le masque
+de disocclusion est dans R (`1` rejette l'historique) ; le mouvement est en UV
+dans RG. La profondeur est l'historique **courant en écriture** : un consommateur
+brut doit appeler `babylonWebGPU.resolveBabylonTexture(manager, handle, true)`.
+Un consommateur Babylon doit également sélectionner `history.write`, et déclarer
+tous les handles lus dans les dépendances de son render pass.
+
+Pour consommer les guides avant l'upscale :
+
+```ts
+// Les entrées géométriques sont produites avant ces tâches.
+graph.addTask(upscale.createGuidesTask());
+graph.addTask(colorFromGuides); // lit upscale.guides et écrit sa propre couleur
+upscale.colorTexture = colorFromGuides.outputTexture;
+graph.addTask(upscale);
+```
+
+`createGuidesTask()` est idempotente et partage compilation et allocations avec
+la tâche finale. Ajouter la tâche de guides avant le consommateur et l'upscaler
+est obligatoire. Le callback `frame` est évalué à chaque étape : index, jitter
+et géométrie doivent rester identiques ; la couleur et l'exposition peuvent être
+finalisées après les guides. La tâche finale effectue uniquement l'étape upscale.
+Sans tâche de guides, elle conserve son encodage complet habituel.
+
+Encadrer l'exécution par `beginFrame(camera)` et `endFrame()` dans un `finally`.
+Une interruption entre les étapes invalide l'historique à `endFrame()` ; sans ce
+cadre, appeler `resetHistory()` avant réutilisation. Reconfigurer uniquement entre
+frames, puis reconstruire le graphe. Le mode scindé nécessite le chemin temporel.
+Piloter la désactivation via **la tâche upscale propriétaire** : les guides
+continuent à être produits, la sortie utilise le fallback bilinéaire et la
+réactivation repart avec un historique invalidé. Ne pas désactiver séparément
+la tâche de guides.
+
+L'exemple 29 affiche les textures effectivement publiées. L'exemple 30 applique
+une teinte orange à basse résolution à partir du masque partagé ; c'est un effet
+de diagnostic, pas un débruiteur. Désactiver la teinte conserve exactement la
+couleur et l'alpha fournis à l'upscaler.
+
 ## Vérification des exemples
 
 `npm run verify:babylon-examples:gpu` construit le site puis lance Chrome avec
@@ -107,7 +170,7 @@ ne publie rien. Les résultats et captures sont écrits dans
 `output/playwright/babylon-scenes/` (ignoré par Git). Elle accepte aussi un build
 avec `PAGES_BASE=/upscaler/` pour vérifier les URL GitHub Pages.
 
-Vérifié sur Chrome / RTX 5080 le 7 octobre 2026 : les huit pages rendent sans
+Vérifié sur Chrome / RTX 5080 le 7 octobre 2026 : les douze pages rendent sans
 erreur WebGPU, les sorties RGB et profondeurs sont finies, l'orientation verticale
 est correcte, le mouvement statique exclut le jitter, et les mouvements de caméra
 et de meshes sont présents. Les parcours masque activé/désactivé,
@@ -117,3 +180,12 @@ Le second lot ajoute les contrôles de sortie spatiale, de vignette activée et
 neutre, de masque dessiné atteignant `1`, et d'alpha nul/opaque/fractionnaire.
 Ces contrôles ne constituent ni une mesure de performance, ni une validation
 sur RX 580 ou sur un GPU mobile.
+
+Le troisième lot ajoute les bascules SSAO/SSR/bloom, la lecture des trois guides
+et la composition avant upscale. Les effets sont comparés sans jitter sur une
+scène figée ; le SSR utilise des moyennes RGB par zones pour détecter les reflets
+même lorsque leur luminosité moyenne globale ne change presque pas. Les copies
+de diagnostic sont toutes encodées avant le premier `await`, pour lire une même
+frame. Le contrôle du mouvement dilaté porte sur RG (B contient le relief local).
+La teinte neutre conserve exactement l'entrée. Les douze pages passent avec
+optimisation d'alias active et inactive, puis à dimensions impaires et NativeAA.

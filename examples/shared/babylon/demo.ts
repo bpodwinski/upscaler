@@ -18,14 +18,19 @@ const descriptions: Record<DemoKind, [string, string]> = {
     compose: ['Frame Graph composition', 'The reconstructed texture feeds a separate full-resolution color pass. Toggle the vignette without resetting temporal history.'],
     reactive: ['Authored reactive mask', 'A dedicated geometry pass draws transparent coverage against opaque depth. Inspect the authored mask and toggle its effect on reconstruction.'],
     'canvas-alpha': ['Transparent canvas', 'Temporal reconstruction preserves silhouette coverage. The page background and text remain visible through the canvas.'],
+    effects: ['Screen-space effects', 'Babylon SSAO or SSR at reduced resolution, followed by temporal reconstruction. Inspect contact occlusion and glossy reflections.'],
+    stack: ['Screen-space stack', 'Combine Babylon SSAO, SSR and HDR bloom before upscaling. Toggle each effect independently; the upscaler remains the only temporal resolver.'],
+    guides: ['Temporal guides', 'One split frame publishes disocclusion, dilated depth and motion before the final reconstruction. The views read the actual guide textures.'],
+    'guides-compose': ['Shared guides in the Frame Graph', 'A low-resolution color pass reads the published disocclusion guide and tints rejected history orange, before the same upscaler completes the frame.'],
 };
 
 export async function startDemo(kind: DemoKind): Promise<void> {
     const [title, description] = descriptions[kind];
     const comparison = kind === 'compare' || kind === 'spatial', reactive = kind === 'transparency' || kind === 'reactive';
+    const effects = kind === 'effects' || kind === 'stack';
     document.title = title + ' — Babylon.js — Upscaler';
     document.body.innerHTML = `<header><a href="../#babylon">← Examples</a><span class="badge">BABYLON.JS · WEBGPU</span><h1>${title}</h1><p>${description}</p></header>
-        <main><div class="viewport ${kind === 'canvas-alpha' ? 'transparent-stage' : ''}">${kind === 'canvas-alpha' ? '<div class="html-backdrop">HTML BEHIND THE CANVAS</div>' : ''}<canvas aria-label="${title} rendered scene"></canvas>${comparison ? `<div class="comparison-labels"><span>${kind === 'spatial' ? 'Spatial · EASU + RCAS' : 'Native · no AA'}</span><span id="right-label">Temporal</span></div>` : ''}</div>
+        <main><div class="viewport ${kind === 'canvas-alpha' ? 'transparent-stage' : ''}">${kind === 'canvas-alpha' ? '<div class="html-backdrop">HTML BEHIND THE CANVAS</div>' : ''}<canvas aria-label="${title} rendered scene"></canvas>${comparison ? `<div class="comparison-labels"><span>${kind === 'spatial' ? 'Spatial · EASU + RCAS' : 'Native · no AA'}</span><span id="right-label">Temporal</span></div>` : ''}${kind === 'guides' ? '<div class="guide-labels"><div><span>Disocclusion · white = rejected</span></div><div><span>Depth · brighter = farther</span></div><div><span>Final reconstruction</span></div><div><span>Motion · gray = stationary</span></div></div>' : ''}</div>
         <div class="controls">
         <label>Reconstruction <select id="mode"><option value="temporal">Temporal</option><option value="bilinear">Bilinear (no history)</option></select></label>
         <label>Resolution <select id="ratio"><option value="1.5">Quality · 1.5×</option><option value="1">NativeAA · 1×</option><option value="1.7">Balanced · 1.7×</option><option value="2" selected>Performance · 2×</option><option value="3">Ultra performance · 3×</option></select></label>
@@ -34,9 +39,12 @@ export async function startDemo(kind: DemoKind): Promise<void> {
         ${kind === 'reactive' ? '<label><input id="show-mask" type="checkbox"> Show mask</label>' : ''}
         ${kind === 'compose' ? '<label><input id="composition" type="checkbox" checked> Vignette</label><label>Strength <input id="vignette" aria-label="Vignette strength" type="range" min="0" max="1" step="0.05" value="0.8"></label>' : ''}
         ${kind === 'canvas-alpha' ? '<label>Page background <select id="backdrop"><option value="grid">Grid</option><option value="light">Light</option><option value="dark">Dark</option></select></label>' : ''}
+        ${kind === 'effects' ? '<label>Effect <select id="effect"><option value="ssao">SSAO</option><option value="ssr">SSR</option><option value="none">None</option></select></label>' : ''}
+        ${kind === 'stack' ? '<label><input id="ao" type="checkbox" checked> SSAO</label><label><input id="ssr" type="checkbox" checked> SSR</label><label><input id="bloom" type="checkbox" checked> Bloom</label>' : ''}
+        ${kind === 'guides-compose' ? '<label><input id="guide-tint" type="checkbox" checked> Tint disocclusion</label>' : ''}
         ${comparison ? '<label>Divider <input id="split" aria-label="Comparison divider" type="range" min="0" max="100" value="50"></label>' : ''}
         <button id="reset">Reset history</button></div>
-        <p id="status" role="status">Preparing shaders…</p><p class="note">Babylon 9.29 · Single-sample inputs · Linear HDR accumulation · Reinhard display transform. ${comparison ? 'The comparison adds a second scene render; this is a visual comparison, not a performance benchmark.' : ''}</p></main>`;
+        <p id="status" role="status">Preparing shaders…</p><p class="note">Babylon 9.29 · Single-sample inputs · Linear HDR accumulation · Reinhard display transform. ${comparison ? 'The comparison adds a second scene render; this is a visual comparison, not a performance benchmark.' : ''}${effects ? 'SSAO is ambient occlusion, not indirect diffuse GI. SSR can reflect only geometry visible on screen.' : ''}${kind === 'guides-compose' ? 'The orange tint is a diagnostic effect, not a denoiser. Guide textures are computed once and shared.' : ''}</p></main>`;
     const status = document.querySelector('#status')!;
     if (!navigator.gpu) throw new Error('WebGPU is unavailable. Use a WebGPU-compatible browser and GPU.');
     const canvas = document.querySelector('canvas')!;
@@ -61,7 +69,7 @@ export async function startDemo(kind: DemoKind): Promise<void> {
             presenter?.dispose(); presenter = undefined;
             engine.setSize(w, h);
             status.textContent = 'Preparing shaders…';
-            const candidate = new BabylonScenePresenter(engine, scene, camera, canvas, w, h, ratio, reactive, kind === 'compare', optimize, { spatialComparison: kind === 'spatial', composition: kind === 'compose', authoredReactive: kind === 'reactive', transparentCanvas: kind === 'canvas-alpha' });
+            const candidate = new BabylonScenePresenter(engine, scene, camera, canvas, w, h, ratio, reactive, kind === 'compare', optimize, { spatialComparison: kind === 'spatial', composition: kind === 'compose', authoredReactive: kind === 'reactive', transparentCanvas: kind === 'canvas-alpha', screenEffects: effects ? kind === 'stack' ? 'stack' : 'single' : undefined, guides: kind === 'guides' ? 'visualize' : kind === 'guides-compose' ? 'compose' : undefined });
             try { await candidate.prepare(); } catch (error) { candidate.dispose(); throw error; }
             if (disposed) { candidate.dispose(); return; }
             presenter = candidate;
@@ -75,6 +83,7 @@ export async function startDemo(kind: DemoKind): Promise<void> {
     document.querySelector('#reset')!.addEventListener('click', () => presenter?.reset());
     document.querySelector('#backdrop')?.addEventListener('change', event => { (document.querySelector('.viewport') as HTMLElement).dataset.backdrop = (event.target as HTMLSelectElement).value; });
     document.querySelector('#ratio')!.addEventListener('change', event => { void resize(undefined, undefined, Number((event.target as HTMLSelectElement).value)).catch(() => {}); });
+    for (const id of ['effect', 'ao', 'ssr', 'bloom']) document.getElementById(id)?.addEventListener('change', () => presenter?.reset());
     let resizeTimer: ReturnType<typeof setTimeout>;
     window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { void resize().catch(() => {}); }, 150); });
     engine.runRenderLoop(() => {
@@ -87,6 +96,13 @@ export async function startDemo(kind: DemoKind): Promise<void> {
         presenter.reactive = checked('reactive'); presenter.split = Number((document.querySelector('#split') as HTMLInputElement | null)?.value ?? 50) / 100;
         presenter.showReactive = checked('show-mask');
         if (presenter.composition) presenter.composition.vignette = checked('composition') ? Number((document.querySelector('#vignette') as HTMLInputElement).value) : 0;
+        if (presenter.guideConsumer) presenter.guideConsumer.amount = checked('guide-tint') ? 1 : 0;
+        if (presenter.screenEffects) {
+            const selected = (document.getElementById('effect') as HTMLSelectElement | null)?.value;
+            presenter.screenEffects.ao.disabled = kind === 'stack' ? !checked('ao') : selected !== 'ssao';
+            presenter.screenEffects.ssr.disabled = kind === 'stack' ? !checked('ssr') : selected !== 'ssr';
+            if (presenter.screenEffects.bloom) presenter.screenEffects.bloom.disabled = !checked('bloom');
+        }
         try { presenter.render(); frames++; } catch (error) { failed = true; report(error); return; }
         const c = presenter.config;
         status.textContent = `${c.renderWidth} × ${c.renderHeight} → ${c.displayWidth} × ${c.displayHeight} · ${presenter.upscale.disabled ? 'Bilinear' : 'Temporal'} · ${frames} frames`;
@@ -100,8 +116,13 @@ export async function startDemo(kind: DemoKind): Promise<void> {
         reset() { presenter?.reset(); },
         async probe() {
             const current = presenter!;
-            const [output, depth, motion, reactive, native, presented] = await Promise.all([current.output(), ...current.inputs(), current.native(), current.presented()].map(texture => readTexture(device, texture)));
-            return { output, depth, motion, reactive, native, presented, config: current.config };
+            // Enqueue every copy before awaiting readback, so history rotation
+            // cannot mix different rendered frames in one diagnostic snapshot.
+            const [output, depth, motion, reactive, native, presented, input, conditioned, ...guides] = await Promise.all([
+                ...[current.output(), ...current.inputs(), current.native(), current.presented(), current.inputColor(), current.conditionedColor()].map(texture => readTexture(device, texture)),
+                ...current.guideResources().map((texture, index) => readTexture(device, texture, index === 1 ? 2 : 1)),
+            ]);
+            return { output, depth, motion, reactive, native, presented, guides, input, conditioned, config: current.config };
         },
     } });
 }

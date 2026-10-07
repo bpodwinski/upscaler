@@ -53,3 +53,28 @@ Three 02 → Babylon 23 (spatial/temporal), 08 → 24 (composition), 11 → 25
   passed. Full suite: 593 tests in 39 files, with process-only GPG overrides for
   temporary release fixtures. GPU results are documented in babylon-framegraph.md.
 - Commit, push, PR and deployment remain under the user's control.
+
+## Third batch
+
+User requested the next examples. Implemented Babylon-native screen-space
+effects (27), an SSAO/SSR/bloom stack (28), temporal guide visualization (29),
+and a pre-upscale consumer sharing those guides (30). SSAO is explicitly
+distinguished from Three's diffuse SSGI; no path tracer or SSGI denoiser port.
+
+- Added stable published guide handles and an opt-in early Frame Graph task.
+  The final task shares allocation/compilation and encodes only the late phase.
+- Split contract tests cover ordering, late color availability, current depth
+  history, resets, abandonment, reconfiguration and disabled/reactivated output.
+- Native effects run before orientation normalization. Geometry dependencies
+  remain visible to the lifetime optimizer, including SSR's blur combiner.
+- GPU harness now includes all twelve mesh demos and effect/guide controls.
+- Review caught a cached rejected preparation promise and non-atomic diagnostic
+  readbacks; both fixed, with retry/reconfiguration regression tests. GPU checks
+  also caught attachment format costs and invalid SSAO background reconstruction.
+- Final validation: 603 tests in 39 files, lint, typecheck, library/site builds,
+  isolated packed consumers and all twelve production mesh demos on RTX 5080.
+  Desktop/mobile captures inspected; 34 gallery cards and 35 built HTML pages.
+  Full CPU suite used process-only GPG overrides for temporary release fixtures.
+- Browser teardown uses the shared CDP browser-session shutdown and allows extra
+  file-lock retries for slow Windows profile cleanup.
+- No commit, push, PR, npm publication or Exokosm modification is authorized.

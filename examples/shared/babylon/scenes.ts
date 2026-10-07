@@ -12,7 +12,7 @@ import { CreateSphere } from '@babylonjs/core/Meshes/Builders/sphereBuilder.js';
 import { CreatePlane } from '@babylonjs/core/Meshes/Builders/planeBuilder.js';
 import { Material } from '@babylonjs/core/Materials/material.js';
 
-export type DemoKind = 'hello' | 'aliasing' | 'compare' | 'transparency' | 'spatial' | 'compose' | 'reactive' | 'canvas-alpha';
+export type DemoKind = 'hello' | 'aliasing' | 'compare' | 'transparency' | 'spatial' | 'compose' | 'reactive' | 'canvas-alpha' | 'effects' | 'stack' | 'guides' | 'guides-compose';
 
 export function createSceneContent(scene: Scene, camera: FreeCamera, kind: DemoKind): (objectTime: number, cameraTime: number) => void {
     const light = new HemisphericLight('soft-light', new Vector3(0.3, 1, -0.5), scene); light.intensity = 1.1;
@@ -41,7 +41,7 @@ export function createSceneContent(scene: Scene, camera: FreeCamera, kind: DemoK
     const knot = CreateTorusKnot('knot', { radius: 1.25, tube: 0.33, radialSegments: 128, tubularSegments: 24 }, scene);
     knot.position.set(0, 2, 0); knot.material = cyan;
     const box = CreateBox('moving-box', { size: 1.1 }, scene); box.position.set(3, 0.8, 1); box.material = amber;
-    if (kind !== 'hello' && kind !== 'compose') {
+    if (kind !== 'hello' && kind !== 'compose' && kind !== 'effects' && kind !== 'stack') {
         const white = material('thin-lines', '#f2f0de', 0.35);
         // Real geometry produces both depth and velocity, including at subpixel widths.
         for (let i = 0; i < 72; i++) {
@@ -52,6 +52,22 @@ export function createSceneContent(scene: Scene, camera: FreeCamera, kind: DemoK
             const wire = CreateBox('wire-' + i, { width: 10.5, height: 0.013, depth: 0.02 }, scene);
             wire.position.set(0, 0.5 + i * 0.14, 3.1); wire.material = amber;
         }
+    }
+    if (kind === 'effects' || kind === 'stack') {
+        const glossy = material('glossy-floor', '#303744'); glossy.specularColor.set(0.9, 0.9, 0.9); glossy.specularPower = 128;
+        floor.useVertexColors = false; floor.material = glossy;
+        for (const [x, color] of [[-5.5, '#d6473a'], [5.5, '#3aaf74']] as const) {
+            const wall = CreateBox('colored-wall', { width: 0.25, height: 5, depth: 10 }, scene);
+            wall.position.set(x, 2.5, 2); wall.material = material('wall-' + color, color, 0.05);
+        }
+        const back = CreateBox('back-wall', { width: 11, height: 5, depth: 0.2 }, scene); back.position.set(0, 2.5, 7); back.material = material('back', '#9ca8bb');
+        for (let i = 0; i < 5; i++) {
+            const column = CreateBox('occluder-' + i, { width: 1, depth: 1, height: 1 + i * 0.4 }, scene);
+            column.position.set(-3.4 + i * 1.7, (1 + i * 0.4) / 2, 4); column.material = material('column-' + i, '#c8d4de');
+        }
+        const lightStrip = CreateBox('emissive-strip', { width: 6, height: 0.08, depth: 0.12 }, scene);
+        lightStrip.position.set(0, 3.9, 6.7); lightStrip.material = material('emissive', '#ffc979', 5);
+        const marker = CreateSphere('hdr-marker', { diameter: 0.6 }, scene); marker.position.set(-3, 0.4, -1.5); marker.material = material('marker', '#fc6253', 2);
     }
     const transparent: Mesh[] = [];
     if (kind === 'transparency' || kind === 'reactive') {

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { browserExecutable } from './browser-executable.mjs';
 import { CDP } from './cdp-client.mjs';
-import { spawnVite, waitForUrl, stopChild, removeTempDirectory } from './local-processes.mjs';
+import { spawnVite, waitForUrl, stopChild, closeOwnedCdpBrowser, removeTempDirectory } from './local-processes.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const html = readFileSync(join(root, 'examples/dist/19-babylon-hello/index.html'), 'utf8');
@@ -47,8 +47,9 @@ try {
     client = await CDP.connect(target.webSocketDebuggerUrl);
     await client.send('Runtime.enable'); await client.send('Network.enable'); await client.send('Page.enable');
     await client.send('Emulation.setDeviceMetricsOverride', { width: 1100, height: 800, deviceScaleFactor: 1, mobile: false });
-    const examples = ['19-babylon-hello', '20-babylon-aliasing', '21-babylon-compare', '22-babylon-transparency', '23-babylon-spatial-temporal', '24-babylon-compose', '25-babylon-reactive-mask', '26-babylon-transparent-canvas'];
+    const examples = ['19-babylon-hello', '20-babylon-aliasing', '21-babylon-compare', '22-babylon-transparency', '23-babylon-spatial-temporal', '24-babylon-compose', '25-babylon-reactive-mask', '26-babylon-transparent-canvas', '27-babylon-screen-effects', '28-babylon-effect-stack', '29-babylon-temporal-guides', '30-babylon-guides-compose'];
     for (const example of examples) {
+        if (process.env.BABYLON_EXAMPLES && !process.env.BABYLON_EXAMPLES.split(',').some(prefix => example.startsWith(prefix))) continue;
         client.events.length = 0;
         await client.send('Page.navigate', { url: origin + base + example + '/' }); await waitFrames();
         const moving = await probe();
@@ -76,12 +77,53 @@ try {
             assert.ok(Math.abs(stationary.native.meanAbs - stationary.output.meanAbs) < 0.05, 'Native and reconstructed images must use the same brightness');
             for (const value of [0, 100, 50]) { await client.evaluate(`document.querySelector('#split').value = ${value}`); await settle(2); }
         }
-        if (example.includes('compose')) {
+        if (example === '24-babylon-compose') {
             assert.ok(stationary.presented.meanAbs < stationary.output.meanAbs * 0.98, 'Vignette must change the composed image');
             await client.evaluate("document.querySelector('#composition').checked = false"); await settle(4);
             const identity = await probe(); assert.equal(identity.presented.meanAbs, identity.output.meanAbs, 'Disabled composition must preserve RGB exactly');
             assert.deepEqual(identity.presented.alpha, identity.output.alpha, 'Composition preserves alpha');
             await client.evaluate("document.querySelector('#composition').checked = true");
+        }
+        if (example.includes('guides')) {
+            assert.equal(stationary.guides.length, 3);
+            assert.ok(stationary.guides.every(guide => guide.finite), 'Published guides must be finite');
+            assert.ok(stationary.guides[0].min > 0 && stationary.guides[0].max <= 120, 'Current dilated depth must be positive');
+            assert.ok(stationary.guides[1].meanAbs < 1e-6, 'Static dilated motion must exclude jitter');
+            assert.ok(camera.guides[1].meanAbs > 1e-6, 'Published guides must contain current camera motion');
+            assert.ok(stationary.guides[2].min >= 0 && stationary.guides[2].max <= 1, 'Disocclusion guide must be normalized');
+            if (example.includes('compose')) {
+                assert.ok(Math.abs(camera.input.meanAbs - camera.conditioned.meanAbs) > 1e-5, 'Disocclusion tint must affect the input color');
+                await client.evaluate("document.querySelector('#guide-tint').checked = false"); await settle(4);
+                const neutral = await probe(); assert.equal(neutral.input.meanAbs, neutral.conditioned.meanAbs, 'Disabled guide tint must preserve input RGB');
+                assert.deepEqual(neutral.input.alpha, neutral.conditioned.alpha);
+                await client.evaluate("document.querySelector('#guide-tint').checked = true");
+            }
+        }
+        if (example.includes('screen-effects') || example.includes('effect-stack')) {
+            const stack = example.includes('effect-stack');
+            // Remove jitter while comparing individual spatial effects, so their
+            // differences cannot come from a different subpixel sample.
+            await client.evaluate("document.querySelector('#mode').value = 'bilinear'");
+            const select = async effect => {
+                await client.evaluate(stack
+                    ? `for (const id of ['ao', 'ssr', 'bloom']) document.getElementById(id).checked = id === '${effect}'`
+                    : `document.querySelector('#effect').value = '${effect === 'ao' ? 'ssao' : effect}'`);
+                await client.evaluate('window.__BabylonSceneDemo.reset()'); await settle(32);
+                writeFileSync(join(artifacts, example + '-' + effect + '.png'), Buffer.from((await client.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
+                return probe();
+            };
+            const neutral = await select('none'), ao = await select('ao'), ssr = await select('ssr');
+            assert.ok(ao.input.meanAbs < neutral.input.meanAbs - 1e-4, 'SSAO must darken contact regions');
+            // Reflections redistribute color: a global mean can cancel out even
+            // for clearly visible reflections. Compare RGB in spatial regions.
+            const reflectedDifference = ssr.input.regions.reduce((sum, value, i) => sum + Math.abs(value - neutral.input.regions[i]), 0) / ssr.input.regions.length;
+            assert.ok(reflectedDifference > 0.001, `SSR must change reflected regions: ${reflectedDifference}`);
+            if (stack) {
+                const bloom = await select('bloom');
+                assert.ok(bloom.input.meanAbs > neutral.input.meanAbs + 1e-4, 'HDR bloom must spread bright highlights');
+                await client.evaluate("for (const id of ['ao', 'ssr', 'bloom']) document.getElementById(id).checked = true");
+            }
+            await client.evaluate("document.querySelector('#mode').value = 'temporal'");
         }
         if (example.includes('transparent-canvas')) {
             assert.equal(stationary.output.alpha.min, 0, 'Canvas background must remain transparent');
@@ -126,6 +168,6 @@ try {
     writeFileSync(join(artifacts, 'mobile.png'), Buffer.from((await client.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
     writeFileSync(join(artifacts, 'report.json'), JSON.stringify(report, null, 2));
 } finally {
-    await client?.send('Browser.close', {}, 3000).catch(() => {}); client?.close();
-    await stopChild(chrome); await stopChild(server); await removeTempDirectory(profile, 'Babylon examples Chrome profile');
+    await closeOwnedCdpBrowser(client);
+    await stopChild(chrome); await stopChild(server); await removeTempDirectory(profile, 'Babylon examples Chrome profile', 20);
 }

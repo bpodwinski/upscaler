@@ -15,12 +15,16 @@ import type { TextureResource } from '@ruxelion/upscaler/core';
 import type { FrameGraphUpscaleConfiguration } from '@ruxelion/upscaler/babylon';
 import { inputParameters, INPUTS } from './inputs';
 import { ColorEffectTask } from './ColorEffectTask';
+import { addScreenSpaceEffects } from './ScreenSpaceEffects';
+import { GuideTextureTask } from './GuideTextureTask';
 
 export interface SceneFeatures {
     spatialComparison?: boolean;
     composition?: boolean;
     authoredReactive?: boolean;
     transparentCanvas?: boolean;
+    screenEffects?: 'single' | 'stack';
+    guides?: 'visualize' | 'compose';
 }
 
 class CallbackTask extends FrameGraphTask {
@@ -43,10 +47,11 @@ const PRESENT = /* wgsl */ `
         let nativeY = select(i32(p.y), i32(textureDimensions(native).y) - 1 - i32(p.y), split.w > 0);
         rgba = textureLoad(native, vec2i(i32(p.x), nativeY), 0);
     }
-    if (split.z > 0) {
+    if (split.z == 1) {
         let xy = vec2i(p.xy / vec2f(textureDimensions(source)) * vec2f(textureDimensions(reactive)));
         return vec4f(vec3f(textureLoad(reactive, xy, 0).r), 1);
     }
+    if (split.z == 2) { return rgba; }
     let alpha = select(1.0, clamp(rgba.a, 0.0, 1.0), split.y > 0);
     // Scene coverage is premultiplied in linear HDR. Unpremultiply before the
     // nonlinear display transform, then premultiply for WebGPU's canvas contract.
@@ -65,6 +70,9 @@ export class BabylonScenePresenter {
     reactive = true;
     showReactive = false;
     readonly composition?: ColorEffectTask;
+    readonly screenEffects?: ReturnType<typeof addScreenSpaceEffects>;
+    readonly guideConsumer?: GuideTextureTask;
+    readonly hasGuides: boolean;
     split = 0.5;
     frames = 0;
     private resetInputs = true;
@@ -80,6 +88,7 @@ export class BabylonScenePresenter {
 
     constructor(private readonly engine: WebGPUEngine, private readonly scene: Scene, private readonly camera: FreeCamera, private readonly canvas: HTMLCanvasElement, width: number, height: number, ratio: number, transparency: boolean, comparison: boolean, optimize = true, features: SceneFeatures = {}) {
         this.device = babylonWebGPU.getBabylonDevice(engine);
+        this.hasGuides = !!features.guides;
         this.graph = new FrameGraph(scene); this.graph.optimizeTextureAllocation = optimize;
         const graph = this.graph;
         const add = <T extends FrameGraphTask>(task: T): T => { this.tasks.push(task); graph.addTask(task); return task; };
@@ -114,11 +123,25 @@ export class BabylonScenePresenter {
             { type: Constants.PREPASS_DEPTH_TEXTURE_TYPE, textureType: Constants.TEXTURETYPE_FLOAT, textureFormat: Constants.TEXTUREFORMAT_RED },
             { type: Constants.PREPASS_VELOCITY_LINEAR_TEXTURE_TYPE, textureType: Constants.TEXTURETYPE_HALF_FLOAT, textureFormat: Constants.TEXTUREFORMAT_RGBA },
         ];
+        const retainedInputs: number[] = [];
+        if (features.screenEffects) {
+            // Motion uses only XY. RG16F also keeps this MRT within the default
+            // 32-byte budget (RGBA8's render-target cost is 8, not 4 bytes).
+            geometry.textureDescriptions[1].textureFormat = Constants.TEXTUREFORMAT_RG;
+            geometry.textureDescriptions.push(
+                { type: Constants.PREPASS_NORMAL_TEXTURE_TYPE, textureType: Constants.TEXTURETYPE_HALF_FLOAT, textureFormat: Constants.TEXTUREFORMAT_RGBA },
+                { type: Constants.PREPASS_REFLECTIVITY_TEXTURE_TYPE, textureType: Constants.TEXTURETYPE_UNSIGNED_BYTE, textureFormat: Constants.TEXTUREFORMAT_RGBA },
+            );
+        }
         let color = opaque.color;
         if (transparency) {
             const beauty = targets('complete-color', rw, rh);
             const render = add(new FrameGraphObjectRendererTask('opaque-and-transparent', graph, scene));
             setup(render, beauty, camera); color = beauty.color;
+        }
+        if (features.screenEffects) {
+            this.screenEffects = addScreenSpaceEffects(graph, camera, geometry, color, add, features.screenEffects === 'stack');
+            color = this.screenEffects.output; retainedInputs.push(...this.screenEffects.dependencies);
         }
         let authoredMask = opaque.color;
         if (features.authoredReactive) {
@@ -149,8 +172,19 @@ export class BabylonScenePresenter {
             });
         }));
         this.upscale.colorTexture = this.normalized[3]; this.upscale.depthTexture = this.normalized[0]; this.upscale.velocityTexture = this.normalized[1]; this.upscale.reactiveTexture = this.normalized[2];
+        if (features.guides) {
+            add(this.upscale.createGuidesTask());
+            if (features.guides === 'compose') {
+                this.guideConsumer = add(new GuideTextureTask('color-from-disocclusion', graph, this.normalized[3], this.upscale.guides, rw, rh, false));
+                this.upscale.colorTexture = this.guideConsumer.outputTexture;
+            }
+        }
         add(this.upscale);
         this.finalColor = this.upscale.outputTexture;
+        if (features.guides === 'visualize') {
+            const view = add(new GuideTextureTask('guide-visualization', graph, this.upscale.outputTexture, this.upscale.guides, width, height, true));
+            this.finalColor = view.outputTexture;
+        }
         if (features.composition) {
             this.composition = add(new ColorEffectTask('vignette-after-upscale', graph, this.upscale.outputTexture, width, height));
             this.finalColor = this.composition.outputTexture;
@@ -175,9 +209,9 @@ export class BabylonScenePresenter {
         add(new CallbackTask('present', graph, () => {
             const pass = graph.addRenderPass('present'); pass.setRenderTarget(0);
             // Keep diagnostic inputs alive through the last pass even with aliasing enabled.
-            pass.addDependencies([this.upscale.outputTexture, this.finalColor, this.nativeColor, ...this.normalized]);
+            pass.addDependencies([this.upscale.outputTexture, this.finalColor, this.nativeColor, ...this.normalized, ...retainedInputs, ...(features.guides ? Object.values(this.upscale.guides) : [])]);
             pass.setExecuteFunc(() => {
-                this.device.queue.writeBuffer(this.splitUniform, 0, new Float32Array([comparison || features.spatialComparison ? this.split : 0, Number(!!features.transparentCanvas), Number(this.showReactive), Number(comparison)]));
+                this.device.queue.writeBuffer(this.splitUniform, 0, new Float32Array([comparison || features.spatialComparison ? this.split : 0, Number(!!features.transparentCanvas), features.guides === 'visualize' ? 2 : Number(this.showReactive), Number(comparison)]));
                 const group = this.device.createBindGroup({ layout: presentPipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: this.presented().view }, { binding: 1, resource: this.resource(this.nativeColor).view }, { binding: 2, resource: { buffer: this.splitUniform } }, { binding: 3, resource: this.resource(this.normalized[2]).view }] });
                 const render = babylonWebGPU.getBabylonEncoder(engine).beginRenderPass({ colorAttachments: [{ view: canvas.getContext('webgpu')!.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 1] }] });
                 render.setPipeline(presentPipeline); render.setBindGroup(0, group); render.draw(3); render.end();
@@ -191,6 +225,9 @@ export class BabylonScenePresenter {
     presented(): TextureResource { return this.resource(this.finalColor); }
     inputs(): TextureResource[] { return this.normalized.slice(0, 3).map(handle => this.resource(handle)); }
     native(): TextureResource { return this.resource(this.nativeColor); }
+    guideResources(): TextureResource[] { return this.hasGuides ? Object.values(this.upscale.guides).map(handle => this.resource(handle)) : []; }
+    inputColor(): TextureResource { return this.resource(this.normalized[3]); }
+    conditionedColor(): TextureResource { return this.resource(this.upscale.colorTexture); }
     setMode(temporal: boolean): void { if (this.upscale.disabled === temporal) { this.upscale.disabled = !temporal; this.reset(); } }
     reset(): void { this.upscale.resetHistory(); this.resetInputs = true; this.previousJitter = { x: 0, y: 0 }; }
     render(): void {
