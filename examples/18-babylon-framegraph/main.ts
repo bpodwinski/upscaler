@@ -5,7 +5,8 @@ import { Vector3 } from '@babylonjs/core/Maths/math.vector.js';
 import { FrameGraph } from '@babylonjs/core/FrameGraph/frameGraph.js';
 import { FrameGraphTask } from '@babylonjs/core/FrameGraph/frameGraphTask.js';
 import { FrameGraphUpscaleTask, getBabylonTextureOptions, babylonWebGPU } from '@ruxelion/upscaler/babylon';
-import type { CoreConfiguration, ResourceDescriptor, TextureResource } from '@ruxelion/upscaler/core';
+import type { ResourceDescriptor, TextureResource } from '@ruxelion/upscaler/core';
+import type { FrameGraphUpscaleConfiguration } from '@ruxelion/upscaler/babylon';
 import { DemoScene, DemoPresent, readOutput } from '../shared/core-demo';
 import type { DemoInputs } from '../shared/core-demo';
 
@@ -19,7 +20,7 @@ async function main(): Promise<void> {
     const errors: string[] = []; device.addEventListener('uncapturederror', event => { errors.push(event.error.message); console.error(event.error.message); });
     const generator = new DemoScene(device); const presenter = new DemoPresent(device, navigator.gpu.getPreferredCanvasFormat());
     const context = canvas.getContext('webgpu')!;
-    let config: CoreConfiguration = { renderWidth: 642, renderHeight: 360, displayWidth: 963, displayHeight: 541, depthMode: 'linear', exposureMode: 'provided', correctConditioningExposure: true, rcasAgeKnee: 0.5 };
+    let config: FrameGraphUpscaleConfiguration = { renderWidth: 642, renderHeight: 360, displayWidth: 963, displayHeight: 541, depthMode: 'linear', exposureMode: 'provided', correctConditioningExposure: true, rcasAgeKnee: 0.5 };
     let frames = 0; let paused = false; let time = 0; let previousTime = 0;
     const checked = (id: string) => (document.querySelector(`#${id}`) as HTMLInputElement).checked;
     const upscale = new FrameGraphUpscaleTask('upscale', graph, { configuration: config, frame: () => ({ frameIndex: frames, deltaTime: 1 / 60, motionScale: { x: -1, y: -1 } }) });

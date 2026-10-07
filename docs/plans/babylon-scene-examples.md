@@ -33,3 +33,23 @@ Execution ledger:
   `GIT_CONFIG_COUNT=2`, `commit.gpgsign=false`, `tag.gpgsign=false`. No Git
   configuration was changed. Gallery: 26 working cards, 27 built HTML pages.
 - No repository commit, push, PR or publication performed.
+
+## Second batch
+
+User requested the next examples. Implemented four further adaptations:
+Three 02 → Babylon 23 (spatial/temporal), 08 → 24 (composition), 11 → 25
+(authored reactive coverage), and 15 → 26 (transparent canvas).
+
+- Extended the Babylon task with optional spatial/bilinear paths, leaving
+  temporal as the default. CPU tests first failed on the unnecessary depth
+  requirement, then passed with color-only non-temporal recording and zero jitter.
+- Shared color task handles RTT orientation and post-upscale vignette composition.
+  Spatial comparison uses a separate unjittered low-resolution scene render.
+- Authored coverage reuses opaque depth and a pass-specific white material.
+- Canvas presentation preserves reconstructed alpha through HDR/display conversion.
+- Independent review found no concrete defects; added canvas readback and mask
+  captures to supplement output-texture checks.
+- Lint/typecheck, library/site builds and three isolated packed-package consumers
+  passed. Full suite: 593 tests in 39 files, with process-only GPG overrides for
+  temporary release fixtures. GPU results are documented in babylon-framegraph.md.
+- Commit, push, PR and deployment remain under the user's control.

@@ -12,7 +12,7 @@ import { CreateSphere } from '@babylonjs/core/Meshes/Builders/sphereBuilder.js';
 import { CreatePlane } from '@babylonjs/core/Meshes/Builders/planeBuilder.js';
 import { Material } from '@babylonjs/core/Materials/material.js';
 
-export type DemoKind = 'hello' | 'aliasing' | 'compare' | 'transparency';
+export type DemoKind = 'hello' | 'aliasing' | 'compare' | 'transparency' | 'spatial' | 'compose' | 'reactive' | 'canvas-alpha';
 
 export function createSceneContent(scene: Scene, camera: FreeCamera, kind: DemoKind): (objectTime: number, cameraTime: number) => void {
     const light = new HemisphericLight('soft-light', new Vector3(0.3, 1, -0.5), scene); light.intensity = 1.1;
@@ -36,11 +36,12 @@ export function createSceneContent(scene: Scene, camera: FreeCamera, kind: DemoK
     const floor = new Mesh('checkerboard', scene), data = new VertexData();
     data.positions = positions; data.normals = normals; data.colors = colors; data.indices = indices; data.applyToMesh(floor);
     floor.material = material('floor', '#ffffff');
+    if (kind === 'canvas-alpha') floor.dispose();
     const cyan = material('cyan', '#28c7ce', 0.16), amber = material('amber', '#ffb247', 0.12);
     const knot = CreateTorusKnot('knot', { radius: 1.25, tube: 0.33, radialSegments: 128, tubularSegments: 24 }, scene);
     knot.position.set(0, 2, 0); knot.material = cyan;
     const box = CreateBox('moving-box', { size: 1.1 }, scene); box.position.set(3, 0.8, 1); box.material = amber;
-    if (kind === 'aliasing' || kind === 'compare' || kind === 'transparency') {
+    if (kind !== 'hello' && kind !== 'compose') {
         const white = material('thin-lines', '#f2f0de', 0.35);
         // Real geometry produces both depth and velocity, including at subpixel widths.
         for (let i = 0; i < 72; i++) {
@@ -53,7 +54,7 @@ export function createSceneContent(scene: Scene, camera: FreeCamera, kind: DemoK
         }
     }
     const transparent: Mesh[] = [];
-    if (kind === 'transparency') {
+    if (kind === 'transparency' || kind === 'reactive') {
         const glass = material('alpha-blended-glass', '#54cfea', 0.3); glass.alpha = 0.28; glass.backFaceCulling = false;
         glass.transparencyMode = Material.MATERIAL_ALPHABLEND;
         const sphere = CreateSphere('glass-sphere', { diameter: 2.8, segments: 32 }, scene); sphere.material = glass;

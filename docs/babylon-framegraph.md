@@ -1,8 +1,10 @@
 # Adaptateur Babylon 9.29.x
 
-L'intégration initiale fournit le chemin temporel complet via FrameGraphUpscaleTask. Elle est testée avec @babylonjs/core@9.29.0. Les accès internes nécessaires sont regroupés dans src/babylon/compatibility.ts et protégés par une vérification de version et de disponibilité du moteur WebGPU.
+L'intégration fournit les chemins temporel, spatial et bilinéaire via FrameGraphUpscaleTask. Elle est testée avec @babylonjs/core@9.29.0. Les accès internes nécessaires sont regroupés dans src/babylon/compatibility.ts et protégés par une vérification de version et de disponibilité du moteur WebGPU.
 
-Construire la tâche avec un nom, le FrameGraph et des options contenant configuration, callback frame et réglages facultatifs. Assigner les handles colorTexture, depthTexture et velocityTexture, plus les éventuels reactiveTexture, reactiveOpaqueColorTexture, exposureTexture et preExposureTexture. Ajouter la tâche au graphe avant le consommateur de outputTexture. Attendre graph.buildAsync() avant la première exécution.
+Construire la tâche avec un nom, le FrameGraph et des options contenant configuration, callback frame et réglages facultatifs. `configuration.path` vaut `temporal` par défaut ; `spatial` active EASU + RCAS, et `bilinear` active le redimensionnement bilinéaire. Le type exporté `FrameGraphUpscaleConfiguration` décrit ces configurations. Le mode `guides` du cœur n'est pas exposé par cette tâche.
+
+Assigner `colorTexture` dans tous les cas, et `depthTexture` / `velocityTexture` pour le chemin temporel. Les chemins spatial et bilinéaire fonctionnent avec la couleur seule et n'ajoutent aucun jitter. Les entrées facultatives restent `reactiveTexture`, `reactiveOpaqueColorTexture`, `exposureTexture` et `preExposureTexture`. Ajouter la tâche au graphe avant le consommateur de `outputTexture`. Attendre `graph.buildAsync()` avant la première exécution.
 
 Les entrées doivent être rendues sous le même jitter que celui publié par upscale.jitter. beginFrame(camera) sauvegarde la projection existante, y compose le jitter et la fige. endFrame() restaure aussi son état de gel initial. Encadrer le rendu des entrées et l'exécution du graphe dans un try/finally ; en cas d'abandon, demander resetHistory(). unjitteredProjectionMatrix fournit la projection pour le calcul des mouvements.
 
@@ -22,7 +24,7 @@ La future migration Exokosm devra confirmer : unité et fond de profondeur, sign
 
 ## Exemples avec des meshes
 
-La galerie comporte quatre adaptations des démonstrations Three, construites sur
+La galerie comporte huit adaptations des démonstrations Three, construites sur
 le même [présentateur Babylon](../examples/shared/babylon/BabylonScenePresenter.ts) :
 
 | Exemple | Ce qu'il permet d'observer |
@@ -31,11 +33,20 @@ le même [présentateur Babylon](../examples/shared/babylon/BabylonScenePresente
 | [20 — Aliasing](../examples/20-babylon-aliasing/main.ts) | Barreaux sous-pixel, fils croisés, damier géométrique, convergence immobile |
 | [21 — Comparaison](../examples/21-babylon-compare/main.ts) | Référence native sans AA et reconstruction, avec séparateur mobile |
 | [22 — Transparence](../examples/22-babylon-transparency/main.ts) | Sphère alpha-blended et éléments émissifs, masque réactif activable |
+| [23 — Spatial / temporel](../examples/23-babylon-spatial-temporal/main.ts) | Deux rendus basse résolution, EASU + RCAS sans jitter face au temporel jitteré |
+| [24 — Composition](../examples/24-babylon-compose/main.ts) | Vignette dans une tâche du graphe consommant la sortie de l'upscaler |
+| [25 — Masque dessiné](../examples/25-babylon-reactive-mask/main.ts) | Couverture des meshes transparents, occlusion par la profondeur opaque et affichage du masque |
+| [26 — Canvas transparent](../examples/26-babylon-transparent-canvas/main.ts) | Reconstruction de l'alpha des silhouettes et composition sur le contenu HTML |
 
 Ces exemples partagent leurs scènes et leur interface dans `examples/shared/babylon`.
 Ils adaptent le but des exemples Three ; ils ne reproduisent pas leurs matériaux
 TSL. Le sélecteur NativeAA utilise le chemin temporel à la résolution d'affichage.
 Les dimensions par défaut sont celles du canvas en pixels CSS.
+
+Les exemples 23, 24, 25 et 26 adaptent respectivement les objectifs des exemples
+Three 02, 08, 11 et 15. L'équivalent de la composition TSL est une tâche du Frame
+Graph. Le contrôle de reconstruction agit sur la moitié droite de la comparaison
+23 ; la moitié gauche conserve son traitement spatial.
 
 Le `FrameGraphGeometryRendererTask` fournit la couleur opaque HDR, la profondeur
 en espace vue R32F et `PREPASS_VELOCITY_LINEAR_TEXTURE_TYPE`. Une passe compute
@@ -54,6 +65,12 @@ normalise ces entrées avant l'upscaler :
   complet, avec seuil `0.04`, facteur `2` et plafond `0.9`. Le désactiver écrit zéro
   sans changer les dépendances du graphe. Il s'agit d'une heuristique de démo.
 
+L'exemple 25 remplace cette heuristique par une passe de couverture. Les meshes
+transparents sont rendus avec un matériau blanc spécifique à cette passe, sous
+le même jitter que la couleur. La passe réutilise la profondeur opaque, avec
+test de profondeur actif et écriture désactivée. La couverture blanche vaut `1`.
+Le bouton « Show mask » affiche la texture réellement fournie au cœur.
+
 La transparence effectue un rendu complet supplémentaire pour conserver une
 référence opaque. La comparaison utilise une seconde caméra avec la projection
 sans jitter et un rendu à la résolution d'affichage. La présentation retourne sa
@@ -61,6 +78,20 @@ texture native et applique la même transformation Reinhard/gamma des deux côt�
 Ces rendus supplémentaires servent à comparer les images, pas à mesurer les
 performances du cœur. L'exposition fournie est constante à `1` ; l'exemple 18
 reste celui des variations d'exposition.
+
+La comparaison spatiale effectue elle aussi un second rendu, mais à basse
+résolution et sans jitter. Une tâche retourne la couleur vers l'origine en haut
+à gauche avant EASU + RCAS. La tâche
+[`ColorEffectTask`](../examples/shared/babylon/ColorEffectTask.ts) sert également
+à la composition : sa sortie possède son propre handle, sa dépendance envers
+l'entrée est explicite, et la vignette conserve l'alpha sans modifier l'historique
+temporel. Avec une force nulle, elle reproduit exactement la couleur d'entrée.
+
+Le canvas transparent utilise un fond RGBA nul dans les cibles de scène. La
+présentation dé-prémultiplie la couleur HDR par la couverture avant Reinhard/gamma,
+puis la prémultiplie pour le canvas WebGPU configuré en `premultipliedAlpha`.
+Le damier, les fonds clair/sombre et le texte sont des éléments HTML/CSS placés
+derrière le canvas, pas des textures rendues par Babylon.
 
 Le présentateur reconstruit son graphe lors des changements de taille ou de
 ratio, restaure la projection dans un `finally`, et libère ses ressources à la
@@ -76,11 +107,13 @@ ne publie rien. Les résultats et captures sont écrits dans
 `output/playwright/babylon-scenes/` (ignoré par Git). Elle accepte aussi un build
 avec `PAGES_BASE=/upscaler/` pour vérifier les URL GitHub Pages.
 
-Vérifié sur Chrome / RTX 5080 le 7 octobre 2026 : les quatre pages rendent sans
+Vérifié sur Chrome / RTX 5080 le 7 octobre 2026 : les huit pages rendent sans
 erreur WebGPU, les sorties RGB et profondeurs sont finies, l'orientation verticale
 est correcte, le mouvement statique exclut le jitter, et les mouvements de caméra
 et de meshes sont présents. Les parcours masque activé/désactivé,
 bilinéaire/temporel, reset, dimensions impaires, NativeAA et optimisation d'alias
 activée/désactivée passent. La disposition mobile à 390 pixels a été vérifiée.
+Le second lot ajoute les contrôles de sortie spatiale, de vignette activée et
+neutre, de masque dessiné atteignant `1`, et d'alpha nul/opaque/fractionnaire.
 Ces contrôles ne constituent ni une mesure de performance, ni une validation
 sur RX 580 ou sur un GPU mobile.

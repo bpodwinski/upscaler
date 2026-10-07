@@ -12,8 +12,10 @@ import type { Matrix } from '@babylonjs/core/Maths/math.vector.js';
 import type { CoreConfiguration, CoreResources, FrameData, ResourceDescriptor, ResourceName, RuntimeSettings } from '../core/types.js';
 import { freezeJitteredProjection, getBabylonDevice, getBabylonEncoder, resolveBabylonTexture } from './compatibility.js';
 
+export type FrameGraphUpscaleConfiguration = Omit<CoreConfiguration, 'path'> & { path?: 'temporal' | 'spatial' | 'bilinear' };
+
 export interface FrameGraphUpscaleOptions {
-    configuration: Omit<CoreConfiguration, 'path'>;
+    configuration: FrameGraphUpscaleConfiguration;
     /** Must match the conditioning/host exposure baked into the input textures. */
     frame: () => FrameData;
     settings?: Partial<RuntimeSettings>;
@@ -31,7 +33,7 @@ export function getBabylonTextureOptions(descriptor: ResourceDescriptor): FrameG
     };
 }
 
-/** Temporal-only task. The texture manager performs the only history swap. */
+/** Temporal, spatial or bilinear reconstruction. The texture manager owns history swaps. */
 export class FrameGraphUpscaleTask extends FrameGraphTask {
     colorTexture!: number;
     depthTexture!: number;
@@ -44,7 +46,7 @@ export class FrameGraphUpscaleTask extends FrameGraphTask {
     readonly settings: RuntimeSettings;
     private readonly core: UpscalerCore;
     private readonly fallback: UpscalerCore;
-    private configuration: CoreConfiguration;
+    private configuration: FrameGraphUpscaleConfiguration;
     private readonly frame: () => FrameData;
     private readonly handles = new Map<ResourceName, number>();
     private temporalLastFrame = false;
@@ -58,7 +60,7 @@ export class FrameGraphUpscaleTask extends FrameGraphTask {
 
     constructor(name: string, graph: FrameGraph, options: FrameGraphUpscaleOptions) {
         super(name, graph);
-        this.configuration = { ...options.configuration, path: 'temporal' };
+        this.configuration = { ...options.configuration, path: options.configuration.path ?? 'temporal' };
         getResourceDescriptors(this.configuration);
         this.frame = options.frame; this.settings = { ...DEFAULT_SETTINGS, ...options.settings };
         const device = getBabylonDevice(graph.engine);
@@ -68,9 +70,10 @@ export class FrameGraphUpscaleTask extends FrameGraphTask {
     }
 
     /** Call between frames, then rebuild the Frame Graph to allocate the new requirements. */
-    configure(configuration: Omit<CoreConfiguration, 'path'>): void {
+    configure(configuration: FrameGraphUpscaleConfiguration): void {
         if (this.restoreProjection) throw new Error('@ruxelion/upscaler: cannot configure during an active Babylon frame.');
-        this.configuration = { ...configuration, path: 'temporal' };
+        if (configuration.path && !['temporal', 'spatial', 'bilinear'].includes(configuration.path)) throw new Error('@ruxelion/upscaler: Babylon task supports temporal, spatial or bilinear paths.');
+        this.configuration = { ...configuration, path: configuration.path ?? 'temporal' };
         this.core.configure(this.configuration);
         this.fallback.configure({ ...this.configuration, path: 'bilinear' });
         this.temporalLastFrame = false; this.initialized = false;
@@ -95,7 +98,8 @@ export class FrameGraphUpscaleTask extends FrameGraphTask {
     beginFrame(camera: Camera): void {
         if (this.restoreProjection) throw new Error('@ruxelion/upscaler: a Babylon jitter frame is already active.');
         this.sequence.advance(); const [x, y] = this.sequence.current; const [px, py] = this.sequence.previous;
-        this.currentJitter = this.disabled ? { x: 0, y: 0 } : { x, y }; this.previousJitter = { x: px, y: py };
+        const jittered = !this.disabled && this.configuration.path === 'temporal';
+        this.currentJitter = jittered ? { x, y } : { x: 0, y: 0 }; this.previousJitter = jittered ? { x: px, y: py } : { x: 0, y: 0 };
         this.unjitteredProjectionMatrix = camera.getProjectionMatrix().clone();
         const projection = this.unjitteredProjectionMatrix.clone();
         projection.fromArray(jitterProjection(projection.m, this.currentJitter, this.configuration.renderWidth, this.configuration.renderHeight));
@@ -104,7 +108,8 @@ export class FrameGraphUpscaleTask extends FrameGraphTask {
     endFrame(): void { this.restoreProjection?.(); this.restoreProjection = null; }
 
     record(skipCreationOfDisabledPasses = false): void {
-        for (const [name, value] of [['color', this.colorTexture], ['depth', this.depthTexture], ['velocity', this.velocityTexture]] as const) if (value === undefined) throw new Error(`@ruxelion/upscaler: missing Babylon ${name} handle.`);
+        const required = this.configuration.path === 'temporal' ? [['color', this.colorTexture], ['depth', this.depthTexture], ['velocity', this.velocityTexture]] : [['color', this.colorTexture]];
+        for (const [name, value] of required) if (value === undefined) throw new Error(`@ruxelion/upscaler: missing Babylon ${name} handle.`);
         const manager = this._frameGraph.textureManager;
         this.handles.clear();
         for (const descriptor of getResourceDescriptors(this.configuration)) {
@@ -115,7 +120,7 @@ export class FrameGraphUpscaleTask extends FrameGraphTask {
         const inputHandles = [this.colorTexture, this.depthTexture, this.velocityTexture, this.reactiveTexture, this.reactiveOpaqueColorTexture, this.exposureTexture, this.preExposureTexture].filter((h): h is number => h !== undefined);
         // Render passes are required: Babylon's lifetime analysis collects their dependencies.
         const add = (disabled: boolean): void => {
-            const pass = this._frameGraph.addRenderPass(`${this.name}${disabled ? '-bilinear' : '-temporal'}`, disabled);
+            const pass = this._frameGraph.addRenderPass(`${this.name}-${disabled ? 'bilinear' : this.configuration.path}`, disabled);
             pass.setRenderTarget(this.outputTexture);
             pass.addDependencies([...inputHandles, ...this.handles.values()]);
             pass.setExecuteFunc(() => this.executeUpscale(disabled));

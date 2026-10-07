@@ -47,7 +47,8 @@ try {
     client = await CDP.connect(target.webSocketDebuggerUrl);
     await client.send('Runtime.enable'); await client.send('Network.enable'); await client.send('Page.enable');
     await client.send('Emulation.setDeviceMetricsOverride', { width: 1100, height: 800, deviceScaleFactor: 1, mobile: false });
-    for (const example of ['19-babylon-hello', '20-babylon-aliasing', '21-babylon-compare', '22-babylon-transparency']) {
+    const examples = ['19-babylon-hello', '20-babylon-aliasing', '21-babylon-compare', '22-babylon-transparency', '23-babylon-spatial-temporal', '24-babylon-compose', '25-babylon-reactive-mask', '26-babylon-transparent-canvas'];
+    for (const example of examples) {
         client.events.length = 0;
         await client.send('Page.navigate', { url: origin + base + example + '/' }); await waitFrames();
         const moving = await probe();
@@ -59,15 +60,51 @@ try {
         await client.evaluate("document.querySelector('#camera').checked = true"); await settle();
         const camera = await probe(); assert.ok(camera.motion.meanAbs > 1e-6, 'Camera motion must be represented');
         await client.evaluate("document.querySelector('#camera').checked = false"); await settle();
-        if (example.includes('transparency')) {
+        if (example.includes('transparency') || example.includes('reactive-mask')) {
             assert.ok(camera.reactive.max > 0.1 && camera.reactive.meanAbs > 0.0001, 'Transparent geometry must generate reactivity');
+            if (example.includes('reactive-mask')) assert.equal(camera.reactive.max, 1, 'Authored white coverage must reach one');
             await client.evaluate("document.querySelector('#reactive').checked = false"); await settle();
             assert.equal((await probe()).reactive.max, 0, 'Disabled mask must be zero');
             await client.evaluate("document.querySelector('#reactive').checked = true");
+            if (example.includes('reactive-mask')) {
+                await client.evaluate("document.querySelector('#show-mask').checked = true"); await settle(3);
+                writeFileSync(join(artifacts, 'authored-mask.png'), Buffer.from((await client.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
+                await client.evaluate("document.querySelector('#show-mask').checked = false");
+            }
         } else assert.equal(stationary.reactive.max, 0);
-        if (example.includes('compare')) {
+        if (example.includes('compare') || example.includes('spatial-temporal')) {
             assert.ok(Math.abs(stationary.native.meanAbs - stationary.output.meanAbs) < 0.05, 'Native and reconstructed images must use the same brightness');
             for (const value of [0, 100, 50]) { await client.evaluate(`document.querySelector('#split').value = ${value}`); await settle(2); }
+        }
+        if (example.includes('compose')) {
+            assert.ok(stationary.presented.meanAbs < stationary.output.meanAbs * 0.98, 'Vignette must change the composed image');
+            await client.evaluate("document.querySelector('#composition').checked = false"); await settle(4);
+            const identity = await probe(); assert.equal(identity.presented.meanAbs, identity.output.meanAbs, 'Disabled composition must preserve RGB exactly');
+            assert.deepEqual(identity.presented.alpha, identity.output.alpha, 'Composition preserves alpha');
+            await client.evaluate("document.querySelector('#composition').checked = true");
+        }
+        if (example.includes('transparent-canvas')) {
+            assert.equal(stationary.output.alpha.min, 0, 'Canvas background must remain transparent');
+            assert.equal(stationary.output.alpha.max, 1, 'Opaque meshes keep full coverage');
+            assert.ok(stationary.output.alpha.fractional > 0, 'Temporal reconstruction must recover fractional silhouette coverage');
+            // Copy immediately after Babylon's RAF callback, before the browser presents
+            // the swapchain texture. This checks the actual canvas, not just core output.
+            const alpha = await client.evaluate(`new Promise(resolve => requestAnimationFrame(() => {
+                const source = document.querySelector('canvas'), copy = document.createElement('canvas');
+                copy.width = source.width; copy.height = source.height;
+                const context = copy.getContext('2d'); context.drawImage(source, 0, 0);
+                const data = context.getImageData(0, 0, copy.width, copy.height).data;
+                let min = 255, max = 0, fractional = 0;
+                for (let i = 3; i < data.length; i += 4) { min = Math.min(min, data[i]); max = Math.max(max, data[i]); if (data[i] > 0 && data[i] < 255) fractional++; }
+                resolve({min, max, fractional});
+            }))`);
+            assert.equal(alpha.min, 0, 'Presented canvas must have transparent pixels');
+            assert.equal(alpha.max, 255, 'Presented canvas must contain the opaque scene');
+            assert.ok(alpha.fractional > 0, 'Presented canvas must preserve fractional coverage');
+            for (const backdrop of ['light', 'dark', 'grid']) {
+                await client.evaluate(`document.querySelector('#backdrop').value = '${backdrop}'; document.querySelector('#backdrop').dispatchEvent(new Event('change'))`); await settle(2);
+                if (backdrop !== 'grid') writeFileSync(join(artifacts, 'canvas-' + backdrop + '.png'), Buffer.from((await client.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
+            }
         }
         await client.evaluate("document.querySelector('#mode').value = 'bilinear'"); await settle(); const bilinear = await probe();
         await client.evaluate("document.querySelector('#mode').value = 'temporal'"); await settle(); const reactivated = await probe();

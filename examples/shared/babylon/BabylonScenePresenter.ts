@@ -3,15 +3,25 @@ import { Constants } from '@babylonjs/core/Engines/constants.js';
 import type { Scene } from '@babylonjs/core/scene.js';
 import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera.js';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector.js';
-import { Color4 } from '@babylonjs/core/Maths/math.color.js';
+import { Color3, Color4 } from '@babylonjs/core/Maths/math.color.js';
+import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial.js';
 import { FrameGraph } from '@babylonjs/core/FrameGraph/frameGraph.js';
 import { FrameGraphTask } from '@babylonjs/core/FrameGraph/frameGraphTask.js';
 import { FrameGraphClearTextureTask } from '@babylonjs/core/FrameGraph/Tasks/Texture/clearTextureTask.js';
 import { FrameGraphObjectRendererTask } from '@babylonjs/core/FrameGraph/Tasks/Rendering/objectRendererTask.js';
 import { FrameGraphGeometryRendererTask } from '@babylonjs/core/FrameGraph/Tasks/Rendering/geometryRendererTask.js';
 import { FrameGraphUpscaleTask, getBabylonTextureOptions, babylonWebGPU } from '@ruxelion/upscaler/babylon';
-import type { CoreConfiguration, TextureResource } from '@ruxelion/upscaler/core';
+import type { TextureResource } from '@ruxelion/upscaler/core';
+import type { FrameGraphUpscaleConfiguration } from '@ruxelion/upscaler/babylon';
 import { inputParameters, INPUTS } from './inputs';
+import { ColorEffectTask } from './ColorEffectTask';
+
+export interface SceneFeatures {
+    spatialComparison?: boolean;
+    composition?: boolean;
+    authoredReactive?: boolean;
+    transparentCanvas?: boolean;
+}
 
 class CallbackTask extends FrameGraphTask {
     constructor(name: string, graph: FrameGraph, private readonly build: () => void) { super(name, graph); }
@@ -22,19 +32,27 @@ const PRESENT = /* wgsl */ `
 @group(0) @binding(0) var source: texture_2d<f32>;
 @group(0) @binding(1) var native: texture_2d<f32>;
 @group(0) @binding(2) var<uniform> split: vec4f;
+@group(0) @binding(3) var reactive: texture_2d<f32>;
 @vertex fn vertex(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
     let positions = array<vec2f,3>(vec2f(-1,-1), vec2f(3,-1), vec2f(-1,3)); return vec4f(positions[i],0,1);
 }
 @fragment fn fragment(@builtin(position) p: vec4f) -> @location(0) vec4f {
     let width = f32(textureDimensions(source).x);
-    var rgb = textureLoad(source, vec2i(p.xy), 0).rgb;
+    var rgba = textureLoad(source, vec2i(p.xy), 0);
     if (p.x / width < split.x) {
-        let nativeXY = vec2i(i32(p.x), i32(textureDimensions(native).y) - 1 - i32(p.y));
-        rgb = textureLoad(native, nativeXY, 0).rgb;
+        let nativeY = select(i32(p.y), i32(textureDimensions(native).y) - 1 - i32(p.y), split.w > 0);
+        rgba = textureLoad(native, vec2i(i32(p.x), nativeY), 0);
     }
-    rgb = max(rgb, vec3f(0));
+    if (split.z > 0) {
+        let xy = vec2i(p.xy / vec2f(textureDimensions(source)) * vec2f(textureDimensions(reactive)));
+        return vec4f(vec3f(textureLoad(reactive, xy, 0).r), 1);
+    }
+    let alpha = select(1.0, clamp(rgba.a, 0.0, 1.0), split.y > 0);
+    // Scene coverage is premultiplied in linear HDR. Unpremultiply before the
+    // nonlinear display transform, then premultiply for WebGPU's canvas contract.
+    let rgb = max(rgba.rgb / max(alpha, 0.00001), vec3f(0));
     if (split.x > 0 && abs(p.x - width * split.x) < 1) { return vec4f(1); }
-    return vec4f(pow(rgb / (1 + rgb), vec3f(1.0 / 2.2)), 1);
+    return vec4f(pow(rgb / (1 + rgb), vec3f(1.0 / 2.2)) * alpha, alpha);
 }`;
 
 /** Example host integration. All textures, including normalized inputs, belong to
@@ -42,9 +60,11 @@ const PRESENT = /* wgsl */ `
 export class BabylonScenePresenter {
     readonly graph: FrameGraph;
     readonly upscale: FrameGraphUpscaleTask;
-    readonly config: CoreConfiguration;
+    readonly config: FrameGraphUpscaleConfiguration;
     readonly device: GPUDevice;
     reactive = true;
+    showReactive = false;
+    readonly composition?: ColorEffectTask;
     split = 0.5;
     frames = 0;
     private resetInputs = true;
@@ -55,8 +75,10 @@ export class BabylonScenePresenter {
     private readonly nativeCamera: FreeCamera;
     private readonly normalized: number[];
     private readonly nativeColor: number;
+    private readonly maskMaterial?: StandardMaterial;
+    private readonly finalColor: number;
 
-    constructor(private readonly engine: WebGPUEngine, private readonly scene: Scene, private readonly camera: FreeCamera, private readonly canvas: HTMLCanvasElement, width: number, height: number, ratio: number, transparency: boolean, comparison: boolean, optimize = true) {
+    constructor(private readonly engine: WebGPUEngine, private readonly scene: Scene, private readonly camera: FreeCamera, private readonly canvas: HTMLCanvasElement, width: number, height: number, ratio: number, transparency: boolean, comparison: boolean, optimize = true, features: SceneFeatures = {}) {
         this.device = babylonWebGPU.getBabylonDevice(engine);
         this.graph = new FrameGraph(scene); this.graph.optimizeTextureAllocation = optimize;
         const graph = this.graph;
@@ -74,7 +96,7 @@ export class BabylonScenePresenter {
             const depth = graph.textureManager.createRenderTargetTexture(name + '-z', { size: { width: w, height: h }, sizeIsPercentage: false, options: { createMipMaps: false, formats: [Constants.TEXTUREFORMAT_DEPTH32_FLOAT], types: [Constants.TEXTURETYPE_FLOAT], samples: 1 } });
             const clear = add(new FrameGraphClearTextureTask(name + '-clear', graph));
             clear.targetTexture = color; clear.depthTexture = depth; clear.clearDepth = true; clear.clearColor = true;
-            clear.color = new Color4(0.018, 0.026, 0.052, 1);
+            clear.color = features.transparentCanvas ? new Color4(0, 0, 0, 0) : new Color4(0.018, 0.026, 0.052, 1);
             return { color, depth };
         };
         const setup = (task: FrameGraphObjectRendererTask, target: { color: number; depth: number }, view: FreeCamera) => {
@@ -98,28 +120,54 @@ export class BabylonScenePresenter {
             const render = add(new FrameGraphObjectRendererTask('opaque-and-transparent', graph, scene));
             setup(render, beauty, camera); color = beauty.color;
         }
+        let authoredMask = opaque.color;
+        if (features.authoredReactive) {
+            authoredMask = texture('authored-coverage', 'rgba16float');
+            const clear = add(new FrameGraphClearTextureTask('clear-coverage', graph));
+            clear.targetTexture = authoredMask; clear.color = new Color4(0, 0, 0, 0); clear.clearColor = true; clear.clearDepth = false;
+            const mask = add(new FrameGraphObjectRendererTask('transparent-coverage', graph, scene));
+            setup(mask, { color: authoredMask, depth: opaque.depth }, camera); mask.depthWrite = false;
+            const meshes = scene.meshes.filter(mesh => mesh.material?.needAlphaBlendingForMesh(mesh));
+            mask.objectList = { meshes, particleSystems: [] };
+            this.maskMaterial = new StandardMaterial('white-coverage', scene);
+            this.maskMaterial.disableLighting = true; this.maskMaterial.emissiveColor = Color3.White(); this.maskMaterial.backFaceCulling = false;
+            mask.objectRenderer.setMaterialForRendering(meshes, this.maskMaterial);
+        }
         this.normalized = [texture('positive-depth', 'r32float', rw, rh, true), texture('unjittered-motion', 'rgba16float', rw, rh, true), texture('reactive-mask', 'rgba8unorm', rw, rh, true), texture('top-left-color', 'rgba16float', rw, rh, true)];
         this.uniforms = this.device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
         const inputPipeline = this.device.createComputePipeline({ label: 'Babylon inputs', layout: 'auto', compute: { module: this.device.createShaderModule({ code: INPUTS }), entryPoint: 'main' } });
         add(new CallbackTask('normalize-inputs', graph, () => {
             const inputs = [geometry.geometryViewDepthTexture, geometry.geometryLinearVelocityTexture, opaque.color, color];
-            const pass = graph.addRenderPass('normalize-inputs'); pass.setRenderTarget(this.normalized[0]); pass.addDependencies([...inputs, ...this.normalized]);
+            const pass = graph.addRenderPass('normalize-inputs'); pass.setRenderTarget(this.normalized[0]); pass.addDependencies([...inputs, ...this.normalized, authoredMask]);
             pass.setExecuteFunc(() => {
-                const data = inputParameters(rw, rh, this.upscale.jitter, this.previousJitter, camera.maxZ, this.reactive && transparency, this.resetInputs);
+                const data = inputParameters(rw, rh, this.upscale.jitter, this.previousJitter, camera.maxZ, this.reactive && transparency, this.resetInputs, features.authoredReactive);
                 this.device.queue.writeBuffer(this.uniforms, 0, data);
                 const bindings = [...inputs, ...this.normalized].map((handle, index) => ({ binding: index + 1, resource: this.resource(handle).view }));
-                const group = this.device.createBindGroup({ layout: inputPipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: this.uniforms } }, ...bindings] });
+                const group = this.device.createBindGroup({ layout: inputPipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: this.uniforms } }, ...bindings, { binding: 9, resource: this.resource(authoredMask).view }] });
                 const compute = babylonWebGPU.getBabylonEncoder(engine).beginComputePass({ label: 'normalize Babylon inputs' });
                 compute.setPipeline(inputPipeline); compute.setBindGroup(0, group); compute.dispatchWorkgroups(Math.ceil(rw / 8), Math.ceil(rh / 8)); compute.end();
             });
         }));
         this.upscale.colorTexture = this.normalized[3]; this.upscale.depthTexture = this.normalized[0]; this.upscale.velocityTexture = this.normalized[1]; this.upscale.reactiveTexture = this.normalized[2];
         add(this.upscale);
+        this.finalColor = this.upscale.outputTexture;
+        if (features.composition) {
+            this.composition = add(new ColorEffectTask('vignette-after-upscale', graph, this.upscale.outputTexture, width, height));
+            this.finalColor = this.composition.outputTexture;
+        }
         this.nativeColor = this.upscale.outputTexture;
         if (comparison) {
             const native = targets('native-reference', width, height);
             const render = add(new FrameGraphObjectRendererTask('native-reference', graph, scene));
             setup(render, native, this.nativeCamera); this.nativeColor = native.color;
+        }
+        if (features.spatialComparison) {
+            const reference = targets('unjittered-spatial-input', rw, rh);
+            const render = add(new FrameGraphObjectRendererTask('spatial-scene', graph, scene));
+            setup(render, reference, this.nativeCamera);
+            const oriented = add(new ColorEffectTask('spatial-top-left-color', graph, reference.color, rw, rh, true));
+            const spatial = add(new FrameGraphUpscaleTask('spatial-reference', graph, { configuration: { ...this.config, path: 'spatial' }, frame: () => ({ frameIndex: this.frames }), settings: { sharpness: 0.4, exposure: 1, autoExposure: false } }));
+            spatial.colorTexture = oriented.outputTexture; this.nativeColor = spatial.outputTexture;
         }
         this.splitUniform = this.device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
         const module = this.device.createShaderModule({ code: PRESENT });
@@ -127,10 +175,10 @@ export class BabylonScenePresenter {
         add(new CallbackTask('present', graph, () => {
             const pass = graph.addRenderPass('present'); pass.setRenderTarget(0);
             // Keep diagnostic inputs alive through the last pass even with aliasing enabled.
-            pass.addDependencies([this.upscale.outputTexture, this.nativeColor, ...this.normalized]);
+            pass.addDependencies([this.upscale.outputTexture, this.finalColor, this.nativeColor, ...this.normalized]);
             pass.setExecuteFunc(() => {
-                this.device.queue.writeBuffer(this.splitUniform, 0, new Float32Array([comparison ? this.split : 0, 0, 0, 0]));
-                const group = this.device.createBindGroup({ layout: presentPipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: this.output().view }, { binding: 1, resource: this.resource(this.nativeColor).view }, { binding: 2, resource: { buffer: this.splitUniform } }] });
+                this.device.queue.writeBuffer(this.splitUniform, 0, new Float32Array([comparison || features.spatialComparison ? this.split : 0, Number(!!features.transparentCanvas), Number(this.showReactive), Number(comparison)]));
+                const group = this.device.createBindGroup({ layout: presentPipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: this.presented().view }, { binding: 1, resource: this.resource(this.nativeColor).view }, { binding: 2, resource: { buffer: this.splitUniform } }, { binding: 3, resource: this.resource(this.normalized[2]).view }] });
                 const render = babylonWebGPU.getBabylonEncoder(engine).beginRenderPass({ colorAttachments: [{ view: canvas.getContext('webgpu')!.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 1] }] });
                 render.setPipeline(presentPipeline); render.setBindGroup(0, group); render.draw(3); render.end();
             });
@@ -140,6 +188,7 @@ export class BabylonScenePresenter {
     async prepare(): Promise<void> { await this.graph.buildAsync(); this.scene.frameGraph = this.graph; }
     resource(handle: number): TextureResource { return babylonWebGPU.resolveBabylonTexture(this.graph.textureManager, handle, true); }
     output(): TextureResource { return this.resource(this.upscale.outputTexture); }
+    presented(): TextureResource { return this.resource(this.finalColor); }
     inputs(): TextureResource[] { return this.normalized.slice(0, 3).map(handle => this.resource(handle)); }
     native(): TextureResource { return this.resource(this.nativeColor); }
     setMode(temporal: boolean): void { if (this.upscale.disabled === temporal) { this.upscale.disabled = !temporal; this.reset(); } }
@@ -155,6 +204,6 @@ export class BabylonScenePresenter {
     dispose(): void {
         this.scene.frameGraph = null;
         for (const task of this.tasks) task.dispose();
-        this.graph.dispose(); this.nativeCamera.dispose(); this.uniforms.destroy(); this.splitUniform.destroy();
+        this.graph.dispose(); this.nativeCamera.dispose(); this.maskMaterial?.dispose(); this.uniforms.destroy(); this.splitUniform.destroy();
     }
 }
