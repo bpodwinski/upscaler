@@ -127,6 +127,8 @@ const timer = new THREE.Timer();
 let acc = 0;
 let frames = 0;
 let fps = 0;
+await Promise.all([presenter.init()]);
+
 renderer.setAnimationLoop(() => {
     timer.update();
     const dt = Math.min(timer.getDelta(), 0.1);

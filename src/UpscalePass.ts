@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { mrt, output, texture, velocity } from 'three/tsl';
+import { mix, mrt, output, texture, uniform, velocity } from 'three/tsl';
 
 import { Upscaler } from './Upscaler';
 import { getQualityModeRatio } from './math/resolution';
@@ -46,6 +46,7 @@ export class UpscalePass {
     private readonly _quadMaterial: THREE.NodeMaterial;
 
     private _rt: THREE.RenderTarget | null = null;
+    private readonly _readyUniform = uniform(0);
     private _path: UpscalePath = 'temporal';
     private _reactive: THREE.Texture | null = null;
     private _reactiveOpaque: THREE.Texture | null = null;
@@ -64,7 +65,7 @@ export class UpscalePass {
     ) {
         this._renderer = renderer;
         this.upscaler = new Upscaler({ renderer, gpuTiming: options.gpuTiming });
-        this.upscaler.init();
+
 
         // Motion vectors must be jitter-free — hand the velocity node the
         // upscaler's unjittered projection (a stable instance, refreshed each
@@ -86,6 +87,9 @@ export class UpscalePass {
         this._quadMaterial.blending = THREE.NoBlending;
         this._quad = new THREE.QuadMesh(this._quadMaterial);
     }
+
+    /** Prepare after configuring; await before drawing. */
+    init(): Promise<void> { return this.upscaler.init(); }
 
     /** The render target the scene is drawn into (color [+ velocity], depth). */
     get renderTarget(): THREE.RenderTarget | null {
@@ -136,7 +140,7 @@ export class UpscalePass {
         this._rt.textures[0].name = 'output';
         if (temporal) this._rt.textures[1].name = 'velocity';
 
-        this._quadMaterial.colorNode = texture(this.upscaler.outputTexture);
+        this._quadMaterial.colorNode = mix(texture(this._rt.textures[0]), texture(this.upscaler.outputTexture), this._readyUniform);
         this._quadMaterial.needsUpdate = true;
     }
 
@@ -157,13 +161,15 @@ export class UpscalePass {
         if (!rt) return;
         const temporal = this._path === 'temporal';
 
-        this.upscaler.beginFrame(camera);
+        this._readyUniform.value = this.upscaler.isReady ? 1 : 0;
+        if (this.upscaler.isReady) this.upscaler.beginFrame(camera);
         this._renderer.setMRT(temporal ? this._mrtFull : this._mrtColorOnly);
         this._renderer.setRenderTarget(rt);
         this._renderer.render(scene, camera);
         this._renderer.setRenderTarget(null);
         this._renderer.setMRT(null);
-        this.upscaler.endFrame(camera);
+        if (this.upscaler.isReady) this.upscaler.endFrame(camera);
+        if (!this.upscaler.isReady) return;
 
         this.upscaler.dispatch(
             {
@@ -185,7 +191,7 @@ export class UpscalePass {
      * reaches the canvas as `v` encoded for that color space — not tone mapped.
      */
     present(): void {
-        if (this._path !== 'temporal' || this.upscaler.settings.debugView === DebugView.None) {
+        if (this._path !== 'temporal' || this.upscaler.activeDebugView === DebugView.None) {
             this._quad.render(this._renderer);
             return;
         }

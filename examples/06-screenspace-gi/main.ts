@@ -93,7 +93,6 @@ controls.autoRotateSpeed = 0.3;
 
 //* FSR3 — raw upscaler (this example drives the passes itself).
 const upscaler = new Upscaler({ renderer });
-upscaler.init();
 velocity.setProjectionMatrix(upscaler.unjitteredProjectionMatrix);
 
 //* Present quad.
@@ -233,7 +232,10 @@ function isBacked(tex: THREE.Texture | null | undefined): boolean {
 
 //* Loop.
 const timer = new THREE.Timer();
+await Promise.all([upscaler.init()]);
+
 renderer.setAnimationLoop(() => {
+    if (!upscaler.isReady) return;
     timer.update();
     const dt = Math.min(timer.getDelta(), 0.1);
     controls.update();

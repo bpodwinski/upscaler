@@ -1,0 +1,802 @@
+[
+  {
+    "path": ".github/workflows/ci.yml",
+    "status": "static concern",
+    "evidence": "Ubuntu verification passes; no Windows CI job exists. Publish workflow was not dispatched."
+  },
+  {
+    "path": ".github/workflows/deploy-pages.yml",
+    "status": "static concern",
+    "evidence": "Ubuntu verification passes; no Windows CI job exists. Publish workflow was not dispatched."
+  },
+  {
+    "path": ".github/workflows/publish.yml",
+    "status": "static concern",
+    "evidence": "Ubuntu verification passes; no Windows CI job exists. Publish workflow was not dispatched."
+  },
+  {
+    "path": "bench/src/BenchPipeline.ts",
+    "status": "static concern",
+    "evidence": "Reviewed async lifecycle and candidate identities; representative GPU bundle runs recorded in report."
+  },
+  {
+    "path": "bench/src/BenchScene.ts",
+    "status": "static concern",
+    "evidence": "Reviewed async lifecycle and candidate identities; representative GPU bundle runs recorded in report."
+  },
+  {
+    "path": "bench/src/BenchUI.ts",
+    "status": "static concern",
+    "evidence": "Reviewed async lifecycle and candidate identities; representative GPU bundle runs recorded in report."
+  },
+  {
+    "path": "bench/src/benchmark/BenchmarkResolver.ts",
+    "status": "static concern",
+    "evidence": "Reviewed async lifecycle and candidate identities; representative GPU bundle runs recorded in report."
+  },
+  {
+    "path": "bench/src/benchmark/api.ts",
+    "status": "static concern",
+    "evidence": "Reviewed async lifecycle and candidate identities; representative GPU bundle runs recorded in report."
+  },
+  {
+    "path": "bench/src/benchmark/clock.ts",
+    "status": "static concern",
+    "evidence": "Reviewed async lifecycle and candidate identities; representative GPU bundle runs recorded in report."
+  },
+  {
+    "path": "bench/src/benchmark/collector.ts",
+    "status": "static concern",
+    "evidence": "Reviewed async lifecycle and candidate identities; representative GPU bundle runs recorded in report."
+  },
+  {
+    "path": "bench/src/benchmark/config.ts",
+    "status": "static concern",
+    "evidence": "Reviewed async lifecycle and candidate identities; representative GPU bundle runs recorded in report."
+  },
+  {
+    "path": "bench/src/benchmark/environment.ts",
+    "status": "static concern",
+    "evidence": "Reviewed async lifecycle and candidate identities; representative GPU bundle runs recorded in report."
+  },
+  {
+    "path": "bench/src/benchmark/scenarios.test.ts",
+    "status": "verified",
+    "evidence": "Portable Vitest run passes; release-workflow suite is separately marked."
+  },
+  {
+    "path": "bench/src/benchmark/scenarios.ts",
+    "status": "static concern",
+    "evidence": "Reviewed async lifecycle and candidate identities; representative GPU bundle runs recorded in report."
+  },
+  {
+    "path": "bench/src/benchmark/variants.ts",
+    "status": "static concern",
+    "evidence": "Reviewed async lifecycle and candidate identities; representative GPU bundle runs recorded in report."
+  },
+  {
+    "path": "bench/src/candidates/CandidateUpscaler.ts",
+    "status": "verified",
+    "evidence": "All three cumulative bundles completed Q1 ratio-2 ABBA GPU smoke without browser validation errors."
+  },
+  {
+    "path": "bench/src/candidates/candidates.test.ts",
+    "status": "verified",
+    "evidence": "Portable Vitest run passes; release-workflow suite is separately marked."
+  },
+  {
+    "path": "bench/src/candidates/shaders/candidateDebug.ts",
+    "status": "static concern",
+    "evidence": "Reviewed async lifecycle and candidate identities; representative GPU bundle runs recorded in report."
+  },
+  {
+    "path": "bench/src/candidates/shaders/candidateFilters.ts",
+    "status": "static concern",
+    "evidence": "Reviewed async lifecycle and candidate identities; representative GPU bundle runs recorded in report."
+  },
+  {
+    "path": "bench/src/candidates/shaders/candidateInputs.ts",
+    "status": "static concern",
+    "evidence": "Reviewed async lifecycle and candidate identities; representative GPU bundle runs recorded in report."
+  },
+  {
+    "path": "bench/src/candidates/shaders/candidateTemporal.ts",
+    "status": "static concern",
+    "evidence": "Reviewed async lifecycle and candidate identities; representative GPU bundle runs recorded in report."
+  },
+  {
+    "path": "bench/src/candidates/shaders/shadingChangeRange.ts",
+    "status": "static concern",
+    "evidence": "Reviewed async lifecycle and candidate identities; representative GPU bundle runs recorded in report."
+  },
+  {
+    "path": "bench/src/candidates/shadingChangeRange.test.ts",
+    "status": "verified",
+    "evidence": "Portable Vitest run passes; release-workflow suite is separately marked."
+  },
+  {
+    "path": "bench/src/main.ts",
+    "status": "static concern",
+    "evidence": "Reviewed async lifecycle and candidate identities; representative GPU bundle runs recorded in report."
+  },
+  {
+    "path": "bench/src/probes/exposureCeiling.ts",
+    "status": "static concern",
+    "evidence": "Reviewed async lifecycle and candidate identities; representative GPU bundle runs recorded in report."
+  },
+  {
+    "path": "bench/src/probes/timerOverhead.ts",
+    "status": "static concern",
+    "evidence": "Reviewed async lifecycle and candidate identities; representative GPU bundle runs recorded in report."
+  },
+  {
+    "path": "bench/src/types/benchmark.d.ts",
+    "status": "static concern",
+    "evidence": "Reviewed async lifecycle and candidate identities; representative GPU bundle runs recorded in report."
+  },
+  {
+    "path": "examples/01-hello/index.html",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/01-hello/main.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/02-fsr1-vs-fsr3/index.html",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/02-fsr1-vs-fsr3/main.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/03-split-compare/index.html",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/03-split-compare/main.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/04-aliasing-torture/index.html",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/04-aliasing-torture/main.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/05-transparency/index.html",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/05-transparency/main.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/06-screenspace-gi/index.html",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/06-screenspace-gi/main.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/07-tsl-node/index.html",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/07-tsl-node/main.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/08-tsl-compose/index.html",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/08-tsl-compose/main.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/09-kitchen-sink/index.html",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/09-kitchen-sink/main.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/10-ssgi-denoise/index.html",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/10-ssgi-denoise/main.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/11-node-reactive/index.html",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/11-node-reactive/main.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/12-temporal-guides/index.html",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/12-temporal-guides/main.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/13-guides-node/index.html",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/13-guides-node/main.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/14-pathtracer-alpha/index.html",
+    "status": "static concern",
+    "evidence": "GPU render verified; synchronous compute and TextureSource deprecation originate in three-gpu-pathtracer."
+  },
+  {
+    "path": "examples/14-pathtracer-alpha/main.ts",
+    "status": "static concern",
+    "evidence": "GPU render verified; synchronous compute and TextureSource deprecation originate in three-gpu-pathtracer."
+  },
+  {
+    "path": "examples/15-transparent-canvas/index.html",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/15-transparent-canvas/main.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/16-spatial-node/index.html",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/16-spatial-node/main.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/index.html",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/package-consumer.test.mjs",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/s1-reinvest/GpuMeter.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/s1-reinvest/index.html",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/s1-reinvest/main.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/s1-reinvest/measure.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/s1-reinvest/scene.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/s2-fractal/fractal.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/s2-fractal/index.html",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/s2-fractal/main.ts",
+    "status": "static concern",
+    "evidence": "Renders correctly; reads upscaler GPU timings without opting in, so its upscale/total HUD remains n/a."
+  },
+  {
+    "path": "examples/s2-fractal/stats.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/s3-how-low/Loupe.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/s3-how-low/index.html",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/s3-how-low/main.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/s3-how-low/scene.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/s4-convergence/index.html",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/s4-convergence/jitterDiagram.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/s4-convergence/layers.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/s4-convergence/main.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/s4-convergence/narration.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/s4-convergence/scene.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/shared/UpscalePresenter.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/shared/boot.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/shared/matchPassResolution.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/shared/props.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/shared/ui.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "examples/vite.config.ts",
+    "status": "verified",
+    "evidence": "Chrome cold/warm demo render and browser-log capture; representative Edge and transition checks are documented separately."
+  },
+  {
+    "path": "scripts/audit-windows.mjs",
+    "status": "static concern",
+    "evidence": "Reviewed browser discovery, command invocation, paths and teardown; not every measurement/release command was executed."
+  },
+  {
+    "path": "scripts/benchmark-contract.mjs",
+    "status": "static concern",
+    "evidence": "Reviewed browser discovery, command invocation, paths and teardown; not every measurement/release command was executed."
+  },
+  {
+    "path": "scripts/benchmark-contract.test.mjs",
+    "status": "verified",
+    "evidence": "Portable Vitest run passes; release-workflow suite is separately marked."
+  },
+  {
+    "path": "scripts/benchmark-scenarios.mjs",
+    "status": "static concern",
+    "evidence": "Reviewed browser discovery, command invocation, paths and teardown; not every measurement/release command was executed."
+  },
+  {
+    "path": "scripts/benchmark-scenarios.test.mjs",
+    "status": "verified",
+    "evidence": "Portable Vitest run passes; release-workflow suite is separately marked."
+  },
+  {
+    "path": "scripts/cli-flags.mjs",
+    "status": "static concern",
+    "evidence": "Reviewed browser discovery, command invocation, paths and teardown; not every measurement/release command was executed."
+  },
+  {
+    "path": "scripts/cli-flags.test.mjs",
+    "status": "verified",
+    "evidence": "Portable Vitest run passes; release-workflow suite is separately marked."
+  },
+  {
+    "path": "scripts/compare-rcas.mjs",
+    "status": "static concern",
+    "evidence": "Reviewed browser discovery, command invocation, paths and teardown; not every measurement/release command was executed."
+  },
+  {
+    "path": "scripts/local-processes.mjs",
+    "status": "static concern",
+    "evidence": "Reviewed browser discovery, command invocation, paths and teardown; not every measurement/release command was executed."
+  },
+  {
+    "path": "scripts/local-processes.test.mjs",
+    "status": "verified",
+    "evidence": "Portable Vitest run passes; release-workflow suite is separately marked."
+  },
+  {
+    "path": "scripts/measure-alpha-convergence.mjs",
+    "status": "static concern",
+    "evidence": "Reviewed browser discovery, command invocation, paths and teardown; not every measurement/release command was executed."
+  },
+  {
+    "path": "scripts/measure-convergence.mjs",
+    "status": "static concern",
+    "evidence": "Reviewed browser discovery, command invocation, paths and teardown; not every measurement/release command was executed."
+  },
+  {
+    "path": "scripts/measure-drift-lag.mjs",
+    "status": "static concern",
+    "evidence": "Reviewed browser discovery, command invocation, paths and teardown; not every measurement/release command was executed."
+  },
+  {
+    "path": "scripts/measure-emitter-retention.mjs",
+    "status": "static concern",
+    "evidence": "Reviewed browser discovery, command invocation, paths and teardown; not every measurement/release command was executed."
+  },
+  {
+    "path": "scripts/measure-exposure-ceiling.mjs",
+    "status": "static concern",
+    "evidence": "Reviewed browser discovery, command invocation, paths and teardown; not every measurement/release command was executed."
+  },
+  {
+    "path": "scripts/measure-receding-disocclusion.mjs",
+    "status": "static concern",
+    "evidence": "Reviewed browser discovery, command invocation, paths and teardown; not every measurement/release command was executed."
+  },
+  {
+    "path": "scripts/measure-shading-restart.mjs",
+    "status": "static concern",
+    "evidence": "Reviewed browser discovery, command invocation, paths and teardown; not every measurement/release command was executed."
+  },
+  {
+    "path": "scripts/measure-timer-overhead.mjs",
+    "status": "static concern",
+    "evidence": "Reviewed browser discovery, command invocation, paths and teardown; not every measurement/release command was executed."
+  },
+  {
+    "path": "scripts/npm-command.mjs",
+    "status": "static concern",
+    "evidence": "Reviewed browser discovery, command invocation, paths and teardown; not every measurement/release command was executed."
+  },
+  {
+    "path": "scripts/npm-pack-json.mjs",
+    "status": "static concern",
+    "evidence": "Reviewed browser discovery, command invocation, paths and teardown; not every measurement/release command was executed."
+  },
+  {
+    "path": "scripts/npm-pack-json.test.mjs",
+    "status": "verified",
+    "evidence": "Portable Vitest run passes; release-workflow suite is separately marked."
+  },
+  {
+    "path": "scripts/release-notes.mjs",
+    "status": "static concern",
+    "evidence": "Reviewed browser discovery, command invocation, paths and teardown; not every measurement/release command was executed."
+  },
+  {
+    "path": "scripts/release-notes.test.mjs",
+    "status": "verified",
+    "evidence": "Portable Vitest run passes; release-workflow suite is separately marked."
+  },
+  {
+    "path": "scripts/release-version.mjs",
+    "status": "static concern",
+    "evidence": "Reviewed browser discovery, command invocation, paths and teardown; not every measurement/release command was executed."
+  },
+  {
+    "path": "scripts/release-version.test.mjs",
+    "status": "verified",
+    "evidence": "Portable Vitest run passes; release-workflow suite is separately marked."
+  },
+  {
+    "path": "scripts/release-workflow.test.mjs",
+    "status": "reproduced failure",
+    "evidence": "60 existing native-Windows failures; POSIX shell, PATH and CRLF assumptions. Ubuntu CI passes."
+  },
+  {
+    "path": "scripts/release.mjs",
+    "status": "static concern",
+    "evidence": "Reviewed browser discovery, command invocation, paths and teardown; not every measurement/release command was executed."
+  },
+  {
+    "path": "scripts/release.test.mjs",
+    "status": "verified",
+    "evidence": "Portable Vitest run passes; release-workflow suite is separately marked."
+  },
+  {
+    "path": "scripts/run-benchmark.mjs",
+    "status": "static concern",
+    "evidence": "Reviewed browser discovery, command invocation, paths and teardown; not every measurement/release command was executed."
+  },
+  {
+    "path": "scripts/verify-artifacts.mjs",
+    "status": "static concern",
+    "evidence": "Reviewed browser discovery, command invocation, paths and teardown; not every measurement/release command was executed."
+  },
+  {
+    "path": "scripts/verify-artifacts.test.mjs",
+    "status": "verified",
+    "evidence": "Portable Vitest run passes; release-workflow suite is separately marked."
+  },
+  {
+    "path": "scripts/verify-packed-guides.mjs",
+    "status": "static concern",
+    "evidence": "Reviewed browser discovery, command invocation, paths and teardown; not every measurement/release command was executed."
+  },
+  {
+    "path": "scripts/verify-packed-guides.test.mjs",
+    "status": "verified",
+    "evidence": "Portable Vitest run passes; release-workflow suite is separately marked."
+  },
+  {
+    "path": "src/MomentsPass.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/TemporalGuidesNode.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/UpscalePass.test.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/UpscalePass.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/Upscaler.initialization.test.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/Upscaler.jitter.test.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/Upscaler.timing.test.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/Upscaler.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/UpscalerNode.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/index.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/internal/ComputePass.test.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/internal/ComputePass.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/internal/ConstantsBuffer.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/internal/GpuTimer.test.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/internal/GpuTimer.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/internal/renderPipelineHooks.test.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/internal/renderPipelineHooks.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/internal/threeWebGPU.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/math/halton.test.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/math/halton.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/math/jitter.test.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/math/jitter.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/math/resolution.test.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/math/resolution.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/math/viewOffset.test.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/math/viewOffset.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/shaders/accumulate.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/shaders/blit.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/shaders/common.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/shaders/debug.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/shaders/easu.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/shaders/generateReactive.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/shaders/luminancePyramid.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/shaders/moments.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/shaders/rcas.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/shaders/reconstruct.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/shaders/reconstructVariants.ts",
+    "status": "untested",
+    "evidence": "String/structure coverage passes; every experimental variant was not individually GPU-compiled in this audit."
+  },
+  {
+    "path": "src/shaders/shaders.test.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/shaders/shadingChange.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/shaders/wgsl.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  },
+  {
+    "path": "src/types.ts",
+    "status": "verified",
+    "evidence": "Portable unit tests, typecheck and production GPU demo sweep; module-specific limits remain documented."
+  }
+]

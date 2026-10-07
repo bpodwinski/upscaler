@@ -18,12 +18,13 @@ function mockRenderer(features: string[] = ['timestamp-query']) {
         };
     };
     const device = {
+        lost: new Promise<GPUDeviceLostInfo>(() => {}),
         features: new Set(features),
         queue: { writeBuffer: vi.fn(), submit: vi.fn() },
         pushErrorScope: vi.fn(),
         popErrorScope: vi.fn(() => Promise.resolve(null)),
         createShaderModule: stub('createShaderModule'),
-        createComputePipeline: stub('createComputePipeline'),
+        createComputePipelineAsync: async (...args: Parameters<ReturnType<typeof stub>>) => stub('createComputePipelineAsync')(...args),
         createSampler: stub('createSampler'),
         createBuffer: stub('createBuffer'),
         createQuerySet: stub('createQuerySet'),
@@ -34,7 +35,7 @@ function mockRenderer(features: string[] = ['timestamp-query']) {
 
 const timerCalls = (calls: string[]) => calls.filter((kind) => kind === 'createQuerySet').length;
 
-describe('Upscaler GPU timing switch', () => {
+describe('Upscaler GPU timing switch', async () => {
     beforeEach(() => {
         vi.stubGlobal('GPUBufferUsage', {
             MAP_READ: 1,
@@ -51,35 +52,35 @@ describe('Upscaler GPU timing switch', () => {
         vi.restoreAllMocks();
     });
 
-    it('allocates no timer resources and opens no error scopes when off', () => {
+    it('allocates no timer resources and opens no error scopes when off', async () => {
         const { renderer, calls, device } = mockRenderer();
         const upscaler = new Upscaler({ renderer, gpuTiming: false });
-        upscaler.init();
+        await upscaler.init();
         expect(timerCalls(calls)).toBe(0);
         expect(device.pushErrorScope).not.toHaveBeenCalled();
         expect(upscaler.gpuTiming).toBe(false);
         expect(upscaler.gpuTimings.size).toBe(0);
     });
 
-    it('is off by default', () => {
+    it('is off by default', async () => {
         const { renderer, calls } = mockRenderer();
         const upscaler = new Upscaler({ renderer });
-        upscaler.init();
+        await upscaler.init();
         expect(upscaler.gpuTiming).toBe(false);
         expect(timerCalls(calls)).toBe(0);
     });
 
-    it('allocates the timer at init when on', () => {
+    it('allocates the timer at init when on', async () => {
         const { renderer, calls } = mockRenderer();
         const upscaler = new Upscaler({ renderer, gpuTiming: true });
-        upscaler.init();
+        await upscaler.init();
         expect(timerCalls(calls)).toBeGreaterThan(0);
     });
 
-    it('allocates on enable and frees everything on disable', () => {
+    it('allocates on enable and frees everything on disable', async () => {
         const { renderer, calls, destroyed } = mockRenderer();
         const upscaler = new Upscaler({ renderer, gpuTiming: false });
-        upscaler.init();
+        await upscaler.init();
 
         upscaler.gpuTiming = true;
         const allocated = timerCalls(calls);
@@ -90,12 +91,12 @@ describe('Upscaler GPU timing switch', () => {
         expect(upscaler.gpuTimings.size).toBe(0);
     });
 
-    it('defers allocation to init when toggled on before it', () => {
+    it('defers allocation to init when toggled on before it', async () => {
         const { renderer, calls } = mockRenderer();
         const upscaler = new Upscaler({ renderer, gpuTiming: false });
         upscaler.gpuTiming = true;
         expect(calls).toEqual([]);
-        upscaler.init();
+        await upscaler.init();
         expect(timerCalls(calls)).toBeGreaterThan(0);
     });
 });

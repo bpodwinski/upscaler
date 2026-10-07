@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { browserExecutable } from './browser-executable.mjs';
 /**
  * Shading-change memory restart meter (NEXT-STEPS §14). The detector keeps a
  * per-block memory of recent means, which Upscaler zeroes when the detector is
@@ -23,7 +24,6 @@
  * bench/results/raw/shading-restart/<label>-<scenario>-r<ratio>-lead<n>.json.
  */
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -151,14 +151,7 @@ async function main() {
             viteServer = spawnVite('bench/vite.config.ts', server);
             await waitForUrl(server.origin, { child: viteServer });
         }
-        const executable = [
-            process.env.CHROME_PATH,
-            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-            '/Applications/Chromium.app/Contents/MacOS/Chromium',
-            '/usr/bin/google-chrome',
-            '/usr/bin/chromium',
-        ].find((path) => path && existsSync(path));
-        if (!executable) throw new Error('Chrome was not found. Set CHROME_PATH.');
+        const executable = browserExecutable();
         profile = join(tmpdir(), `upscaler-shading-restart-${process.pid}-${Date.now()}`);
         chrome = spawn(
             executable,

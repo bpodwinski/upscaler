@@ -31,6 +31,7 @@ Maintained, for contributors:
 
 - [Contributing](contributing.md): the dev loop, the bench, verifying on a real GPU,
   and how releases are cut.
+- [Windows audit and roadmap](windows-audit.md): async startup evidence, browser/demo coverage, native tooling gaps and prioritized follow-ups.
 - [Architecture](architecture.md): the layers, the pass graph, color domains and the
   shared constants buffer.
 - [`src/shaders/README.md`](../src/shaders/README.md): the per-pass audit against
@@ -46,6 +47,11 @@ Maintained, for contributors:
 ## Research
 
 Live records, kept current as findings land:
+
+- [Async initialization migration](async-init-migration.md): before/after examples
+  for the draft #83 API change and preparation/readiness rules.
+- [Windows cross-device audit](windows-cross-device.md): adapter metadata, NVIDIA
+  and Intel verification, lifecycle fixes and remaining measurement limits.
 
 - [FSR 3.1.5 parity report](research/PARITY.md): where this implementation matches
   and diverges from FSR 3.1.5, and the measurements behind each choice.

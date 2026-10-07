@@ -50,10 +50,14 @@ class BenchmarkResolverAdapter implements BenchmarkResolver {
     ) {
         this.metadata = metadata;
         this._upscaler = upscaler;
-        this._upscaler.init();
+
         if (typeof metadata.settings.rcasDenoise === 'boolean')
             this._upscaler.settings.rcasDenoise = metadata.settings.rcasDenoise;
     }
+
+    prepare(): Promise<void> { return this._upscaler.prepare(); }
+
+    get isReady(): boolean { return this._upscaler.isReady; }
 
     get outputTexture(): THREE.Texture {
         return this._upscaler.outputTexture;

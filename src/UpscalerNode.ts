@@ -2,6 +2,7 @@ import { Vector2, type Texture } from 'three';
 import { NodeUpdateType, TSL, TempNode, type UniformNode, type WebGPURenderer } from 'three/webgpu';
 import {
     convertToTexture,
+    mix,
     mrt,
     nodeObject,
     output,
@@ -202,6 +203,7 @@ export class UpscalerNode extends TempNode<'vec4'> {
     private _configured = false;
     private _textureNode: ReturnType<typeof passTexture> | null = null;
     private _lastTime = 0;
+    private readonly _readyUniform = uniform(0);
 
     constructor(
         colorNode: TextureNodeLike,
@@ -255,7 +257,7 @@ export class UpscalerNode extends TempNode<'vec4'> {
                     this._upscaler.gpuTiming = this._options.gpuTiming;
             } else {
                 this._upscaler = new Upscaler({ renderer, gpuTiming: this._options.gpuTiming });
-                this._upscaler.init();
+
             }
             // When we jitter, motion vectors must stay jitter-free — feed the
             // velocity node the upscaler's (stable) unjittered projection. When
@@ -306,7 +308,7 @@ export class UpscalerNode extends TempNode<'vec4'> {
         if (!this._textureNode) {
             this._textureNode = passTexture(this as never, this._upscaler.outputTexture);
         }
-        return this._textureNode;
+        return mix(this._color as never, this._textureNode as never, this._readyUniform);
     }
 
     private _installJitterHooks(
@@ -367,7 +369,10 @@ export class UpscalerNode extends TempNode<'vec4'> {
     // identity on a re-setup, so these must not be re-created per call.
     private readonly _pipelineHooks = {
         before: (): void => {
-            if (this._frameOpen || !this._configured) return;
+            if (this._frameOpen || !this._configured || !this._upscaler?.isReady) {
+                this._jitterUniform.value.set(0, 0);
+                return;
+            }
             this._frameOpen = true;
             this._upscaler!.beginFrame(this._camera as never);
             const jitter = this._upscaler!.jitter;
@@ -408,7 +413,8 @@ export class UpscalerNode extends TempNode<'vec4'> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     updateBefore(frame: any): any {
         const renderer = frame.renderer as WebGPURenderer;
-        if (!this._upscaler) return;
+        this._readyUniform.value = this._upscaler?.isReady ? 1 : 0;
+        if (!this._upscaler?.isReady) return;
 
         const color = this._texture(this._color);
         if (!color) return;

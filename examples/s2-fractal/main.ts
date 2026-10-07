@@ -62,8 +62,7 @@ controls.maxDistance = 22;
 controls.enabled = false;
 
 //* Upscaler — raw driver: we produce color/depth/velocity ourselves.
-const upscaler = new Upscaler({ renderer });
-upscaler.init();
+const upscaler = new Upscaler({ renderer, gpuTiming: true });
 
 //* Raymarch uniforms, refreshed every frame between beginFrame/endFrame.
 const uInvProjection = uniform(new THREE.Matrix4()); // JITTERED inverse projection → primary rays
@@ -342,7 +341,10 @@ let hasPrevious = false;
 let fpsAcc = 0;
 let fpsFrames = 0;
 let fps = 0;
+await Promise.all([upscaler.init()]);
+
 renderer.setAnimationLoop(() => {
+    if (!upscaler.isReady) return;
     timer.update();
     const dt = Math.min(timer.getDelta(), 0.1);
     fpsAcc += dt;

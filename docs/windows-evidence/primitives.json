@@ -1,0 +1,17 @@
+{
+  "demo": "13-guides-node",
+  "run": 0,
+  "exercise": {
+    "resize": true,
+    "dpr": true,
+    "controls": [],
+    "primitives": {
+      "momentsReady": true,
+      "supported": true,
+      "readyBeforeLoss": true,
+      "readyAfterLoss": false,
+      "lossRejected": true
+    }
+  },
+  "issues": []
+}

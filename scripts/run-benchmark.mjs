@@ -1,6 +1,7 @@
+import { gpuAuditSource } from './gpu-audit.mjs';
+import { browserExecutable } from './browser-executable.mjs';
 import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -19,6 +20,7 @@ import {
 import { loadScenarioRegistry, scenarioSubruns, selectScenarios } from './benchmark-scenarios.mjs';
 import {
     DEFAULT_BENCH_URL,
+    closeOwnedCdpBrowser,
     parsePort,
     removeTempDirectory,
     resolveServerUrl,
@@ -206,20 +208,7 @@ async function currentWorkingTreeDigest() {
     return hashWorkingTreeEntries(entries);
 }
 
-function chromeExecutable(explicit) {
-    const candidates = [
-        explicit,
-        process.env.CHROME_PATH,
-        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-        '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
-        '/Applications/Chromium.app/Contents/MacOS/Chromium',
-        '/usr/bin/google-chrome',
-        '/usr/bin/chromium',
-    ].filter(Boolean);
-    const executable = candidates.find(existsSync);
-    if (!executable) throw new Error('Chrome was not found. Pass --chrome /path/to/chrome.');
-    return executable;
-}
+const chromeExecutable = explicit => browserExecutable(explicit);
 
 async function waitForUrl(url, attempts = 100) {
     for (let attempt = 0; attempt < attempts; attempt++) {
@@ -1487,6 +1476,10 @@ async function createBrowserRuntime(cli, cdpBase, port, outputDirectory, name) {
     let page = null;
     try {
         if (!cli.cdp) {
+            const occupied = await fetch(`${cdpBase}/json/version`, {
+                signal: AbortSignal.timeout(1000),
+            }).then(response => response.ok).catch(() => false);
+            if (occupied) throw new Error(`CDP port ${port} is occupied. Choose --port or explicitly use --cdp.`);
             profile = join(tmpdir(), `upscaler-e00-${process.pid}-${Date.now()}`);
             chrome = spawn(
                 chromeExecutable(cli.chrome),
@@ -1515,6 +1508,7 @@ async function createBrowserRuntime(cli, cdpBase, port, outputDirectory, name) {
             client.call('Runtime.enable'),
             client.call('Log.enable'),
         ]);
+        await client.call('Page.addScriptToEvaluateOnNewDocument', { source: gpuAuditSource(cli) });
         return {
             chrome,
             profile,
@@ -1549,6 +1543,7 @@ async function closeBrowserRuntime(runtime) {
     try {
         if (runtime.userOwnedCdp)
             await closeExternalCdpTarget(runtime.cdpBase, runtime.targetId);
+        else await closeOwnedCdpBrowser(runtime.client);
     } finally {
         runtime.client.close();
         await stopChild(runtime.chrome);
@@ -1715,6 +1710,7 @@ Without --smoke this runs the strict E00 baseline acceptance protocol (64 runs, 
             mode === 'capture'
                 ? await captureRun(runtime.client, context, manifest, registryScenarios)
                 : await performanceRun(runtime.client, context);
+        await writeFile(join(outputDirectory, 'gpu-audit.json'), JSON.stringify(await evaluate(runtime.client, 'window.__gpuAudit'), null, 2));
         await writeFile(join(outputDirectory, 'results.json'), JSON.stringify(results, null, 2));
         console.log(outputDirectory);
     } catch (error) {

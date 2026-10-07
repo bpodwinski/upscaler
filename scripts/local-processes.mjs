@@ -7,7 +7,8 @@
  */
 import { spawn } from 'node:child_process';
 import { rm } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { join, resolve, sep } from 'node:path';
+import { tmpdir } from 'node:os';
 import process from 'node:process';
 
 const ROOT = resolve(import.meta.dirname, '..');
@@ -99,12 +100,13 @@ export function spawnVite(config, server, { extra, ...options } = {}) {
  * Poll `url` until it answers 2xx. With `child`, fail fast if that process
  * exits first (e.g. `--strictPort` refused a busy port) instead of timing out.
  * @param {string} url - URL to poll.
- * @param {{ attempts?: number, intervalMs?: number, child?: import('node:child_process').ChildProcess }} [options]
+ * @param {{ attempts?: number, intervalMs?: number, child?: import('node:child_process').ChildProcess, allowSuccessfulExit?: boolean }} [options]
  * @returns {Promise<void>}
  */
-export async function waitForUrl(url, { attempts = 150, intervalMs = 100, child } = {}) {
+export async function waitForUrl(url, { attempts = 150, intervalMs = 100, child, allowSuccessfulExit = false } = {}) {
     for (let attempt = 0; attempt < attempts; attempt++) {
-        if (child && (child.exitCode !== null || child.signalCode !== null))
+        if (child && (child.exitCode !== null || child.signalCode !== null) &&
+            !(allowSuccessfulExit && child.exitCode === 0))
             throw new Error(
                 `Server for ${url} exited before answering (code ${child.exitCode ?? child.signalCode}). ` +
                     'Is the port already in use? Pick another with --url.',
@@ -130,13 +132,67 @@ export async function waitForUrl(url, { attempts = 150, intervalMs = 100, child 
  * @returns {Promise<void>}
  */
 export async function stopChild(child, { graceMs = 3000, killMs = 2000 } = {}) {
-    if (!child || child.exitCode !== null || child.signalCode !== null) return;
-    const exited = new Promise((resolveExit) => child.once('exit', () => resolveExit(true)));
-    const timeout = (ms) => new Promise((resolveWait) => setTimeout(() => resolveWait(false), ms));
-    child.kill('SIGTERM');
-    if (await Promise.race([exited, timeout(graceMs)])) return;
-    child.kill('SIGKILL');
-    await Promise.race([exited, timeout(killMs)]);
+    if (!child) return;
+    try {
+        if (child.exitCode !== null || child.signalCode !== null) return;
+        const exited = new Promise((resolveExit) => child.once('exit', () => resolveExit(true)));
+        const timeout = (ms) => new Promise((resolveWait) => setTimeout(() => resolveWait(false), ms));
+        if (process.platform === 'win32' && Number.isInteger(child.pid) && child.pid > 0) {
+            const killer = spawn(join(process.env.SystemRoot ?? 'C:/Windows', 'System32/taskkill.exe'),
+                ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+            await Promise.race([
+                new Promise(resolveKill => { killer.once('exit', resolveKill); killer.once('error', resolveKill); }),
+                timeout(killMs),
+            ]);
+            await Promise.race([exited, timeout(killMs)]);
+            return;
+        }
+        child.kill('SIGTERM');
+        if (await Promise.race([exited, timeout(graceMs)])) return;
+        child.kill('SIGKILL');
+        await Promise.race([exited, timeout(killMs)]);
+    } finally {
+        // Windows descendants can inherit pipes even after the owned parent exits.
+        // Release our stream handles so a completed harness does not stay alive.
+        for (const stream of child.stdio ?? []) stream?.destroy?.();
+    }
+}
+
+/**
+ * Close an explicitly owned browser through CDP before stopping its launcher.
+ * Edge may relaunch outside the original launcher's process tree on Windows.
+ * @param {{call?: Function, send?: Function, close: Function, socket?: {url: string}} | null} client - Owned CDP client
+ * @param {{timeoutMs?: number}} options - Bounded shutdown wait
+ */
+export async function closeOwnedCdpBrowser(client, { timeoutMs = 2000 } = {}) {
+    if (!client) return;
+    let timer;
+    try {
+        if (client.socket?.url) {
+            const endpoint = new URL(client.socket.url);
+            const base = (endpoint.protocol === 'wss:' ? 'https://' : 'http://') + endpoint.host;
+            const version = await fetch(base + '/json/version', { signal: AbortSignal.timeout(timeoutMs) }).then(r => r.json());
+            // Browser.close belongs to the browser session, not the page session.
+            const socket = new WebSocket(version.webSocketDebuggerUrl);
+            try {
+                await new Promise(resolveClose => {
+                    timer = setTimeout(resolveClose, timeoutMs);
+                    socket.addEventListener('open', () => socket.send(JSON.stringify({ id:1, method:'Browser.close' })), { once:true });
+                    socket.addEventListener('message', resolveClose, { once:true });
+                    socket.addEventListener('close', resolveClose, { once:true });
+                    socket.addEventListener('error', resolveClose, { once:true });
+                });
+            } finally { socket.close(); }
+            return;
+        }
+        const send = client.call ?? client.send;
+        await Promise.race([
+            Promise.resolve(send.call(client, 'Browser.close', {}, timeoutMs)).catch(() => {}),
+            new Promise(resolveClose => { timer = setTimeout(resolveClose, timeoutMs); }),
+        ]);
+    } catch {
+        // The owned browser may already have exited; the launcher cleanup follows.
+    } finally { clearTimeout(timer); client.close(); }
 }
 
 /**
@@ -149,6 +205,14 @@ export async function stopChild(child, { graceMs = 3000, killMs = 2000 } = {}) {
  */
 export async function removeTempDirectory(path, label = 'temp directory') {
     if (!path) return true;
+    const target = resolve(path);
+    const temporaryRoot = resolve(tmpdir());
+    const normalize = value => process.platform === 'win32' ? value.toLowerCase() : value;
+    if (normalize(target) === normalize(temporaryRoot) ||
+        !normalize(target).startsWith(normalize(temporaryRoot + sep))) {
+        console.warn('warning: refusing to remove a directory outside the temporary root: ' + target);
+        return false;
+    }
     try {
         await rm(path, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
         return true;

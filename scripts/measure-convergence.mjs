@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { gpuAuditSource } from './gpu-audit.mjs';
+import { browserExecutable } from './browser-executable.mjs';
 /**
  * Still-scene convergence meter — quantifies temporal churn on a deterministic
  * benchmark scenario by stepping the bench frame-by-frame and measuring the
@@ -29,7 +31,6 @@
  * bench/results/raw/convergence/<label>-<scenario>[-<subrun>]-<ratio>x/.
  */
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -37,6 +38,7 @@ import { inflateSync } from 'node:zlib';
 
 import {
     DEFAULT_BENCH_URL,
+    closeOwnedCdpBrowser,
     parsePort,
     removeTempDirectory,
     resolveServerUrl,
@@ -71,6 +73,7 @@ function parseArguments(argv) {
 }
 
 const cli = parseArguments(process.argv.slice(2));
+const auditSource = gpuAuditSource(cli);
 if (cli.help || cli.h) {
     console.log(`Usage: node scripts/measure-convergence.mjs [options]
   --scenario <id>        bench scenario (default Q1)
@@ -89,6 +92,10 @@ if (cli.help || cli.h) {
   --settings <json>      capture-setting overrides for an A/B, e.g.
                          '{"lockThinFeatures":false}' (also detectShadingChanges,
                          autoExposure, rcasDenoise, maxAccumulation)
+  --chrome <path>       browser executable (Chrome/Edge)
+  --power-preference <high-performance|low-power>  request a GPU preference
+  --expected-vendor <vendor>  reject measurements on a different GPU
+  --without-timestamps  omit timestamp-query from real device requests
   --shading-frames <n>   also replay frames settle..settle+n-1 through the
                          shading-change debug view and report the share of
                          pixels whose response v exceeds 0.1 / 0.5 (sRGB-decoded)
@@ -228,18 +235,7 @@ function regionStats(image, roi, metric) {
 }
 
 //* CDP plumbing (subset of run-benchmark.mjs)
-function chromeExecutable() {
-    const candidates = [
-        process.env.CHROME_PATH,
-        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-        '/Applications/Chromium.app/Contents/MacOS/Chromium',
-        '/usr/bin/google-chrome',
-        '/usr/bin/chromium',
-    ].filter(Boolean);
-    const executable = candidates.find(existsSync);
-    if (!executable) throw new Error('Chrome was not found. Set CHROME_PATH.');
-    return executable;
-}
+const chromeExecutable = () => browserExecutable(cli.chrome);
 
 async function waitForUrl(url, attempts = 100) {
     for (let attempt = 0; attempt < attempts; attempt++) {
@@ -384,6 +380,7 @@ async function main() {
         url.searchParams.set('height', String(height));
         if (subrun) url.searchParams.set('subrun', subrun);
         if (variant) url.searchParams.set('variant', variant);
+        await client.call('Page.addScriptToEvaluateOnNewDocument', { source: auditSource });
         await client.call('Page.navigate', { url: url.href });
         for (let attempt = 0; ; attempt++) {
             const ready = await evaluate(client, 'window.__UPSCALER_BENCH__?.ready === true');
@@ -562,6 +559,7 @@ async function main() {
         const values = diffs.map((entry) => entry.meanAbsDiff);
         const contentValues = diffs.map((entry) => entry.contentMeanAbsDiff);
         const summary = {
+            gpuAudit: await evaluate(client, 'window.__gpuAudit'),
             scenario,
             subrun,
             variant,
@@ -594,7 +592,7 @@ async function main() {
         if (logRecords.some((record) => /error|exception|validation/i.test(record)))
             console.warn(`browser log records:\n${logRecords.join('\n')}`);
     } finally {
-        client?.close();
+        await closeOwnedCdpBrowser(client);
         await stopChild(chrome);
         await removeTempDirectory(profile, 'Chrome profile');
         await stopChild(viteServer);

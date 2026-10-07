@@ -1,9 +1,12 @@
+import { browserExecutable } from './browser-executable.mjs';
+import { npmInvocation } from './npm-command.mjs';
 import { spawn, spawnSync } from 'node:child_process';
 import {
     existsSync,
     mkdirSync,
     mkdtempSync,
     readFileSync,
+    readdirSync,
     symlinkSync,
 } from 'node:fs';
 import { createServer } from 'node:net';
@@ -102,7 +105,8 @@ export function assertProbeResult(result) {
 }
 
 function run(command, args, options = {}) {
-    const result = spawnSync(command, args, {
+    const invocation = command === 'npm' ? npmInvocation(args) : [command, args];
+    const result = spawnSync(...invocation, {
         cwd: ROOT,
         encoding: 'utf8',
         stdio: 'inherit',
@@ -115,8 +119,7 @@ function run(command, args, options = {}) {
 
 function packLibrary(archiveDirectory) {
     const result = spawnSync(
-        'npm',
-        ['pack', '--ignore-scripts', '--json', '--pack-destination', archiveDirectory],
+        ...npmInvocation(['pack', '--ignore-scripts', '--json', '--pack-destination', archiveDirectory]),
         {
             cwd: ROOT,
             encoding: 'utf8',
@@ -127,14 +130,19 @@ function packLibrary(archiveDirectory) {
 
     const filename = parsePackJson(result.stdout)[0].filename;
     if (!filename) throw new Error('npm pack did not report an artifact filename.');
-    return join(archiveDirectory, filename);
+    const archive = join(archiveDirectory, filename);
+    if (existsSync(archive)) return archive;
+    // npm 8 on Windows reports a scoped filename that differs from the actual tarball.
+    const tarballs = readdirSync(archiveDirectory).filter(name => name.endsWith('.tgz'));
+    if (tarballs.length !== 1) throw new Error('npm pack did not create one identifiable archive.');
+    return join(archiveDirectory, tarballs[0]);
 }
 
 function unpackLibrary(archive, consumerDirectory) {
     run('tar', ['-xzf', archive, '-C', consumerDirectory]);
     const consumerModules = join(consumerDirectory, 'node_modules');
     mkdirSync(consumerModules);
-    symlinkSync(join(ROOT, 'node_modules/three'), join(consumerModules, 'three'), 'dir');
+    symlinkSync(join(ROOT, 'node_modules/three'), join(consumerModules, 'three'), process.platform === 'win32' ? 'junction' : 'dir');
 
     const packageDirectory = join(consumerDirectory, 'package');
     const manifest = JSON.parse(readFileSync(join(packageDirectory, 'package.json'), 'utf8'));
@@ -190,21 +198,7 @@ async function freePort() {
     });
 }
 
-function chromeExecutable(explicit) {
-    const candidates = [
-        explicit,
-        process.env.CHROME_PATH,
-        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-        '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
-        '/Applications/Chromium.app/Contents/MacOS/Chromium',
-        '/usr/bin/google-chrome',
-        '/usr/bin/chromium',
-    ].filter(Boolean);
-    const executable = candidates.find(existsSync);
-    if (!executable)
-        throw new Error('Chrome was not found. Pass --chrome /path/to/chrome.');
-    return executable;
-}
+const chromeExecutable = explicit => browserExecutable(explicit);
 
 class CdpClient {
     constructor(url) {
@@ -302,8 +296,8 @@ async function waitForExample(client) {
         const ready = await evaluate(
             client,
             `Boolean(
-                window.__guidesNodeExample?.guidesNode?.upscaler &&
-                window.__guidesNodeExample?.fsrNode?.upscaler
+                window.__guidesNodeExample?.guidesNode?.upscaler?.isReady &&
+                window.__guidesNodeExample?.fsrNode?.upscaler?.isReady
             )`,
         );
         if (ready) return;
@@ -441,7 +435,9 @@ async function runGpuSmoke(outputDirectory, packageEntry, options) {
         await client.call('Page.navigate', { url: exampleUrl });
         await waitForExample(client);
         const probe = await runProbe(client);
-        assertProbeResult(probe);
+        try { assertProbeResult(probe); } catch (error) {
+            throw new Error(String(error) + "\n" + JSON.stringify(probe));
+        }
 
         const failures = browserLogFailures(logRecords);
         if (failures.length)

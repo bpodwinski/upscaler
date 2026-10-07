@@ -18,6 +18,8 @@ export class ConstantsBuffer {
 
     constructor(device: GPUDevice) {
         this._device = device;
+        // Fixed 32×32 metering. A uniform loop bound keeps Windows shader compiles small.
+        this._u32[23] = 32;
         this.buffer = device.createBuffer({
             label: 'upscale-constants',
             size: ConstantsBuffer.SIZE,

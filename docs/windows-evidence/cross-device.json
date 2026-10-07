@@ -1,0 +1,5677 @@
+{
+  "hardware": {
+    "os": "Windows 11",
+    "node": "22.23.3",
+    "nvidia": "RTX 3060 Laptop / 32.0.15.9200 / Chrome 154.0.8037.98",
+    "intel": "UHD Gen-12LP / 31.0.101.5333 / Edge 154.0.4258.53"
+  },
+  "exposure": {
+    "nvidia": [
+      {
+        "run": 0,
+        "adapter": {
+          "vendor": "nvidia",
+          "architecture": "ampere",
+          "device": "",
+          "description": ""
+        },
+        "compileMs": {
+          "rolled": 97.5,
+          "unrolled": 1326.7000000029802
+        },
+        "passMedianMs": {
+          "rolled": 0.03072,
+          "unrolled": 0.055296
+        },
+        "fixtures": [
+          {
+            "name": "auto-reset",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                10316,
+                17756,
+                15360,
+                0
+              ],
+              "rolled": [
+                10316,
+                17756,
+                15360,
+                0
+              ]
+            }
+          },
+          {
+            "name": "auto-adapt",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                13485,
+                17756,
+                15360,
+                0
+              ],
+              "rolled": [
+                13485,
+                17756,
+                15360,
+                0
+              ]
+            }
+          },
+          {
+            "name": "manual",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                16384,
+                17756,
+                15360,
+                0
+              ],
+              "rolled": [
+                16384,
+                17756,
+                15360,
+                0
+              ]
+            }
+          },
+          {
+            "name": "external",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                14848,
+                17756,
+                15360,
+                0
+              ],
+              "rolled": [
+                14848,
+                17756,
+                15360,
+                0
+              ]
+            }
+          },
+          {
+            "name": "host-pre-exposure",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                13388,
+                14684,
+                18432,
+                0
+              ],
+              "rolled": [
+                13388,
+                14684,
+                18432,
+                0
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "run": 1,
+        "adapter": {
+          "vendor": "nvidia",
+          "architecture": "ampere",
+          "device": "",
+          "description": ""
+        },
+        "compileMs": {
+          "unrolled": 1159.7999999970198,
+          "rolled": 107.60000000149012
+        },
+        "passMedianMs": {
+          "rolled": 0.031744,
+          "unrolled": 0.055296
+        },
+        "fixtures": [
+          {
+            "name": "auto-reset",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                10316,
+                17756,
+                15360,
+                0
+              ],
+              "rolled": [
+                10316,
+                17756,
+                15360,
+                0
+              ]
+            }
+          },
+          {
+            "name": "auto-adapt",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                13485,
+                17756,
+                15360,
+                0
+              ],
+              "rolled": [
+                13485,
+                17756,
+                15360,
+                0
+              ]
+            }
+          },
+          {
+            "name": "manual",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                16384,
+                17756,
+                15360,
+                0
+              ],
+              "rolled": [
+                16384,
+                17756,
+                15360,
+                0
+              ]
+            }
+          },
+          {
+            "name": "external",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                14848,
+                17756,
+                15360,
+                0
+              ],
+              "rolled": [
+                14848,
+                17756,
+                15360,
+                0
+              ]
+            }
+          },
+          {
+            "name": "host-pre-exposure",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                13388,
+                14684,
+                18432,
+                0
+              ],
+              "rolled": [
+                13388,
+                14684,
+                18432,
+                0
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "run": 2,
+        "adapter": {
+          "vendor": "nvidia",
+          "architecture": "ampere",
+          "device": "",
+          "description": ""
+        },
+        "compileMs": {
+          "rolled": 115.39999999850988,
+          "unrolled": 1217
+        },
+        "passMedianMs": {
+          "rolled": 0.03072,
+          "unrolled": 0.055296
+        },
+        "fixtures": [
+          {
+            "name": "auto-reset",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                10316,
+                17756,
+                15360,
+                0
+              ],
+              "rolled": [
+                10316,
+                17756,
+                15360,
+                0
+              ]
+            }
+          },
+          {
+            "name": "auto-adapt",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                13485,
+                17756,
+                15360,
+                0
+              ],
+              "rolled": [
+                13485,
+                17756,
+                15360,
+                0
+              ]
+            }
+          },
+          {
+            "name": "manual",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                16384,
+                17756,
+                15360,
+                0
+              ],
+              "rolled": [
+                16384,
+                17756,
+                15360,
+                0
+              ]
+            }
+          },
+          {
+            "name": "external",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                14848,
+                17756,
+                15360,
+                0
+              ],
+              "rolled": [
+                14848,
+                17756,
+                15360,
+                0
+              ]
+            }
+          },
+          {
+            "name": "host-pre-exposure",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                13388,
+                14684,
+                18432,
+                0
+              ],
+              "rolled": [
+                13388,
+                14684,
+                18432,
+                0
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "intel": [
+      {
+        "run": 0,
+        "adapter": {
+          "vendor": "intel",
+          "architecture": "gen-12lp",
+          "device": "",
+          "description": ""
+        },
+        "compileMs": {
+          "rolled": 64.30000000447035,
+          "unrolled": 176.40000000596046
+        },
+        "passMedianMs": {
+          "rolled": 0.339945,
+          "unrolled": 0.348591
+        },
+        "fixtures": [
+          {
+            "name": "auto-reset",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                10316,
+                17756,
+                15360,
+                0
+              ],
+              "rolled": [
+                10316,
+                17756,
+                15360,
+                0
+              ]
+            }
+          },
+          {
+            "name": "auto-adapt",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                13485,
+                17756,
+                15360,
+                0
+              ],
+              "rolled": [
+                13485,
+                17756,
+                15360,
+                0
+              ]
+            }
+          },
+          {
+            "name": "manual",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                16384,
+                17756,
+                15360,
+                0
+              ],
+              "rolled": [
+                16384,
+                17756,
+                15360,
+                0
+              ]
+            }
+          },
+          {
+            "name": "external",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                14848,
+                17756,
+                15360,
+                0
+              ],
+              "rolled": [
+                14848,
+                17756,
+                15360,
+                0
+              ]
+            }
+          },
+          {
+            "name": "host-pre-exposure",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                13388,
+                14684,
+                18432,
+                0
+              ],
+              "rolled": [
+                13388,
+                14684,
+                18432,
+                0
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "run": 1,
+        "adapter": {
+          "vendor": "intel",
+          "architecture": "gen-12lp",
+          "device": "",
+          "description": ""
+        },
+        "compileMs": {
+          "unrolled": 240.30000000447035,
+          "rolled": 60.69999999552965
+        },
+        "passMedianMs": {
+          "rolled": 0.362524,
+          "unrolled": 0.3731485
+        },
+        "fixtures": [
+          {
+            "name": "auto-reset",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                10316,
+                17756,
+                15360,
+                0
+              ],
+              "rolled": [
+                10316,
+                17756,
+                15360,
+                0
+              ]
+            }
+          },
+          {
+            "name": "auto-adapt",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                13485,
+                17756,
+                15360,
+                0
+              ],
+              "rolled": [
+                13485,
+                17756,
+                15360,
+                0
+              ]
+            }
+          },
+          {
+            "name": "manual",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                16384,
+                17756,
+                15360,
+                0
+              ],
+              "rolled": [
+                16384,
+                17756,
+                15360,
+                0
+              ]
+            }
+          },
+          {
+            "name": "external",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                14848,
+                17756,
+                15360,
+                0
+              ],
+              "rolled": [
+                14848,
+                17756,
+                15360,
+                0
+              ]
+            }
+          },
+          {
+            "name": "host-pre-exposure",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                13388,
+                14684,
+                18432,
+                0
+              ],
+              "rolled": [
+                13388,
+                14684,
+                18432,
+                0
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "run": 2,
+        "adapter": {
+          "vendor": "intel",
+          "architecture": "gen-12lp",
+          "device": "",
+          "description": ""
+        },
+        "compileMs": {
+          "rolled": 138.10000000149012,
+          "unrolled": 221.20000000298023
+        },
+        "passMedianMs": {
+          "rolled": 0.3812995,
+          "unrolled": 0.379451
+        },
+        "fixtures": [
+          {
+            "name": "auto-reset",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                10316,
+                17756,
+                15360,
+                0
+              ],
+              "rolled": [
+                10316,
+                17756,
+                15360,
+                0
+              ]
+            }
+          },
+          {
+            "name": "auto-adapt",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                13485,
+                17756,
+                15360,
+                0
+              ],
+              "rolled": [
+                13485,
+                17756,
+                15360,
+                0
+              ]
+            }
+          },
+          {
+            "name": "manual",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                16384,
+                17756,
+                15360,
+                0
+              ],
+              "rolled": [
+                16384,
+                17756,
+                15360,
+                0
+              ]
+            }
+          },
+          {
+            "name": "external",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                14848,
+                17756,
+                15360,
+                0
+              ],
+              "rolled": [
+                14848,
+                17756,
+                15360,
+                0
+              ]
+            }
+          },
+          {
+            "name": "host-pre-exposure",
+            "identical": true,
+            "values": {
+              "unrolled": [
+                13388,
+                14684,
+                18432,
+                0
+              ],
+              "rolled": [
+                13388,
+                14684,
+                18432,
+                0
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "convergence": {
+    "nvidia": {
+      "gpuAudit": {
+        "options": {
+          "powerPreference": "high-performance",
+          "expectedVendor": "nvidia",
+          "withoutTimestamps": false
+        },
+        "requests": [
+          {
+            "requested": {
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "effective": {
+              "powerPreference": "high-performance",
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "info": {
+              "vendor": "nvidia",
+              "architecture": "ampere",
+              "device": "",
+              "description": ""
+            }
+          }
+        ],
+        "devices": [
+          {
+            "info": {
+              "vendor": "nvidia",
+              "architecture": "ampere",
+              "device": "",
+              "description": ""
+            },
+            "features": [
+              "bgra8unorm-storage",
+              "clip-distances",
+              "core-features-and-limits",
+              "depth-clip-control",
+              "depth32float-stencil8",
+              "dual-source-blending",
+              "float32-blendable",
+              "float32-filterable",
+              "indirect-first-instance",
+              "rg11b10ufloat-renderable",
+              "shader-f16",
+              "subgroups",
+              "texture-compression-bc",
+              "texture-compression-bc-sliced-3d",
+              "texture-formats-tier1",
+              "texture-formats-tier2",
+              "timestamp-query"
+            ],
+            "limits": {
+              "maxTextureDimension2D": 8192,
+              "maxComputeInvocationsPerWorkgroup": 256
+            },
+            "lost": null
+          }
+        ]
+      },
+      "scenario": "Q12",
+      "ratio": 2,
+      "settle": 180,
+      "pairs": 12,
+      "mean": 0.022126645688657406,
+      "contentMean": 0.04086087333803977,
+      "phaseLocked": null,
+      "logRecords": [
+        "[log] The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "[log] Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    "intel": {
+      "gpuAudit": {
+        "options": {
+          "powerPreference": "low-power",
+          "expectedVendor": "intel",
+          "withoutTimestamps": false
+        },
+        "requests": [
+          {
+            "requested": {
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "effective": {
+              "powerPreference": "low-power",
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "info": {
+              "vendor": "intel",
+              "architecture": "gen-12lp",
+              "device": "",
+              "description": ""
+            }
+          }
+        ],
+        "devices": [
+          {
+            "info": {
+              "vendor": "intel",
+              "architecture": "gen-12lp",
+              "device": "",
+              "description": ""
+            },
+            "features": [
+              "bgra8unorm-storage",
+              "clip-distances",
+              "core-features-and-limits",
+              "depth-clip-control",
+              "depth32float-stencil8",
+              "dual-source-blending",
+              "float32-blendable",
+              "float32-filterable",
+              "indirect-first-instance",
+              "rg11b10ufloat-renderable",
+              "shader-f16",
+              "subgroups",
+              "texture-compression-bc",
+              "texture-compression-bc-sliced-3d",
+              "texture-formats-tier1",
+              "texture-formats-tier2",
+              "timestamp-query"
+            ],
+            "limits": {
+              "maxTextureDimension2D": 8192,
+              "maxComputeInvocationsPerWorkgroup": 256
+            },
+            "lost": null
+          }
+        ]
+      },
+      "scenario": "Q12",
+      "ratio": 2,
+      "settle": 180,
+      "pairs": 12,
+      "mean": 0.021948784722222222,
+      "contentMean": 0.0399841284487426,
+      "phaseLocked": null,
+      "logRecords": [
+        "[log] The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "[log] Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    }
+  },
+  "lifecycle": {
+    "nvidia": {
+      "gpuAudit": {
+        "options": {
+          "powerPreference": "high-performance",
+          "expectedVendor": "nvidia",
+          "withoutTimestamps": false
+        },
+        "requests": [
+          {
+            "requested": {
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "effective": {
+              "powerPreference": "high-performance",
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "info": {
+              "vendor": "nvidia",
+              "architecture": "ampere",
+              "device": "",
+              "description": ""
+            }
+          }
+        ],
+        "devices": [
+          {
+            "info": {
+              "vendor": "nvidia",
+              "architecture": "ampere",
+              "device": "",
+              "description": ""
+            },
+            "features": [
+              "bgra8unorm-storage",
+              "clip-distances",
+              "core-features-and-limits",
+              "depth-clip-control",
+              "depth32float-stencil8",
+              "dual-source-blending",
+              "float32-blendable",
+              "float32-filterable",
+              "indirect-first-instance",
+              "rg11b10ufloat-renderable",
+              "shader-f16",
+              "subgroups",
+              "texture-compression-bc",
+              "texture-compression-bc-sliced-3d",
+              "texture-formats-tier1",
+              "texture-formats-tier2",
+              "timestamp-query"
+            ],
+            "limits": {
+              "maxTextureDimension2D": 8192,
+              "maxComputeInvocationsPerWorkgroup": 256
+            },
+            "lost": null
+          }
+        ]
+      },
+      "cycles": 30,
+      "resizeStable": true,
+      "dprCorrect": true,
+      "initial": {
+        "documentId": "9cbae2f9-b5ac-49a3-89cb-82f036596b59",
+        "shared": true,
+        "ready": true,
+        "rendererTextures": 20,
+        "resources": {
+          "textures": {
+            "created": 26,
+            "destroyed": 0,
+            "live": 26,
+            "peak": 26
+          },
+          "buffers": {
+            "created": 46,
+            "destroyed": 0,
+            "live": 46,
+            "peak": 46
+          },
+          "queries": {
+            "created": 8,
+            "destroyed": 0,
+            "live": 8,
+            "peak": 8
+          }
+        },
+        "reachable": {
+          "textures": 26,
+          "buffers": 46,
+          "queries": 8
+        },
+        "dpr": 1,
+        "rendererDpr": 1,
+        "canvas": [
+          938,
+          542
+        ],
+        "output": [
+          938,
+          542
+        ],
+        "render": [
+          469,
+          271
+        ]
+      },
+      "firstResize": {
+        "cycle": 0,
+        "documentId": "9cbae2f9-b5ac-49a3-89cb-82f036596b59",
+        "shared": true,
+        "ready": true,
+        "rendererTextures": 20,
+        "resources": {
+          "textures": {
+            "created": 74,
+            "destroyed": 48,
+            "live": 26,
+            "peak": 26
+          },
+          "buffers": {
+            "created": 50,
+            "destroyed": 4,
+            "live": 46,
+            "peak": 46
+          },
+          "queries": {
+            "created": 8,
+            "destroyed": 0,
+            "live": 8,
+            "peak": 8
+          }
+        },
+        "reachable": {
+          "textures": 26,
+          "buffers": 46,
+          "queries": 8
+        },
+        "dpr": 2,
+        "rendererDpr": 2,
+        "canvas": [
+          1600,
+          1200
+        ],
+        "output": [
+          1600,
+          1200
+        ],
+        "render": [
+          800,
+          600
+        ]
+      },
+      "lastResize": {
+        "cycle": 29,
+        "documentId": "9cbae2f9-b5ac-49a3-89cb-82f036596b59",
+        "shared": true,
+        "ready": true,
+        "rendererTextures": 20,
+        "resources": {
+          "textures": {
+            "created": 770,
+            "destroyed": 744,
+            "live": 26,
+            "peak": 26
+          },
+          "buffers": {
+            "created": 108,
+            "destroyed": 62,
+            "live": 46,
+            "peak": 46
+          },
+          "queries": {
+            "created": 8,
+            "destroyed": 0,
+            "live": 8,
+            "peak": 8
+          }
+        },
+        "reachable": {
+          "textures": 26,
+          "buffers": 46,
+          "queries": 8
+        },
+        "dpr": 1,
+        "rendererDpr": 1,
+        "canvas": [
+          960,
+          640
+        ],
+        "output": [
+          960,
+          640
+        ],
+        "render": [
+          480,
+          320
+        ]
+      },
+      "sameDocumentAfterFreeze": true,
+      "afterFreeze": {
+        "documentId": "9cbae2f9-b5ac-49a3-89cb-82f036596b59",
+        "shared": true,
+        "ready": true,
+        "rendererTextures": 20,
+        "resources": {
+          "textures": {
+            "created": 770,
+            "destroyed": 744,
+            "live": 26,
+            "peak": 26
+          },
+          "buffers": {
+            "created": 108,
+            "destroyed": 62,
+            "live": 46,
+            "peak": 46
+          },
+          "queries": {
+            "created": 8,
+            "destroyed": 0,
+            "live": 8,
+            "peak": 8
+          }
+        },
+        "reachable": {
+          "textures": 26,
+          "buffers": 46,
+          "queries": 8
+        },
+        "dpr": 1,
+        "rendererDpr": 1,
+        "canvas": [
+          960,
+          640
+        ],
+        "output": [
+          960,
+          640
+        ],
+        "render": [
+          480,
+          320
+        ]
+      },
+      "instanceBufferRetention": {
+        "before": 46,
+        "first": 70,
+        "last": 766
+      },
+      "afterInstances": {
+        "documentId": "9cbae2f9-b5ac-49a3-89cb-82f036596b59",
+        "shared": true,
+        "ready": true,
+        "rendererTextures": 20,
+        "resources": {
+          "textures": {
+            "created": 3290,
+            "destroyed": 3264,
+            "live": 26,
+            "peak": 110
+          },
+          "buffers": {
+            "created": 3108,
+            "destroyed": 2342,
+            "live": 766,
+            "peak": 842
+          },
+          "queries": {
+            "created": 968,
+            "destroyed": 960,
+            "live": 8,
+            "peak": 40
+          }
+        },
+        "reachable": {
+          "textures": 26,
+          "buffers": 766,
+          "queries": 8
+        },
+        "dpr": 1,
+        "rendererDpr": 1,
+        "canvas": [
+          960,
+          640
+        ],
+        "output": [
+          960,
+          640
+        ],
+        "render": [
+          480,
+          320
+        ]
+      },
+      "hold": {
+        "seconds": 10,
+        "before": {
+          "documentId": "9cbae2f9-b5ac-49a3-89cb-82f036596b59",
+          "shared": true,
+          "ready": true,
+          "rendererTextures": 20,
+          "resources": {
+            "textures": {
+              "created": 3290,
+              "destroyed": 3264,
+              "live": 26,
+              "peak": 110
+            },
+            "buffers": {
+              "created": 3108,
+              "destroyed": 2342,
+              "live": 766,
+              "peak": 842
+            },
+            "queries": {
+              "created": 968,
+              "destroyed": 960,
+              "live": 8,
+              "peak": 40
+            }
+          },
+          "reachable": {
+            "textures": 26,
+            "buffers": 766,
+            "queries": 8
+          },
+          "dpr": 1,
+          "rendererDpr": 1,
+          "canvas": [
+            960,
+            640
+          ],
+          "output": [
+            960,
+            640
+          ],
+          "render": [
+            480,
+            320
+          ]
+        },
+        "after": {
+          "documentId": "9cbae2f9-b5ac-49a3-89cb-82f036596b59",
+          "shared": true,
+          "ready": true,
+          "rendererTextures": 20,
+          "resources": {
+            "textures": {
+              "created": 3290,
+              "destroyed": 3264,
+              "live": 26,
+              "peak": 110
+            },
+            "buffers": {
+              "created": 3108,
+              "destroyed": 2342,
+              "live": 766,
+              "peak": 842
+            },
+            "queries": {
+              "created": 968,
+              "destroyed": 960,
+              "live": 8,
+              "peak": 40
+            }
+          },
+          "reachable": {
+            "textures": 26,
+            "buffers": 766,
+            "queries": 8
+          },
+          "dpr": 1,
+          "rendererDpr": 1,
+          "canvas": [
+            960,
+            640
+          ],
+          "output": [
+            960,
+            640
+          ],
+          "render": [
+            480,
+            320
+          ]
+        }
+      },
+      "issues": []
+    },
+    "intel": {
+      "gpuAudit": {
+        "options": {
+          "powerPreference": "low-power",
+          "expectedVendor": "intel",
+          "withoutTimestamps": false
+        },
+        "requests": [
+          {
+            "requested": {
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "effective": {
+              "powerPreference": "low-power",
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "info": {
+              "vendor": "intel",
+              "architecture": "gen-12lp",
+              "device": "",
+              "description": ""
+            }
+          }
+        ],
+        "devices": [
+          {
+            "info": {
+              "vendor": "intel",
+              "architecture": "gen-12lp",
+              "device": "",
+              "description": ""
+            },
+            "features": [
+              "bgra8unorm-storage",
+              "clip-distances",
+              "core-features-and-limits",
+              "depth-clip-control",
+              "depth32float-stencil8",
+              "dual-source-blending",
+              "float32-blendable",
+              "float32-filterable",
+              "indirect-first-instance",
+              "rg11b10ufloat-renderable",
+              "shader-f16",
+              "subgroups",
+              "texture-compression-bc",
+              "texture-compression-bc-sliced-3d",
+              "texture-formats-tier1",
+              "texture-formats-tier2",
+              "timestamp-query"
+            ],
+            "limits": {
+              "maxTextureDimension2D": 8192,
+              "maxComputeInvocationsPerWorkgroup": 256
+            },
+            "lost": null
+          }
+        ]
+      },
+      "cycles": 30,
+      "resizeStable": true,
+      "dprCorrect": true,
+      "initial": {
+        "documentId": "a7ba7222-2b09-4fc0-a092-477955a5d31e",
+        "shared": true,
+        "ready": true,
+        "rendererTextures": 20,
+        "resources": {
+          "textures": {
+            "created": 44,
+            "destroyed": 18,
+            "live": 26,
+            "peak": 26
+          },
+          "buffers": {
+            "created": 48,
+            "destroyed": 2,
+            "live": 46,
+            "peak": 46
+          },
+          "queries": {
+            "created": 8,
+            "destroyed": 0,
+            "live": 8,
+            "peak": 8
+          }
+        },
+        "reachable": {
+          "textures": 26,
+          "buffers": 46,
+          "queries": 8
+        },
+        "dpr": 1,
+        "rendererDpr": 1,
+        "canvas": [
+          930,
+          545
+        ],
+        "output": [
+          930,
+          545
+        ],
+        "render": [
+          465,
+          272
+        ]
+      },
+      "firstResize": {
+        "cycle": 0,
+        "documentId": "a7ba7222-2b09-4fc0-a092-477955a5d31e",
+        "shared": true,
+        "ready": true,
+        "rendererTextures": 20,
+        "resources": {
+          "textures": {
+            "created": 92,
+            "destroyed": 66,
+            "live": 26,
+            "peak": 26
+          },
+          "buffers": {
+            "created": 52,
+            "destroyed": 6,
+            "live": 46,
+            "peak": 46
+          },
+          "queries": {
+            "created": 8,
+            "destroyed": 0,
+            "live": 8,
+            "peak": 8
+          }
+        },
+        "reachable": {
+          "textures": 26,
+          "buffers": 46,
+          "queries": 8
+        },
+        "dpr": 2,
+        "rendererDpr": 2,
+        "canvas": [
+          1600,
+          1200
+        ],
+        "output": [
+          1600,
+          1200
+        ],
+        "render": [
+          800,
+          600
+        ]
+      },
+      "lastResize": {
+        "cycle": 29,
+        "documentId": "a7ba7222-2b09-4fc0-a092-477955a5d31e",
+        "shared": true,
+        "ready": true,
+        "rendererTextures": 20,
+        "resources": {
+          "textures": {
+            "created": 788,
+            "destroyed": 762,
+            "live": 26,
+            "peak": 26
+          },
+          "buffers": {
+            "created": 110,
+            "destroyed": 64,
+            "live": 46,
+            "peak": 46
+          },
+          "queries": {
+            "created": 8,
+            "destroyed": 0,
+            "live": 8,
+            "peak": 8
+          }
+        },
+        "reachable": {
+          "textures": 26,
+          "buffers": 46,
+          "queries": 8
+        },
+        "dpr": 1,
+        "rendererDpr": 1,
+        "canvas": [
+          960,
+          640
+        ],
+        "output": [
+          960,
+          640
+        ],
+        "render": [
+          480,
+          320
+        ]
+      },
+      "sameDocumentAfterFreeze": true,
+      "afterFreeze": {
+        "documentId": "a7ba7222-2b09-4fc0-a092-477955a5d31e",
+        "shared": true,
+        "ready": true,
+        "rendererTextures": 20,
+        "resources": {
+          "textures": {
+            "created": 788,
+            "destroyed": 762,
+            "live": 26,
+            "peak": 26
+          },
+          "buffers": {
+            "created": 110,
+            "destroyed": 64,
+            "live": 46,
+            "peak": 46
+          },
+          "queries": {
+            "created": 8,
+            "destroyed": 0,
+            "live": 8,
+            "peak": 8
+          }
+        },
+        "reachable": {
+          "textures": 26,
+          "buffers": 46,
+          "queries": 8
+        },
+        "dpr": 1,
+        "rendererDpr": 1,
+        "canvas": [
+          960,
+          640
+        ],
+        "output": [
+          960,
+          640
+        ],
+        "render": [
+          480,
+          320
+        ]
+      },
+      "instanceBufferRetention": {
+        "before": 46,
+        "first": 70,
+        "last": 766
+      },
+      "afterInstances": {
+        "documentId": "a7ba7222-2b09-4fc0-a092-477955a5d31e",
+        "shared": true,
+        "ready": true,
+        "rendererTextures": 20,
+        "resources": {
+          "textures": {
+            "created": 3308,
+            "destroyed": 3282,
+            "live": 26,
+            "peak": 110
+          },
+          "buffers": {
+            "created": 3110,
+            "destroyed": 2344,
+            "live": 766,
+            "peak": 842
+          },
+          "queries": {
+            "created": 968,
+            "destroyed": 960,
+            "live": 8,
+            "peak": 40
+          }
+        },
+        "reachable": {
+          "textures": 26,
+          "buffers": 766,
+          "queries": 8
+        },
+        "dpr": 1,
+        "rendererDpr": 1,
+        "canvas": [
+          960,
+          640
+        ],
+        "output": [
+          960,
+          640
+        ],
+        "render": [
+          480,
+          320
+        ]
+      },
+      "hold": {
+        "seconds": 10,
+        "before": {
+          "documentId": "a7ba7222-2b09-4fc0-a092-477955a5d31e",
+          "shared": true,
+          "ready": true,
+          "rendererTextures": 20,
+          "resources": {
+            "textures": {
+              "created": 3308,
+              "destroyed": 3282,
+              "live": 26,
+              "peak": 110
+            },
+            "buffers": {
+              "created": 3110,
+              "destroyed": 2344,
+              "live": 766,
+              "peak": 842
+            },
+            "queries": {
+              "created": 968,
+              "destroyed": 960,
+              "live": 8,
+              "peak": 40
+            }
+          },
+          "reachable": {
+            "textures": 26,
+            "buffers": 766,
+            "queries": 8
+          },
+          "dpr": 1,
+          "rendererDpr": 1,
+          "canvas": [
+            960,
+            640
+          ],
+          "output": [
+            960,
+            640
+          ],
+          "render": [
+            480,
+            320
+          ]
+        },
+        "after": {
+          "documentId": "a7ba7222-2b09-4fc0-a092-477955a5d31e",
+          "shared": true,
+          "ready": true,
+          "rendererTextures": 20,
+          "resources": {
+            "textures": {
+              "created": 3308,
+              "destroyed": 3282,
+              "live": 26,
+              "peak": 110
+            },
+            "buffers": {
+              "created": 3110,
+              "destroyed": 2344,
+              "live": 766,
+              "peak": 842
+            },
+            "queries": {
+              "created": 968,
+              "destroyed": 960,
+              "live": 8,
+              "peak": 40
+            }
+          },
+          "reachable": {
+            "textures": 26,
+            "buffers": 766,
+            "queries": 8
+          },
+          "dpr": 1,
+          "rendererDpr": 1,
+          "canvas": [
+            960,
+            640
+          ],
+          "output": [
+            960,
+            640
+          ],
+          "render": [
+            480,
+            320
+          ]
+        }
+      },
+      "issues": []
+    },
+    "no-timestamps": {
+      "gpuAudit": {
+        "options": {
+          "powerPreference": "high-performance",
+          "expectedVendor": "nvidia",
+          "withoutTimestamps": true
+        },
+        "requests": [
+          {
+            "requested": {
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "effective": {
+              "powerPreference": "high-performance",
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "info": {
+              "vendor": "nvidia",
+              "architecture": "ampere",
+              "device": "",
+              "description": ""
+            }
+          }
+        ],
+        "devices": [
+          {
+            "info": {
+              "vendor": "nvidia",
+              "architecture": "ampere",
+              "device": "",
+              "description": ""
+            },
+            "features": [
+              "bgra8unorm-storage",
+              "clip-distances",
+              "core-features-and-limits",
+              "depth-clip-control",
+              "depth32float-stencil8",
+              "dual-source-blending",
+              "float32-blendable",
+              "float32-filterable",
+              "indirect-first-instance",
+              "rg11b10ufloat-renderable",
+              "shader-f16",
+              "subgroups",
+              "texture-compression-bc",
+              "texture-compression-bc-sliced-3d",
+              "texture-formats-tier1",
+              "texture-formats-tier2"
+            ],
+            "limits": {
+              "maxTextureDimension2D": 8192,
+              "maxComputeInvocationsPerWorkgroup": 256
+            },
+            "lost": null
+          }
+        ]
+      },
+      "cycles": 15,
+      "resizeStable": true,
+      "dprCorrect": true,
+      "initial": {
+        "documentId": "d387254f-52fb-4697-8d4c-8bfded358d8a",
+        "shared": true,
+        "ready": true,
+        "rendererTextures": 20,
+        "resources": {
+          "textures": {
+            "created": 26,
+            "destroyed": 0,
+            "live": 26,
+            "peak": 26
+          },
+          "buffers": {
+            "created": 30,
+            "destroyed": 0,
+            "live": 30,
+            "peak": 30
+          },
+          "queries": {
+            "created": 0,
+            "destroyed": 0,
+            "live": 0,
+            "peak": 0
+          }
+        },
+        "reachable": {
+          "textures": 26,
+          "buffers": 30,
+          "queries": 0
+        },
+        "dpr": 1,
+        "rendererDpr": 1,
+        "canvas": [
+          938,
+          542
+        ],
+        "output": [
+          938,
+          542
+        ],
+        "render": [
+          469,
+          271
+        ]
+      },
+      "firstResize": {
+        "cycle": 0,
+        "documentId": "d387254f-52fb-4697-8d4c-8bfded358d8a",
+        "shared": true,
+        "ready": true,
+        "rendererTextures": 20,
+        "resources": {
+          "textures": {
+            "created": 74,
+            "destroyed": 48,
+            "live": 26,
+            "peak": 26
+          },
+          "buffers": {
+            "created": 34,
+            "destroyed": 4,
+            "live": 30,
+            "peak": 30
+          },
+          "queries": {
+            "created": 0,
+            "destroyed": 0,
+            "live": 0,
+            "peak": 0
+          }
+        },
+        "reachable": {
+          "textures": 26,
+          "buffers": 30,
+          "queries": 0
+        },
+        "dpr": 2,
+        "rendererDpr": 2,
+        "canvas": [
+          1600,
+          1200
+        ],
+        "output": [
+          1600,
+          1200
+        ],
+        "render": [
+          800,
+          600
+        ]
+      },
+      "lastResize": {
+        "cycle": 14,
+        "documentId": "d387254f-52fb-4697-8d4c-8bfded358d8a",
+        "shared": true,
+        "ready": true,
+        "rendererTextures": 20,
+        "resources": {
+          "textures": {
+            "created": 410,
+            "destroyed": 384,
+            "live": 26,
+            "peak": 26
+          },
+          "buffers": {
+            "created": 62,
+            "destroyed": 32,
+            "live": 30,
+            "peak": 30
+          },
+          "queries": {
+            "created": 0,
+            "destroyed": 0,
+            "live": 0,
+            "peak": 0
+          }
+        },
+        "reachable": {
+          "textures": 26,
+          "buffers": 30,
+          "queries": 0
+        },
+        "dpr": 2,
+        "rendererDpr": 2,
+        "canvas": [
+          1600,
+          1200
+        ],
+        "output": [
+          1600,
+          1200
+        ],
+        "render": [
+          800,
+          600
+        ]
+      },
+      "sameDocumentAfterFreeze": true,
+      "afterFreeze": {
+        "documentId": "d387254f-52fb-4697-8d4c-8bfded358d8a",
+        "shared": true,
+        "ready": true,
+        "rendererTextures": 20,
+        "resources": {
+          "textures": {
+            "created": 410,
+            "destroyed": 384,
+            "live": 26,
+            "peak": 26
+          },
+          "buffers": {
+            "created": 62,
+            "destroyed": 32,
+            "live": 30,
+            "peak": 30
+          },
+          "queries": {
+            "created": 0,
+            "destroyed": 0,
+            "live": 0,
+            "peak": 0
+          }
+        },
+        "reachable": {
+          "textures": 26,
+          "buffers": 30,
+          "queries": 0
+        },
+        "dpr": 2,
+        "rendererDpr": 2,
+        "canvas": [
+          1600,
+          1200
+        ],
+        "output": [
+          1600,
+          1200
+        ],
+        "render": [
+          800,
+          600
+        ]
+      },
+      "instanceBufferRetention": {
+        "before": 30,
+        "first": 54,
+        "last": 390
+      },
+      "afterInstances": {
+        "documentId": "d387254f-52fb-4697-8d4c-8bfded358d8a",
+        "shared": true,
+        "ready": true,
+        "rendererTextures": 20,
+        "resources": {
+          "textures": {
+            "created": 1670,
+            "destroyed": 1644,
+            "live": 26,
+            "peak": 110
+          },
+          "buffers": {
+            "created": 602,
+            "destroyed": 212,
+            "live": 390,
+            "peak": 402
+          },
+          "queries": {
+            "created": 0,
+            "destroyed": 0,
+            "live": 0,
+            "peak": 0
+          }
+        },
+        "reachable": {
+          "textures": 26,
+          "buffers": 390,
+          "queries": 0
+        },
+        "dpr": 2,
+        "rendererDpr": 2,
+        "canvas": [
+          1600,
+          1200
+        ],
+        "output": [
+          1600,
+          1200
+        ],
+        "render": [
+          800,
+          600
+        ]
+      },
+      "hold": {
+        "seconds": 10,
+        "before": {
+          "documentId": "d387254f-52fb-4697-8d4c-8bfded358d8a",
+          "shared": true,
+          "ready": true,
+          "rendererTextures": 20,
+          "resources": {
+            "textures": {
+              "created": 1670,
+              "destroyed": 1644,
+              "live": 26,
+              "peak": 110
+            },
+            "buffers": {
+              "created": 602,
+              "destroyed": 212,
+              "live": 390,
+              "peak": 402
+            },
+            "queries": {
+              "created": 0,
+              "destroyed": 0,
+              "live": 0,
+              "peak": 0
+            }
+          },
+          "reachable": {
+            "textures": 26,
+            "buffers": 390,
+            "queries": 0
+          },
+          "dpr": 2,
+          "rendererDpr": 2,
+          "canvas": [
+            1600,
+            1200
+          ],
+          "output": [
+            1600,
+            1200
+          ],
+          "render": [
+            800,
+            600
+          ]
+        },
+        "after": {
+          "documentId": "d387254f-52fb-4697-8d4c-8bfded358d8a",
+          "shared": true,
+          "ready": true,
+          "rendererTextures": 20,
+          "resources": {
+            "textures": {
+              "created": 1670,
+              "destroyed": 1644,
+              "live": 26,
+              "peak": 110
+            },
+            "buffers": {
+              "created": 602,
+              "destroyed": 212,
+              "live": 390,
+              "peak": 402
+            },
+            "queries": {
+              "created": 0,
+              "destroyed": 0,
+              "live": 0,
+              "peak": 0
+            }
+          },
+          "reachable": {
+            "textures": 26,
+            "buffers": 390,
+            "queries": 0
+          },
+          "dpr": 2,
+          "rendererDpr": 2,
+          "canvas": [
+            1600,
+            1200
+          ],
+          "output": [
+            1600,
+            1200
+          ],
+          "render": [
+            800,
+            600
+          ]
+        }
+      },
+      "issues": []
+    },
+    "baselineResizePhase": {
+      "initial": {
+        "shared": true,
+        "ready": true,
+        "rendererTextures": 20,
+        "resources": {
+          "textures": {
+            "created": 26,
+            "destroyed": 0,
+            "live": 26,
+            "peak": 26
+          },
+          "buffers": {
+            "created": 46,
+            "destroyed": 0,
+            "live": 46,
+            "peak": 46
+          },
+          "queries": {
+            "created": 8,
+            "destroyed": 0,
+            "live": 8,
+            "peak": 8
+          }
+        },
+        "dpr": 1,
+        "rendererDpr": 1,
+        "canvas": [
+          938,
+          542
+        ],
+        "output": [
+          938,
+          542
+        ],
+        "render": [
+          469,
+          271
+        ]
+      },
+      "lastResize": {
+        "cycle": 29,
+        "shared": true,
+        "ready": true,
+        "rendererTextures": 170,
+        "resources": {
+          "textures": {
+            "created": 746,
+            "destroyed": 570,
+            "live": 176,
+            "peak": 176
+          },
+          "buffers": {
+            "created": 856,
+            "destroyed": 630,
+            "live": 226,
+            "peak": 226
+          },
+          "queries": {
+            "created": 248,
+            "destroyed": 240,
+            "live": 8,
+            "peak": 8
+          }
+        },
+        "dpr": 1,
+        "rendererDpr": 1,
+        "canvas": [
+          960,
+          640
+        ],
+        "output": [
+          960,
+          640
+        ],
+        "render": [
+          480,
+          320
+        ]
+      },
+      "limit": "Only the resize phase is compared; the subsequent development-server suspension trial failed and is excluded."
+    }
+  },
+  "bench": {
+    "nvidia": {
+      "browser": "Chrome/154.0.8037.98",
+      "records": [
+        {
+          "cache": "cold",
+          "gpuAudit": {
+            "options": {
+              "powerPreference": "high-performance",
+              "expectedVendor": "nvidia",
+              "withoutTimestamps": false
+            },
+            "requests": [
+              {
+                "requested": {
+                  "featureLevel": "compatibility",
+                  "xrCompatible": false
+                },
+                "effective": {
+                  "powerPreference": "high-performance",
+                  "featureLevel": "compatibility",
+                  "xrCompatible": false
+                },
+                "info": {
+                  "vendor": "nvidia",
+                  "architecture": "ampere",
+                  "device": "",
+                  "description": ""
+                }
+              }
+            ],
+            "devices": [
+              {
+                "info": {
+                  "vendor": "nvidia",
+                  "architecture": "ampere",
+                  "device": "",
+                  "description": ""
+                },
+                "features": [
+                  "bgra8unorm-storage",
+                  "clip-distances",
+                  "core-features-and-limits",
+                  "depth-clip-control",
+                  "depth32float-stencil8",
+                  "dual-source-blending",
+                  "float32-blendable",
+                  "float32-filterable",
+                  "indirect-first-instance",
+                  "rg11b10ufloat-renderable",
+                  "shader-f16",
+                  "subgroups",
+                  "texture-compression-bc",
+                  "texture-compression-bc-sliced-3d",
+                  "texture-formats-tier1",
+                  "texture-formats-tier2",
+                  "timestamp-query"
+                ],
+                "limits": {
+                  "maxTextureDimension2D": 8192,
+                  "maxComputeInvocationsPerWorkgroup": 256
+                },
+                "lost": null
+              }
+            ]
+          },
+          "syncComputeCalls": 0,
+          "asyncComputeCalls": 8,
+          "issues": [
+            {
+              "channel": "Log.entryAdded",
+              "text": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127"
+            },
+            {
+              "channel": "Log.entryAdded",
+              "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+            }
+          ]
+        },
+        {
+          "cache": "warm",
+          "gpuAudit": {
+            "options": {
+              "powerPreference": "high-performance",
+              "expectedVendor": "nvidia",
+              "withoutTimestamps": false
+            },
+            "requests": [
+              {
+                "requested": {
+                  "featureLevel": "compatibility",
+                  "xrCompatible": false
+                },
+                "effective": {
+                  "powerPreference": "high-performance",
+                  "featureLevel": "compatibility",
+                  "xrCompatible": false
+                },
+                "info": {
+                  "vendor": "nvidia",
+                  "architecture": "ampere",
+                  "device": "",
+                  "description": ""
+                }
+              }
+            ],
+            "devices": [
+              {
+                "info": {
+                  "vendor": "nvidia",
+                  "architecture": "ampere",
+                  "device": "",
+                  "description": ""
+                },
+                "features": [
+                  "bgra8unorm-storage",
+                  "clip-distances",
+                  "core-features-and-limits",
+                  "depth-clip-control",
+                  "depth32float-stencil8",
+                  "dual-source-blending",
+                  "float32-blendable",
+                  "float32-filterable",
+                  "indirect-first-instance",
+                  "rg11b10ufloat-renderable",
+                  "shader-f16",
+                  "subgroups",
+                  "texture-compression-bc",
+                  "texture-compression-bc-sliced-3d",
+                  "texture-formats-tier1",
+                  "texture-formats-tier2",
+                  "timestamp-query"
+                ],
+                "limits": {
+                  "maxTextureDimension2D": 8192,
+                  "maxComputeInvocationsPerWorkgroup": 256
+                },
+                "lost": null
+              }
+            ]
+          },
+          "syncComputeCalls": 0,
+          "asyncComputeCalls": 8,
+          "issues": [
+            {
+              "channel": "Log.entryAdded",
+              "text": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127"
+            }
+          ]
+        },
+        {
+          "exercise": {
+            "resize": true,
+            "dpr": true,
+            "controls": [
+              "Native (full res)",
+              "Bilinear upscale",
+              "FSR1 spatial (EASU+RCAS)",
+              "FSR3 temporal",
+              "Native AA (1.0x)",
+              "Quality (1.5x)",
+              "Balanced (1.7x)",
+              "Performance (2.0x)",
+              "Ultra Performance (3.0x)",
+              "Off",
+              "Motion vectors",
+              "Disocclusion",
+              "Depth",
+              "Accumulation age",
+              "Locks",
+              "Exposure",
+              "Shading change"
+            ],
+            "primitives": null,
+            "optionalUpscaler": null,
+            "benchmarkViews": [
+              {
+                "control": "Native (full res)",
+                "mode": "native",
+                "ready": true,
+                "activeDebugView": 0,
+                "requestedDebugView": 0,
+                "screenshot": "bench-select-0-0.png"
+              },
+              {
+                "control": "Bilinear upscale",
+                "mode": "bilinear",
+                "ready": true,
+                "activeDebugView": 0,
+                "requestedDebugView": 0,
+                "screenshot": "bench-select-0-1.png"
+              },
+              {
+                "control": "FSR1 spatial (EASU+RCAS)",
+                "mode": "fsr1-spatial",
+                "ready": true,
+                "activeDebugView": 0,
+                "requestedDebugView": 0,
+                "screenshot": "bench-select-0-2.png"
+              },
+              {
+                "control": "FSR3 temporal",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 0,
+                "requestedDebugView": 0,
+                "screenshot": "bench-select-0-3.png"
+              },
+              {
+                "control": "Native AA (1.0x)",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 0,
+                "requestedDebugView": 0,
+                "screenshot": "bench-select-1-0.png"
+              },
+              {
+                "control": "Quality (1.5x)",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 0,
+                "requestedDebugView": 0,
+                "screenshot": "bench-select-1-1.png"
+              },
+              {
+                "control": "Balanced (1.7x)",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 0,
+                "requestedDebugView": 0,
+                "screenshot": "bench-select-1-2.png"
+              },
+              {
+                "control": "Performance (2.0x)",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 0,
+                "requestedDebugView": 0,
+                "screenshot": "bench-select-1-3.png"
+              },
+              {
+                "control": "Ultra Performance (3.0x)",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 0,
+                "requestedDebugView": 0,
+                "screenshot": "bench-select-1-4.png"
+              },
+              {
+                "control": "Off",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 0,
+                "requestedDebugView": 0,
+                "screenshot": "bench-select-2-0.png"
+              },
+              {
+                "control": "Motion vectors",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 1,
+                "requestedDebugView": 1,
+                "screenshot": "bench-select-2-1.png"
+              },
+              {
+                "control": "Disocclusion",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 2,
+                "requestedDebugView": 2,
+                "screenshot": "bench-select-2-2.png"
+              },
+              {
+                "control": "Depth",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 3,
+                "requestedDebugView": 3,
+                "screenshot": "bench-select-2-3.png"
+              },
+              {
+                "control": "Accumulation age",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 4,
+                "requestedDebugView": 4,
+                "screenshot": "bench-select-2-4.png"
+              },
+              {
+                "control": "Locks",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 5,
+                "requestedDebugView": 5,
+                "screenshot": "bench-select-2-5.png"
+              },
+              {
+                "control": "Exposure",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 6,
+                "requestedDebugView": 6,
+                "screenshot": "bench-select-2-6.png"
+              },
+              {
+                "control": "Shading change",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 7,
+                "requestedDebugView": 7,
+                "screenshot": "bench-select-2-7.png"
+              }
+            ],
+            "syncComputeCalls": 0
+          },
+          "issues": []
+        }
+      ]
+    },
+    "intel": {
+      "browser": "Edg/154.0.4258.53",
+      "records": [
+        {
+          "cache": "cold",
+          "gpuAudit": {
+            "options": {
+              "powerPreference": "low-power",
+              "expectedVendor": "intel",
+              "withoutTimestamps": false
+            },
+            "requests": [
+              {
+                "requested": {
+                  "featureLevel": "compatibility",
+                  "xrCompatible": false
+                },
+                "effective": {
+                  "powerPreference": "low-power",
+                  "featureLevel": "compatibility",
+                  "xrCompatible": false
+                },
+                "info": {
+                  "vendor": "intel",
+                  "architecture": "gen-12lp",
+                  "device": "",
+                  "description": ""
+                }
+              }
+            ],
+            "devices": [
+              {
+                "info": {
+                  "vendor": "intel",
+                  "architecture": "gen-12lp",
+                  "device": "",
+                  "description": ""
+                },
+                "features": [
+                  "bgra8unorm-storage",
+                  "clip-distances",
+                  "core-features-and-limits",
+                  "depth-clip-control",
+                  "depth32float-stencil8",
+                  "dual-source-blending",
+                  "float32-blendable",
+                  "float32-filterable",
+                  "indirect-first-instance",
+                  "rg11b10ufloat-renderable",
+                  "shader-f16",
+                  "subgroups",
+                  "texture-compression-bc",
+                  "texture-compression-bc-sliced-3d",
+                  "texture-formats-tier1",
+                  "texture-formats-tier2",
+                  "timestamp-query"
+                ],
+                "limits": {
+                  "maxTextureDimension2D": 8192,
+                  "maxComputeInvocationsPerWorkgroup": 256
+                },
+                "lost": null
+              }
+            ]
+          },
+          "syncComputeCalls": 0,
+          "asyncComputeCalls": 8,
+          "issues": [
+            {
+              "channel": "Log.entryAdded",
+              "text": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127"
+            },
+            {
+              "channel": "Log.entryAdded",
+              "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+            }
+          ]
+        },
+        {
+          "cache": "warm",
+          "gpuAudit": {
+            "options": {
+              "powerPreference": "low-power",
+              "expectedVendor": "intel",
+              "withoutTimestamps": false
+            },
+            "requests": [
+              {
+                "requested": {
+                  "featureLevel": "compatibility",
+                  "xrCompatible": false
+                },
+                "effective": {
+                  "powerPreference": "low-power",
+                  "featureLevel": "compatibility",
+                  "xrCompatible": false
+                },
+                "info": {
+                  "vendor": "intel",
+                  "architecture": "gen-12lp",
+                  "device": "",
+                  "description": ""
+                }
+              }
+            ],
+            "devices": [
+              {
+                "info": {
+                  "vendor": "intel",
+                  "architecture": "gen-12lp",
+                  "device": "",
+                  "description": ""
+                },
+                "features": [
+                  "bgra8unorm-storage",
+                  "clip-distances",
+                  "core-features-and-limits",
+                  "depth-clip-control",
+                  "depth32float-stencil8",
+                  "dual-source-blending",
+                  "float32-blendable",
+                  "float32-filterable",
+                  "indirect-first-instance",
+                  "rg11b10ufloat-renderable",
+                  "shader-f16",
+                  "subgroups",
+                  "texture-compression-bc",
+                  "texture-compression-bc-sliced-3d",
+                  "texture-formats-tier1",
+                  "texture-formats-tier2",
+                  "timestamp-query"
+                ],
+                "limits": {
+                  "maxTextureDimension2D": 8192,
+                  "maxComputeInvocationsPerWorkgroup": 256
+                },
+                "lost": null
+              }
+            ]
+          },
+          "syncComputeCalls": 0,
+          "asyncComputeCalls": 8,
+          "issues": [
+            {
+              "channel": "Log.entryAdded",
+              "text": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127"
+            }
+          ]
+        },
+        {
+          "exercise": {
+            "resize": true,
+            "dpr": true,
+            "controls": [
+              "Native (full res)",
+              "Bilinear upscale",
+              "FSR1 spatial (EASU+RCAS)",
+              "FSR3 temporal",
+              "Native AA (1.0x)",
+              "Quality (1.5x)",
+              "Balanced (1.7x)",
+              "Performance (2.0x)",
+              "Ultra Performance (3.0x)",
+              "Off",
+              "Motion vectors",
+              "Disocclusion",
+              "Depth",
+              "Accumulation age",
+              "Locks",
+              "Exposure",
+              "Shading change"
+            ],
+            "primitives": null,
+            "optionalUpscaler": null,
+            "benchmarkViews": [
+              {
+                "control": "Native (full res)",
+                "mode": "native",
+                "ready": true,
+                "activeDebugView": 0,
+                "requestedDebugView": 0,
+                "screenshot": "bench-select-0-0.png"
+              },
+              {
+                "control": "Bilinear upscale",
+                "mode": "bilinear",
+                "ready": true,
+                "activeDebugView": 0,
+                "requestedDebugView": 0,
+                "screenshot": "bench-select-0-1.png"
+              },
+              {
+                "control": "FSR1 spatial (EASU+RCAS)",
+                "mode": "fsr1-spatial",
+                "ready": true,
+                "activeDebugView": 0,
+                "requestedDebugView": 0,
+                "screenshot": "bench-select-0-2.png"
+              },
+              {
+                "control": "FSR3 temporal",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 0,
+                "requestedDebugView": 0,
+                "screenshot": "bench-select-0-3.png"
+              },
+              {
+                "control": "Native AA (1.0x)",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 0,
+                "requestedDebugView": 0,
+                "screenshot": "bench-select-1-0.png"
+              },
+              {
+                "control": "Quality (1.5x)",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 0,
+                "requestedDebugView": 0,
+                "screenshot": "bench-select-1-1.png"
+              },
+              {
+                "control": "Balanced (1.7x)",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 0,
+                "requestedDebugView": 0,
+                "screenshot": "bench-select-1-2.png"
+              },
+              {
+                "control": "Performance (2.0x)",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 0,
+                "requestedDebugView": 0,
+                "screenshot": "bench-select-1-3.png"
+              },
+              {
+                "control": "Ultra Performance (3.0x)",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 0,
+                "requestedDebugView": 0,
+                "screenshot": "bench-select-1-4.png"
+              },
+              {
+                "control": "Off",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 0,
+                "requestedDebugView": 0,
+                "screenshot": "bench-select-2-0.png"
+              },
+              {
+                "control": "Motion vectors",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 1,
+                "requestedDebugView": 1,
+                "screenshot": "bench-select-2-1.png"
+              },
+              {
+                "control": "Disocclusion",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 2,
+                "requestedDebugView": 2,
+                "screenshot": "bench-select-2-2.png"
+              },
+              {
+                "control": "Depth",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 3,
+                "requestedDebugView": 3,
+                "screenshot": "bench-select-2-3.png"
+              },
+              {
+                "control": "Accumulation age",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 4,
+                "requestedDebugView": 4,
+                "screenshot": "bench-select-2-4.png"
+              },
+              {
+                "control": "Locks",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 5,
+                "requestedDebugView": 5,
+                "screenshot": "bench-select-2-5.png"
+              },
+              {
+                "control": "Exposure",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 6,
+                "requestedDebugView": 6,
+                "screenshot": "bench-select-2-6.png"
+              },
+              {
+                "control": "Shading change",
+                "mode": "upscale-temporal",
+                "ready": true,
+                "activeDebugView": 7,
+                "requestedDebugView": 7,
+                "screenshot": "bench-select-2-7.png"
+              }
+            ],
+            "syncComputeCalls": 0
+          },
+          "issues": []
+        }
+      ]
+    }
+  },
+  "performance": {
+    "scatter-nvidia": {
+      "complete": true,
+      "options": {
+        "smoke": true,
+        "variant": "local-baseline-5d6a65e",
+        "comparison": "reconstruct-cross-frame-v1",
+        "ratios": "1,2,3",
+        "blocks": "4",
+        "warmup": 60,
+        "samples": 120,
+        "power-preference": "high-performance",
+        "expected-vendor": "nvidia",
+        "chrome": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "output": "bench/results/windows-local/cross-device/scatter-nvidia",
+        "baseUrl": "http://127.0.0.1:5199",
+        "mode": "performance",
+        "experiment": "E00"
+      },
+      "gpuAudit": {
+        "options": {
+          "powerPreference": "high-performance",
+          "expectedVendor": "nvidia",
+          "withoutTimestamps": false
+        },
+        "requests": [
+          {
+            "requested": {
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "effective": {
+              "powerPreference": "high-performance",
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "info": {
+              "vendor": "nvidia",
+              "architecture": "ampere",
+              "device": "",
+              "description": ""
+            }
+          }
+        ],
+        "devices": [
+          {
+            "info": {
+              "vendor": "nvidia",
+              "architecture": "ampere",
+              "device": "",
+              "description": ""
+            },
+            "features": [
+              "bgra8unorm-storage",
+              "clip-distances",
+              "core-features-and-limits",
+              "depth-clip-control",
+              "depth32float-stencil8",
+              "dual-source-blending",
+              "float32-blendable",
+              "float32-filterable",
+              "indirect-first-instance",
+              "rg11b10ufloat-renderable",
+              "shader-f16",
+              "subgroups",
+              "texture-compression-bc",
+              "texture-compression-bc-sliced-3d",
+              "texture-formats-tier1",
+              "texture-formats-tier2",
+              "timestamp-query"
+            ],
+            "limits": {
+              "maxTextureDimension2D": 8192,
+              "maxComputeInvocationsPerWorkgroup": 256
+            },
+            "lost": null
+          }
+        ]
+      },
+      "results": [
+        {
+          "ratio": 1,
+          "label": "compute-sum",
+          "medianA": 2.109568,
+          "medianB": 1.874176,
+          "signedDelta": -0.11088663521602526,
+          "noiseFloor": 0.19104113705672107,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": true
+        },
+        {
+          "ratio": 1,
+          "label": "accumulate",
+          "medianA": 1.0894080000000002,
+          "medianB": 1.0298880000000001,
+          "signedDelta": -0.05370481945685557,
+          "noiseFloor": 0.20423498537742107,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 1,
+          "label": "exposure",
+          "medianA": 0.064,
+          "medianB": 0.061696,
+          "signedDelta": -0.035561103642532454,
+          "noiseFloor": 0.12455845248107658,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 1,
+          "label": "rcas",
+          "medianA": 0.204032,
+          "medianB": 0.19584000000000001,
+          "signedDelta": -0.03964509341967665,
+          "noiseFloor": 0.13357391737182667,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 1,
+          "label": "reconstruct",
+          "medianA": 0.27238399999999996,
+          "medianB": 0.326528,
+          "signedDelta": 0.19957282177990332,
+          "noiseFloor": 0.1864985815925605,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 1,
+          "label": "shadingChange",
+          "medianA": 0.27238399999999996,
+          "medianB": 0.25984,
+          "signedDelta": -0.04518392816107186,
+          "noiseFloor": 0.1887647668227339,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 2,
+          "label": "compute-sum",
+          "medianA": 1.522176,
+          "medianB": 1.3670399999999998,
+          "signedDelta": -0.08985540007909326,
+          "noiseFloor": 0.4668521378378571,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": true
+        },
+        {
+          "ratio": 2,
+          "label": "accumulate",
+          "medianA": 1.0172160000000001,
+          "medianB": 0.9349120000000001,
+          "signedDelta": -0.06358966153798223,
+          "noiseFloor": 0.4899757053806754,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 2,
+          "label": "exposure",
+          "medianA": 0.061824000000000004,
+          "medianB": 0.058368,
+          "signedDelta": -0.04919053549190544,
+          "noiseFloor": 0.34403514700912463,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 2,
+          "label": "rcas",
+          "medianA": 0.196608,
+          "medianB": 0.187136,
+          "signedDelta": -0.0386956998683633,
+          "noiseFloor": 0.3825084001033856,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 2,
+          "label": "reconstruct",
+          "medianA": 0.070016,
+          "medianB": 0.08063999999999999,
+          "signedDelta": 0.16712898751733685,
+          "noiseFloor": 0.45098613909751467,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 2,
+          "label": "shadingChange",
+          "medianA": 0.080896,
+          "medianB": 0.07731199999999999,
+          "signedDelta": -0.03110794732292682,
+          "noiseFloor": 0.42901870237820355,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 3,
+          "label": "compute-sum",
+          "medianA": 1.4842879999999998,
+          "medianB": 1.359744,
+          "signedDelta": -0.08059243885827799,
+          "noiseFloor": 0.5890835082441256,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": true
+        },
+        {
+          "ratio": 3,
+          "label": "accumulate",
+          "medianA": 1.009024,
+          "medianB": 1.008384,
+          "signedDelta": 0.022493762099631165,
+          "noiseFloor": 0.5712317371119897,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 3,
+          "label": "exposure",
+          "medianA": 0.061183999999999995,
+          "medianB": 0.060927999999999996,
+          "signedDelta": 0.005124399208368713,
+          "noiseFloor": 0.397296309828279,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 3,
+          "label": "rcas",
+          "medianA": 0.19712000000000002,
+          "medianB": 0.193664,
+          "signedDelta": -0.00647245878371,
+          "noiseFloor": 0.44293719525507586,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 3,
+          "label": "reconstruct",
+          "medianA": 0.034816,
+          "medianB": 0.041472,
+          "signedDelta": 0.20789473684210535,
+          "noiseFloor": 0.48435374149659854,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 3,
+          "label": "shadingChange",
+          "medianA": 0.048896,
+          "medianB": 0.048128000000000004,
+          "signedDelta": -0.005869324473975646,
+          "noiseFloor": 0.4430757745427397,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        }
+      ]
+    },
+    "source-filter-bundle-v1-nvidia": {
+      "complete": true,
+      "options": {
+        "smoke": true,
+        "variant": "rcas-fsr315-limiter",
+        "comparison": "source-filter-bundle-v1",
+        "ratios": "2",
+        "blocks": "4",
+        "warmup": 60,
+        "samples": 120,
+        "power-preference": "high-performance",
+        "expected-vendor": "nvidia",
+        "chrome": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "output": "bench/results/windows-local/cross-device/source-filter-bundle-v1-nvidia",
+        "baseUrl": "http://127.0.0.1:5199",
+        "mode": "performance",
+        "experiment": "E00"
+      },
+      "gpuAudit": {
+        "options": {
+          "powerPreference": "high-performance",
+          "expectedVendor": "nvidia",
+          "withoutTimestamps": false
+        },
+        "requests": [
+          {
+            "requested": {
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "effective": {
+              "powerPreference": "high-performance",
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "info": {
+              "vendor": "nvidia",
+              "architecture": "ampere",
+              "device": "",
+              "description": ""
+            }
+          }
+        ],
+        "devices": [
+          {
+            "info": {
+              "vendor": "nvidia",
+              "architecture": "ampere",
+              "device": "",
+              "description": ""
+            },
+            "features": [
+              "bgra8unorm-storage",
+              "clip-distances",
+              "core-features-and-limits",
+              "depth-clip-control",
+              "depth32float-stencil8",
+              "dual-source-blending",
+              "float32-blendable",
+              "float32-filterable",
+              "indirect-first-instance",
+              "rg11b10ufloat-renderable",
+              "shader-f16",
+              "subgroups",
+              "texture-compression-bc",
+              "texture-compression-bc-sliced-3d",
+              "texture-formats-tier1",
+              "texture-formats-tier2",
+              "timestamp-query"
+            ],
+            "limits": {
+              "maxTextureDimension2D": 8192,
+              "maxComputeInvocationsPerWorkgroup": 256
+            },
+            "lost": null
+          }
+        ]
+      },
+      "results": [
+        {
+          "ratio": 2,
+          "label": "compute-sum",
+          "medianA": 1.330944,
+          "medianB": 2.202752,
+          "signedDelta": 0.4591702745256564,
+          "noiseFloor": 0.7929924883926281,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": true
+        },
+        {
+          "ratio": 2,
+          "label": "accumulate",
+          "medianA": 0.88064,
+          "medianB": 1.649152,
+          "signedDelta": 0.6352680831499448,
+          "noiseFloor": 0.8100053291341022,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 2,
+          "label": "depthClip",
+          "medianA": 0.05376,
+          "medianB": 0.07603199999999999,
+          "signedDelta": 0.40909090909090906,
+          "noiseFloor": 0.5833344546861332,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 2,
+          "label": "exposure",
+          "medianA": 0.057856,
+          "medianB": 0.136192,
+          "signedDelta": 1.2414589894563879,
+          "noiseFloor": 0.5929096671949285,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 2,
+          "label": "rcas",
+          "medianA": 0.19302400000000003,
+          "medianB": 0.245504,
+          "signedDelta": 0.19079229122055663,
+          "noiseFloor": 0.7692582551701931,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        }
+      ]
+    },
+    "source-structural-bundle-v1-nvidia": {
+      "complete": true,
+      "options": {
+        "smoke": true,
+        "variant": "rcas-fsr315-limiter",
+        "comparison": "source-structural-bundle-v1",
+        "ratios": "2",
+        "blocks": "4",
+        "warmup": 60,
+        "samples": 120,
+        "power-preference": "high-performance",
+        "expected-vendor": "nvidia",
+        "chrome": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "output": "bench/results/windows-local/cross-device/source-structural-bundle-v1-nvidia",
+        "baseUrl": "http://127.0.0.1:5199",
+        "mode": "performance",
+        "experiment": "E00"
+      },
+      "gpuAudit": {
+        "options": {
+          "powerPreference": "high-performance",
+          "expectedVendor": "nvidia",
+          "withoutTimestamps": false
+        },
+        "requests": [
+          {
+            "requested": {
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "effective": {
+              "powerPreference": "high-performance",
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "info": {
+              "vendor": "nvidia",
+              "architecture": "ampere",
+              "device": "",
+              "description": ""
+            }
+          }
+        ],
+        "devices": [
+          {
+            "info": {
+              "vendor": "nvidia",
+              "architecture": "ampere",
+              "device": "",
+              "description": ""
+            },
+            "features": [
+              "bgra8unorm-storage",
+              "clip-distances",
+              "core-features-and-limits",
+              "depth-clip-control",
+              "depth32float-stencil8",
+              "dual-source-blending",
+              "float32-blendable",
+              "float32-filterable",
+              "indirect-first-instance",
+              "rg11b10ufloat-renderable",
+              "shader-f16",
+              "subgroups",
+              "texture-compression-bc",
+              "texture-compression-bc-sliced-3d",
+              "texture-formats-tier1",
+              "texture-formats-tier2",
+              "timestamp-query"
+            ],
+            "limits": {
+              "maxTextureDimension2D": 8192,
+              "maxComputeInvocationsPerWorkgroup": 256
+            },
+            "lost": null
+          }
+        ]
+      },
+      "results": [
+        {
+          "ratio": 2,
+          "label": "compute-sum",
+          "medianA": 1.9584,
+          "medianB": 1.810048,
+          "signedDelta": 0.02434922543895357,
+          "noiseFloor": 0.9183657339855297,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": true
+        },
+        {
+          "ratio": 2,
+          "label": "accumulate",
+          "medianA": 1.2933120000000002,
+          "medianB": 1.249024,
+          "signedDelta": 0.0402550321734344,
+          "noiseFloor": 0.9487315742447329,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 2,
+          "label": "depthClip",
+          "medianA": 0.063488,
+          "medianB": 0.07500799999999999,
+          "signedDelta": 0.20078299776286357,
+          "noiseFloor": 0.6351798056696383,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 2,
+          "label": "exposure",
+          "medianA": 0.073728,
+          "medianB": 0.114688,
+          "signedDelta": 0.7082027168234064,
+          "noiseFloor": 0.7175950486295312,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 2,
+          "label": "rcas",
+          "medianA": 0.259968,
+          "medianB": 0.195456,
+          "signedDelta": -0.2051904343339272,
+          "noiseFloor": 0.8591983987743704,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        }
+      ]
+    },
+    "source-spd-resolver-bundle-v1-nvidia": {
+      "complete": true,
+      "options": {
+        "smoke": true,
+        "variant": "rcas-fsr315-limiter",
+        "comparison": "source-spd-resolver-bundle-v1",
+        "ratios": "2",
+        "blocks": "4",
+        "warmup": 60,
+        "samples": 120,
+        "power-preference": "high-performance",
+        "expected-vendor": "nvidia",
+        "chrome": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "output": "bench/results/windows-local/cross-device/source-spd-resolver-bundle-v1-nvidia",
+        "baseUrl": "http://127.0.0.1:5199",
+        "mode": "performance",
+        "experiment": "E00"
+      },
+      "gpuAudit": {
+        "options": {
+          "powerPreference": "high-performance",
+          "expectedVendor": "nvidia",
+          "withoutTimestamps": false
+        },
+        "requests": [
+          {
+            "requested": {
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "effective": {
+              "powerPreference": "high-performance",
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "info": {
+              "vendor": "nvidia",
+              "architecture": "ampere",
+              "device": "",
+              "description": ""
+            }
+          }
+        ],
+        "devices": [
+          {
+            "info": {
+              "vendor": "nvidia",
+              "architecture": "ampere",
+              "device": "",
+              "description": ""
+            },
+            "features": [
+              "bgra8unorm-storage",
+              "clip-distances",
+              "core-features-and-limits",
+              "depth-clip-control",
+              "depth32float-stencil8",
+              "dual-source-blending",
+              "float32-blendable",
+              "float32-filterable",
+              "indirect-first-instance",
+              "rg11b10ufloat-renderable",
+              "shader-f16",
+              "subgroups",
+              "texture-compression-bc",
+              "texture-compression-bc-sliced-3d",
+              "texture-formats-tier1",
+              "texture-formats-tier2",
+              "timestamp-query"
+            ],
+            "limits": {
+              "maxTextureDimension2D": 8192,
+              "maxComputeInvocationsPerWorkgroup": 256
+            },
+            "lost": null
+          }
+        ]
+      },
+      "results": [
+        {
+          "ratio": 2,
+          "label": "compute-sum",
+          "medianA": 1.9118080000000002,
+          "medianB": 3.8118399999999992,
+          "signedDelta": 0.5165139689187914,
+          "noiseFloor": 0.8567709077618003,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": true
+        },
+        {
+          "ratio": 2,
+          "label": "accumulate",
+          "medianA": 1.1852800000000001,
+          "medianB": 2.11904,
+          "signedDelta": 0.29051800356998986,
+          "noiseFloor": 0.8927794293129255,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 2,
+          "label": "depthClip",
+          "medianA": 0.06208,
+          "medianB": 0.114432,
+          "signedDelta": 0.3263427109974426,
+          "noiseFloor": 1.527618966107497,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 2,
+          "label": "rcas",
+          "medianA": 0.251264,
+          "medianB": 0.322688,
+          "signedDelta": -0.05327608091216962,
+          "noiseFloor": 0.8262508486322877,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        }
+      ]
+    },
+    "scatter-intel": {
+      "complete": true,
+      "options": {
+        "smoke": true,
+        "variant": "local-baseline-5d6a65e",
+        "comparison": "reconstruct-cross-frame-v1",
+        "ratios": "1,2,3",
+        "blocks": "4",
+        "warmup": 60,
+        "samples": 120,
+        "power-preference": "low-power",
+        "expected-vendor": "intel",
+        "chrome": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+        "output": "bench/results/windows-local/cross-device/scatter-intel",
+        "baseUrl": "http://127.0.0.1:5199",
+        "mode": "performance",
+        "experiment": "E00"
+      },
+      "gpuAudit": {
+        "options": {
+          "powerPreference": "low-power",
+          "expectedVendor": "intel",
+          "withoutTimestamps": false
+        },
+        "requests": [
+          {
+            "requested": {
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "effective": {
+              "powerPreference": "low-power",
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "info": {
+              "vendor": "intel",
+              "architecture": "gen-12lp",
+              "device": "",
+              "description": ""
+            }
+          }
+        ],
+        "devices": [
+          {
+            "info": {
+              "vendor": "intel",
+              "architecture": "gen-12lp",
+              "device": "",
+              "description": ""
+            },
+            "features": [
+              "bgra8unorm-storage",
+              "clip-distances",
+              "core-features-and-limits",
+              "depth-clip-control",
+              "depth32float-stencil8",
+              "dual-source-blending",
+              "float32-blendable",
+              "float32-filterable",
+              "indirect-first-instance",
+              "rg11b10ufloat-renderable",
+              "shader-f16",
+              "subgroups",
+              "texture-compression-bc",
+              "texture-compression-bc-sliced-3d",
+              "texture-formats-tier1",
+              "texture-formats-tier2",
+              "timestamp-query"
+            ],
+            "limits": {
+              "maxTextureDimension2D": 8192,
+              "maxComputeInvocationsPerWorkgroup": 256
+            },
+            "lost": null
+          }
+        ]
+      },
+      "results": [
+        {
+          "ratio": 1,
+          "label": "compute-sum",
+          "medianA": 36.305033,
+          "medianB": 31.995659875,
+          "signedDelta": -0.10641742526981363,
+          "noiseFloor": 0.288305175793708,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": true
+        },
+        {
+          "ratio": 1,
+          "label": "accumulate",
+          "medianA": 20.3598335,
+          "medianB": 20.204424375000002,
+          "signedDelta": -0.006002991538737457,
+          "noiseFloor": 0.26307950938761704,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 1,
+          "label": "exposure",
+          "medianA": 0.2638655,
+          "medianB": 0.232667875,
+          "signedDelta": -0.10256985865428625,
+          "noiseFloor": 0.4378987445535876,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 1,
+          "label": "rcas",
+          "medianA": 3.029531875,
+          "medianB": 3.022539875,
+          "signedDelta": 0.000028505531307843057,
+          "noiseFloor": 0.2594488704204279,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 1,
+          "label": "reconstruct",
+          "medianA": 3.6656477499999998,
+          "medianB": 3.48150175,
+          "signedDelta": -0.0501540138061663,
+          "noiseFloor": 0.28834093546352924,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 1,
+          "label": "shadingChange",
+          "medianA": 4.136432749999999,
+          "medianB": 4.10182325,
+          "signedDelta": -0.008263818089441821,
+          "noiseFloor": 0.33761464929969187,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 2,
+          "label": "compute-sum",
+          "medianA": 24.312269125,
+          "medianB": 23.529624875,
+          "signedDelta": -0.028040217874954476,
+          "noiseFloor": 0.08121503094537534,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": true
+        },
+        {
+          "ratio": 2,
+          "label": "accumulate",
+          "medianA": 18.887759625,
+          "medianB": 18.864745375000002,
+          "signedDelta": -0.005619269664653537,
+          "noiseFloor": 0.05660172612020435,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 2,
+          "label": "exposure",
+          "medianA": 0.16800025000000002,
+          "medianB": 0.15667225,
+          "signedDelta": -0.045938890195717286,
+          "noiseFloor": 0.12065456164366878,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 2,
+          "label": "rcas",
+          "medianA": 2.9741478750000003,
+          "medianB": 2.8773062499999997,
+          "signedDelta": -0.025323954673056814,
+          "noiseFloor": 0.10362569487072355,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 2,
+          "label": "reconstruct",
+          "medianA": 0.842416625,
+          "medianB": 0.7692725,
+          "signedDelta": -0.06396613285504016,
+          "noiseFloor": 0.11298037221497664,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 2,
+          "label": "shadingChange",
+          "medianA": 0.8481717500000001,
+          "medianB": 0.8067982499999999,
+          "signedDelta": -0.006197198460159814,
+          "noiseFloor": 0.29213619090915544,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 3,
+          "label": "compute-sum",
+          "medianA": 22.758432,
+          "medianB": 22.79705775,
+          "signedDelta": 0.004814902259968834,
+          "noiseFloor": 0.020942898940604904,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": true
+        },
+        {
+          "ratio": 3,
+          "label": "accumulate",
+          "medianA": 18.61938225,
+          "medianB": 18.815644125,
+          "signedDelta": 0.010542992293448905,
+          "noiseFloor": 0.024695084794296367,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 3,
+          "label": "exposure",
+          "medianA": 0.15415275,
+          "medianB": 0.1480915,
+          "signedDelta": -0.03816229358851614,
+          "noiseFloor": 0.09201300828029677,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 3,
+          "label": "rcas",
+          "medianA": 2.913067625,
+          "medianB": 2.9653656249999996,
+          "signedDelta": 0.0153699261547795,
+          "noiseFloor": 0.034297383951895896,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 3,
+          "label": "reconstruct",
+          "medianA": 0.41600000000000004,
+          "medianB": 0.39853275,
+          "signedDelta": -0.04708930559339575,
+          "noiseFloor": 0.07096634482477232,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 3,
+          "label": "shadingChange",
+          "medianA": 0.38416425,
+          "medianB": 0.41063525,
+          "signedDelta": 0.06846423701135751,
+          "noiseFloor": 0.1207361917476428,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        }
+      ]
+    },
+    "source-filter-bundle-v1-intel": {
+      "complete": true,
+      "options": {
+        "smoke": true,
+        "variant": "rcas-fsr315-limiter",
+        "comparison": "source-filter-bundle-v1",
+        "ratios": "2",
+        "blocks": "4",
+        "warmup": 60,
+        "samples": 120,
+        "power-preference": "low-power",
+        "expected-vendor": "intel",
+        "chrome": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+        "output": "bench/results/windows-local/cross-device/source-filter-bundle-v1-intel",
+        "baseUrl": "http://127.0.0.1:5199",
+        "mode": "performance",
+        "experiment": "E00"
+      },
+      "gpuAudit": {
+        "options": {
+          "powerPreference": "low-power",
+          "expectedVendor": "intel",
+          "withoutTimestamps": false
+        },
+        "requests": [
+          {
+            "requested": {
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "effective": {
+              "powerPreference": "low-power",
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "info": {
+              "vendor": "intel",
+              "architecture": "gen-12lp",
+              "device": "",
+              "description": ""
+            }
+          }
+        ],
+        "devices": [
+          {
+            "info": {
+              "vendor": "intel",
+              "architecture": "gen-12lp",
+              "device": "",
+              "description": ""
+            },
+            "features": [
+              "bgra8unorm-storage",
+              "clip-distances",
+              "core-features-and-limits",
+              "depth-clip-control",
+              "depth32float-stencil8",
+              "dual-source-blending",
+              "float32-blendable",
+              "float32-filterable",
+              "indirect-first-instance",
+              "rg11b10ufloat-renderable",
+              "shader-f16",
+              "subgroups",
+              "texture-compression-bc",
+              "texture-compression-bc-sliced-3d",
+              "texture-formats-tier1",
+              "texture-formats-tier2",
+              "timestamp-query"
+            ],
+            "limits": {
+              "maxTextureDimension2D": 8192,
+              "maxComputeInvocationsPerWorkgroup": 256
+            },
+            "lost": null
+          }
+        ]
+      },
+      "results": [
+        {
+          "ratio": 2,
+          "label": "compute-sum",
+          "medianA": 24.537705,
+          "medianB": 20.7471225,
+          "signedDelta": -0.1548900979665861,
+          "noiseFloor": 0.38961002579408194,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": true
+        },
+        {
+          "ratio": 2,
+          "label": "accumulate",
+          "medianA": 17.703964624999998,
+          "medianB": 15.395242125,
+          "signedDelta": -0.13617356481501136,
+          "noiseFloor": 0.32619021207248267,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 2,
+          "label": "depthClip",
+          "medianA": 0.378897625,
+          "medianB": 0.439873625,
+          "signedDelta": 0.16667103623104007,
+          "noiseFloor": 0.47667191250071633,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 2,
+          "label": "exposure",
+          "medianA": 0.16149,
+          "medianB": 0.25352712499999996,
+          "signedDelta": 0.5668493258580258,
+          "noiseFloor": 0.6637051991208619,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 2,
+          "label": "rcas",
+          "medianA": 4.251946,
+          "medianB": 3.7729125,
+          "signedDelta": -0.1141561058808433,
+          "noiseFloor": 0.478890184304382,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        }
+      ]
+    },
+    "source-structural-bundle-v1-intel": {
+      "complete": true,
+      "options": {
+        "smoke": true,
+        "variant": "rcas-fsr315-limiter",
+        "comparison": "source-structural-bundle-v1",
+        "ratios": "2",
+        "blocks": "4",
+        "warmup": 60,
+        "samples": 120,
+        "power-preference": "low-power",
+        "expected-vendor": "intel",
+        "chrome": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+        "output": "bench/results/windows-local/cross-device/source-structural-bundle-v1-intel-complete",
+        "baseUrl": "http://127.0.0.1:5199",
+        "mode": "performance",
+        "experiment": "E00"
+      },
+      "gpuAudit": {
+        "options": {
+          "powerPreference": "low-power",
+          "expectedVendor": "intel",
+          "withoutTimestamps": false
+        },
+        "requests": [
+          {
+            "requested": {
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "effective": {
+              "powerPreference": "low-power",
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "info": {
+              "vendor": "intel",
+              "architecture": "gen-12lp",
+              "device": "",
+              "description": ""
+            }
+          }
+        ],
+        "devices": [
+          {
+            "info": {
+              "vendor": "intel",
+              "architecture": "gen-12lp",
+              "device": "",
+              "description": ""
+            },
+            "features": [
+              "bgra8unorm-storage",
+              "clip-distances",
+              "core-features-and-limits",
+              "depth-clip-control",
+              "depth32float-stencil8",
+              "dual-source-blending",
+              "float32-blendable",
+              "float32-filterable",
+              "indirect-first-instance",
+              "rg11b10ufloat-renderable",
+              "shader-f16",
+              "subgroups",
+              "texture-compression-bc",
+              "texture-compression-bc-sliced-3d",
+              "texture-formats-tier1",
+              "texture-formats-tier2",
+              "timestamp-query"
+            ],
+            "limits": {
+              "maxTextureDimension2D": 8192,
+              "maxComputeInvocationsPerWorkgroup": 256
+            },
+            "lost": null
+          }
+        ]
+      },
+      "results": [
+        {
+          "ratio": 2,
+          "label": "compute-sum",
+          "medianA": 25.386292875,
+          "medianB": 21.45475475,
+          "signedDelta": -0.14661445080955687,
+          "noiseFloor": 0.32511227460750397,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": true
+        },
+        {
+          "ratio": 2,
+          "label": "accumulate",
+          "medianA": 18.439364125,
+          "medianB": 15.135393749999999,
+          "signedDelta": -0.17408259335099457,
+          "noiseFloor": 0.2813734376962473,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 2,
+          "label": "depthClip",
+          "medianA": 0.35516712500000003,
+          "medianB": 0.49702825,
+          "signedDelta": 0.40502169345846173,
+          "noiseFloor": 0.5504366420515101,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 2,
+          "label": "exposure",
+          "medianA": 0.18201699999999998,
+          "medianB": 0.23088375,
+          "signedDelta": 0.29502654516930205,
+          "noiseFloor": 0.5922077421677328,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 2,
+          "label": "rcas",
+          "medianA": 4.362043125,
+          "medianB": 3.7022945,
+          "signedDelta": -0.14743201375852322,
+          "noiseFloor": 0.3591467263947136,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        }
+      ]
+    },
+    "source-spd-resolver-bundle-v1-intel": {
+      "complete": true,
+      "options": {
+        "smoke": true,
+        "variant": "rcas-fsr315-limiter",
+        "comparison": "source-spd-resolver-bundle-v1",
+        "ratios": "2",
+        "blocks": "4",
+        "warmup": 60,
+        "samples": 120,
+        "port": "9367",
+        "power-preference": "low-power",
+        "expected-vendor": "intel",
+        "chrome": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+        "output": "bench/results/windows-local/cross-device/source-spd-resolver-bundle-v1-intel-clean",
+        "baseUrl": "http://127.0.0.1:5199",
+        "mode": "performance",
+        "experiment": "E00"
+      },
+      "gpuAudit": {
+        "options": {
+          "powerPreference": "low-power",
+          "expectedVendor": "intel",
+          "withoutTimestamps": false
+        },
+        "requests": [
+          {
+            "requested": {
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "effective": {
+              "powerPreference": "low-power",
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "info": {
+              "vendor": "intel",
+              "architecture": "gen-12lp",
+              "device": "",
+              "description": ""
+            }
+          }
+        ],
+        "devices": [
+          {
+            "info": {
+              "vendor": "intel",
+              "architecture": "gen-12lp",
+              "device": "",
+              "description": ""
+            },
+            "features": [
+              "bgra8unorm-storage",
+              "clip-distances",
+              "core-features-and-limits",
+              "depth-clip-control",
+              "depth32float-stencil8",
+              "dual-source-blending",
+              "float32-blendable",
+              "float32-filterable",
+              "indirect-first-instance",
+              "rg11b10ufloat-renderable",
+              "shader-f16",
+              "subgroups",
+              "texture-compression-bc",
+              "texture-compression-bc-sliced-3d",
+              "texture-formats-tier1",
+              "texture-formats-tier2",
+              "timestamp-query"
+            ],
+            "limits": {
+              "maxTextureDimension2D": 8192,
+              "maxComputeInvocationsPerWorkgroup": 256
+            },
+            "lost": null
+          }
+        ]
+      },
+      "results": [
+        {
+          "ratio": 2,
+          "label": "compute-sum",
+          "medianA": 27.422074625,
+          "medianB": 24.139830375,
+          "signedDelta": -0.07010416810114783,
+          "noiseFloor": 0.33492936787052435,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": true
+        },
+        {
+          "ratio": 2,
+          "label": "accumulate",
+          "medianA": 19.782435,
+          "medianB": 14.973591500000001,
+          "signedDelta": -0.20185284229970096,
+          "noiseFloor": 0.28084459796120487,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 2,
+          "label": "depthClip",
+          "medianA": 0.40094125,
+          "medianB": 0.5001791250000001,
+          "signedDelta": 0.2631803445417624,
+          "noiseFloor": 0.3283135212757155,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        },
+        {
+          "ratio": 2,
+          "label": "rcas",
+          "medianA": 4.910959125,
+          "medianB": 2.4820418749999997,
+          "signedDelta": -0.48211747277943395,
+          "noiseFloor": 0.36867614981952956,
+          "clearsThreeTimesNoise": false,
+          "timerResolutionLimited": false,
+          "individualClaimEligible": false
+        }
+      ]
+    }
+  },
+  "timers": {
+    "nvidia": {
+      "gpuAudit": {
+        "options": {
+          "powerPreference": "high-performance",
+          "expectedVendor": "nvidia",
+          "withoutTimestamps": false
+        },
+        "requests": [
+          {
+            "requested": {
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "effective": {
+              "powerPreference": "high-performance",
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "info": {
+              "vendor": "nvidia",
+              "architecture": "ampere",
+              "device": "",
+              "description": ""
+            }
+          }
+        ],
+        "devices": [
+          {
+            "info": {
+              "vendor": "nvidia",
+              "architecture": "ampere",
+              "device": "",
+              "description": ""
+            },
+            "features": [
+              "bgra8unorm-storage",
+              "clip-distances",
+              "core-features-and-limits",
+              "depth-clip-control",
+              "depth32float-stencil8",
+              "dual-source-blending",
+              "float32-blendable",
+              "float32-filterable",
+              "indirect-first-instance",
+              "rg11b10ufloat-renderable",
+              "shader-f16",
+              "subgroups",
+              "texture-compression-bc",
+              "texture-compression-bc-sliced-3d",
+              "texture-formats-tier1",
+              "texture-formats-tier2",
+              "timestamp-query"
+            ],
+            "limits": {
+              "maxTextureDimension2D": 8192,
+              "maxComputeInvocationsPerWorkgroup": 256
+            },
+            "lost": null
+          }
+        ]
+      },
+      "frames": 100,
+      "warmup": 60,
+      "blocks": 12,
+      "inflight": 8,
+      "attachOnly": true,
+      "results": [
+        {
+          "condition": {
+            "spec": "temporal:2:dispatch:none",
+            "path": "temporal",
+            "ratio": 2,
+            "mode": "dispatch",
+            "variant": "none"
+          },
+          "renderSize": [
+            960,
+            540
+          ],
+          "summary": {
+            "onMs": 5.22375,
+            "offMs": 5.223500000033528,
+            "deltaMs": 0.004749999996274568,
+            "overhead": 0.000908981241539486,
+            "noise": 0.0013395849306695063,
+            "overheadRange": [
+              -0.15890990542899885,
+              0.6517739816014492
+            ],
+            "cpuOn": 0.10399999983608724,
+            "cpuOff": 0.10899999996647239,
+            "timedShare": 0,
+            "timerGpuMs": 0,
+            "perBlock": [
+              {
+                "onMs": 2.513999999985099,
+                "offMs": 1.5219999999925493,
+                "overhead": 0.6517739816014492,
+                "deltaMs": 0.9919999999925495,
+                "noise": 1.1527446300665771,
+                "cpuOn": 0.11050000004470348,
+                "cpuOff": 0.10950000017881394,
+                "timedShare": 0,
+                "timerGpuMs": 0
+              },
+              {
+                "onMs": 3.3794999999925492,
+                "offMs": 4.018000000007451,
+                "overhead": -0.15890990542899885,
+                "deltaMs": -0.6385000000149015,
+                "noise": 0.6566060068027788,
+                "cpuOn": 0.14949999984353782,
+                "cpuOff": 0.1800000002980232,
+                "timedShare": 0,
+                "timerGpuMs": 0
+              },
+              {
+                "onMs": 5.133500000014902,
+                "offMs": 4.524000000022352,
+                "overhead": 0.13472590627531789,
+                "deltaMs": 0.6094999999925497,
+                "noise": 0.042660952577962104,
+                "cpuOn": 0.10899999968707562,
+                "cpuOff": 0.0960000003874302,
+                "timedShare": 0,
+                "timerGpuMs": 0
+              },
+              {
+                "onMs": 5.2235000000149014,
+                "offMs": 5.22050000000745,
+                "overhead": 0.0005746576012732874,
+                "deltaMs": 0.0030000000074510424,
+                "noise": 0.0013400976413865283,
+                "cpuOn": 0.08799999963492156,
+                "cpuOff": 0.09849999949336052,
+                "timedShare": 0,
+                "timerGpuMs": 0
+              },
+              {
+                "onMs": 5.2275,
+                "offMs": 5.223000000044704,
+                "overhead": 0.0008615737995898431,
+                "deltaMs": 0.004499999955296374,
+                "noise": 0.0013390722199524844,
+                "cpuOn": 0.15999999992549419,
+                "cpuOff": 0.12250000029802323,
+                "timedShare": 0,
+                "timerGpuMs": 0
+              },
+              {
+                "onMs": 5.233000000007451,
+                "offMs": 5.227999999970198,
+                "overhead": 0.0009563886834891289,
+                "deltaMs": 0.005000000037252761,
+                "noise": 0.00038218993986126966,
+                "cpuOn": 0.09200000084936619,
+                "cpuOff": 0.15650000013411045,
+                "timedShare": 0,
+                "timerGpuMs": 0
+              },
+              {
+                "onMs": 5.223000000007451,
+                "offMs": 5.418000000007451,
+                "overhead": -0.03599114064225395,
+                "deltaMs": -0.19500000000000028,
+                "noise": 0.0007658433821736328,
+                "cpuOn": 0.1150000000372529,
+                "cpuOff": 0.10800000023096801,
+                "timedShare": 0,
+                "timerGpuMs": 0
+              },
+              {
+                "onMs": 5.223999999985098,
+                "offMs": 5.229500000029802,
+                "overhead": -0.0010517257949463898,
+                "deltaMs": -0.0055000000447034125,
+                "noise": 0.0026799387556745878,
+                "cpuOn": 0.11050000045448542,
+                "cpuOff": 0.1174999999627471,
+                "timedShare": 0,
+                "timerGpuMs": 0
+              },
+              {
+                "onMs": 5.234000000022352,
+                "offMs": 5.219499999992549,
+                "overhead": 0.0027780438796480844,
+                "deltaMs": 0.014500000029802784,
+                "noise": 0.0003821169192373578,
+                "cpuOn": 0.09500000022351743,
+                "cpuOff": 0.10049999989569187,
+                "timedShare": 0,
+                "timerGpuMs": 0
+              },
+              {
+                "onMs": 5.233999999985098,
+                "offMs": 5.228000000007451,
+                "overhead": 0.0011476664073524212,
+                "deltaMs": 0.005999999977647441,
+                "noise": 0.000764233866949888,
+                "cpuOn": 0.0924999999627471,
+                "cpuOff": 0.1144999997317791,
+                "timedShare": 0,
+                "timerGpuMs": 0
+              },
+              {
+                "onMs": 5.279999999962747,
+                "offMs": 5.226999999992549,
+                "overhead": 0.010139659454806438,
+                "deltaMs": 0.052999999970198,
+                "noise": 0.017803030300333648,
+                "cpuOn": 0.09899999998509884,
+                "cpuOff": 0.10649999972432853,
+                "timedShare": 0,
+                "timerGpuMs": 0
+              },
+              {
+                "onMs": 5.216500000022352,
+                "offMs": 5.224000000022352,
+                "overhead": -0.0014356814701317333,
+                "deltaMs": -0.007500000000000284,
+                "noise": 0.000958497090862665,
+                "cpuOn": 0.09049999952316284,
+                "cpuOff": 0.10849999975413084,
+                "timedShare": 0,
+                "timerGpuMs": 0
+              }
+            ]
+          }
+        },
+        {
+          "condition": {
+            "spec": "temporal:2:dispatch",
+            "path": "temporal",
+            "ratio": 2,
+            "mode": "dispatch"
+          },
+          "renderSize": [
+            960,
+            540
+          ],
+          "summary": {
+            "onMs": 5.242749999985099,
+            "offMs": 5.230500000007451,
+            "deltaMs": 0.01249999999999929,
+            "overhead": 0.0023875469055598675,
+            "noise": 0.0017166858471007109,
+            "overheadRange": [
+              0.000191040216812155,
+              0.004401913884185316
+            ],
+            "cpuOn": 0.10700000075623392,
+            "cpuOff": 0.10050000008195639,
+            "timedShare": 0.89,
+            "timerGpuMs": 5.160192,
+            "perBlock": [
+              {
+                "onMs": 5.249000000022352,
+                "offMs": 5.2325,
+                "overhead": 0.003153368375031329,
+                "deltaMs": 0.016500000022351635,
+                "noise": 0.0022861497342818744,
+                "cpuOn": 0.11799999978393316,
+                "cpuOff": 0.12700000014156104,
+                "timedShare": 0.89,
+                "timerGpuMs": 5.160448
+              },
+              {
+                "onMs": 5.248000000007451,
+                "offMs": 5.224999999962747,
+                "overhead": 0.004401913884185316,
+                "deltaMs": 0.023000000044704372,
+                "noise": 0.001905487819072449,
+                "cpuOn": 0.11000000067055225,
+                "cpuOff": 0.08800000037997961,
+                "timedShare": 0.89,
+                "timerGpuMs": 5.1594240000000005
+              },
+              {
+                "onMs": 5.250000000037253,
+                "offMs": 5.237500000037253,
+                "overhead": 0.0023866348448517982,
+                "deltaMs": 0.012500000000000178,
+                "noise": 0.001523809532313552,
+                "cpuOn": 0.09649999976158143,
+                "cpuOff": 0.10749999940395355,
+                "timedShare": 0.89,
+                "timerGpuMs": 5.160448
+              },
+              {
+                "onMs": 5.248000000007451,
+                "offMs": 5.238500000014901,
+                "overhead": 0.001813496228409539,
+                "deltaMs": 0.009499999992550023,
+                "noise": 0.00152439025241853,
+                "cpuOn": 0.1040000008419156,
+                "cpuOff": 0.11700000032782554,
+                "timedShare": 0.89,
+                "timerGpuMs": 5.160959999999999
+              },
+              {
+                "onMs": 5.23550000000745,
+                "offMs": 5.234499999992549,
+                "overhead": 0.000191040216812155,
+                "deltaMs": 0.0010000000149013033,
+                "noise": 0.0005730111822555158,
+                "cpuOn": 0.11299999941140412,
+                "cpuOff": 0.09299999978393317,
+                "timedShare": 0.89,
+                "timerGpuMs": 5.158912000000001
+              },
+              {
+                "onMs": 5.236000000014901,
+                "offMs": 5.223999999985098,
+                "overhead": 0.002297090357932019,
+                "deltaMs": 0.012000000029802393,
+                "noise": 0.0015278838751289728,
+                "cpuOn": 0.09350000035017729,
+                "cpuOff": 0.09850000053644181,
+                "timedShare": 0.89,
+                "timerGpuMs": 5.159936
+              },
+              {
+                "onMs": 5.238500000014901,
+                "offMs": 5.223499999977649,
+                "overhead": 0.0028716377978972307,
+                "deltaMs": 0.015000000037252548,
+                "noise": 0.00019089432860412787,
+                "cpuOn": 0.09499999947845936,
+                "cpuOff": 0.11550000037997962,
+                "timedShare": 0.89,
+                "timerGpuMs": 5.1584
+              },
+              {
+                "onMs": 5.2460000000149005,
+                "offMs": 5.233500000014901,
+                "overhead": 0.0023884589662679367,
+                "deltaMs": 0.01249999999999929,
+                "noise": 0.0015249714011009046,
+                "cpuOn": 0.11400000024586916,
+                "cpuOff": 0.10249999962747097,
+                "timedShare": 0.89,
+                "timerGpuMs": 5.1594240000000005
+              },
+              {
+                "onMs": 5.2410000000149015,
+                "offMs": 5.229500000029803,
+                "overhead": 0.002199063005073887,
+                "deltaMs": 0.011499999985098874,
+                "noise": 0.003816065636318183,
+                "cpuOn": 0.0875000001490116,
+                "cpuOff": 0.0934999993816018,
+                "timedShare": 0.89,
+                "timerGpuMs": 5.159424
+              },
+              {
+                "onMs": 5.243499999977648,
+                "offMs": 5.225500000044704,
+                "overhead": 0.0034446464324542347,
+                "deltaMs": 0.0179999999329441,
+                "noise": 0.0028606846714160855,
+                "cpuOn": 0.11449999917298556,
+                "cpuOff": 0.11299999967217444,
+                "timedShare": 0.89,
+                "timerGpuMs": 5.160959999999999
+              },
+              {
+                "onMs": 5.241999999992549,
+                "offMs": 5.22949999999255,
+                "overhead": 0.0023902858781943426,
+                "deltaMs": 0.01249999999999929,
+                "noise": 0.003433803871750802,
+                "cpuOn": 0.11700000036507845,
+                "cpuOff": 0.09000000040978193,
+                "timedShare": 0.89,
+                "timerGpuMs": 5.16096
+              },
+              {
+                "onMs": 5.240500000007451,
+                "offMs": 5.231499999985099,
+                "overhead": 0.0017203478968512709,
+                "deltaMs": 0.00900000002235224,
+                "noise": 0.0020990363543336417,
+                "cpuOn": 0.09900000073015691,
+                "cpuOff": 0.09149999972432851,
+                "timedShare": 0.89,
+                "timerGpuMs": 5.160959999999999
+              }
+            ]
+          }
+        },
+        {
+          "condition": {
+            "spec": "spatial:2:dispatch",
+            "path": "spatial",
+            "ratio": 2,
+            "mode": "dispatch"
+          },
+          "renderSize": [
+            960,
+            540
+          ],
+          "summary": {
+            "onMs": 2.710999999996275,
+            "offMs": 2.6932499999925494,
+            "deltaMs": 0.02249999994412044,
+            "overhead": 0.00835810842756557,
+            "noise": 0.005520826578191989,
+            "overheadRange": [
+              0.00018480871195314386,
+              0.022127184838278913
+            ],
+            "cpuOn": 0.05349999979138374,
+            "cpuOff": 0.04374999983236194,
+            "timedShare": 0.87,
+            "timerGpuMs": 2.637824,
+            "perBlock": [
+              {
+                "onMs": 2.7060000000149014,
+                "offMs": 2.7055000000447036,
+                "overhead": 0.00018480871195314386,
+                "deltaMs": 0.0004999999701977842,
+                "noise": 0.007390983000698404,
+                "cpuOn": 0.048000000454485416,
+                "cpuOff": 0.05849999990314245,
+                "timedShare": 0.865,
+                "timerGpuMs": 2.6383360000000002
+              },
+              {
+                "onMs": 2.7105000000447035,
+                "offMs": 2.701499999985099,
+                "overhead": 0.003331482531798713,
+                "deltaMs": 0.009000000059604663,
+                "noise": 0.005534034310921339,
+                "cpuOn": 0.0814999994635582,
+                "cpuOff": 0.03999999992549419,
+                "timedShare": 0.86,
+                "timerGpuMs": 2.638336
+              },
+              {
+                "onMs": 2.711499999947846,
+                "offMs": 2.689000000022352,
+                "overhead": 0.00836742280599001,
+                "deltaMs": 0.02249999992549423,
+                "noise": 0.003319196011533113,
+                "cpuOn": 0.052999999858438965,
+                "cpuOff": 0.04499999947845936,
+                "timedShare": 0.87,
+                "timerGpuMs": 2.637824
+              },
+              {
+                "onMs": 2.707500000037253,
+                "offMs": 2.696000000014901,
+                "overhead": 0.00426557864328192,
+                "deltaMs": 0.011500000022351742,
+                "noise": 0.008494921530706195,
+                "cpuOn": 0.04799999974668026,
+                "cpuOff": 0.04349999971687794,
+                "timedShare": 0.87,
+                "timerGpuMs": 2.637824
+              },
+              {
+                "onMs": 2.7175,
+                "offMs": 2.695000000037253,
+                "overhead": 0.008348794049141128,
+                "deltaMs": 0.022499999962746653,
+                "noise": 0.006255749780976003,
+                "cpuOn": 0.05899999979883432,
+                "cpuOff": 0.03849999994039535,
+                "timedShare": 0.87,
+                "timerGpuMs": 2.637824
+              },
+              {
+                "onMs": 2.716500000022352,
+                "offMs": 2.6845000000298027,
+                "overhead": 0.011920283103815876,
+                "deltaMs": 0.0319999999925491,
+                "noise": 0.00036812074908635197,
+                "cpuOn": 0.04150000017136335,
+                "cpuOff": 0.040999999381601815,
+                "timedShare": 0.87,
+                "timerGpuMs": 2.638336
+              },
+              {
+                "onMs": 2.7234999999776486,
+                "offMs": 2.696999999992549,
+                "overhead": 0.009825732289645117,
+                "deltaMs": 0.026499999985099443,
+                "noise": 0.005507618845462637,
+                "cpuOn": 0.06399999998509884,
+                "cpuOff": 0.038999999947845934,
+                "timedShare": 0.875,
+                "timerGpuMs": 2.637824
+              },
+              {
+                "onMs": 2.7080000000447035,
+                "offMs": 2.682999999970198,
+                "overhead": 0.009317927720754238,
+                "deltaMs": 0.025000000074505646,
+                "noise": 0.0044313146342704205,
+                "cpuOn": 0.048999999761581425,
+                "cpuOff": 0.06299999997019767,
+                "timedShare": 0.885,
+                "timerGpuMs": 2.637824
+              },
+              {
+                "onMs": 2.7485000000149014,
+                "offMs": 2.688999999985099,
+                "overhead": 0.022127184838278913,
+                "deltaMs": 0.05950000002980227,
+                "noise": 0.03529197745289302,
+                "cpuOn": 0.05399999972432852,
+                "cpuOff": 0.04399999994784594,
+                "timedShare": 0.87,
+                "timerGpuMs": 2.637824
+              },
+              {
+                "onMs": 2.7090000000223515,
+                "offMs": 2.6914999999478457,
+                "overhead": 0.006501950612983531,
+                "deltaMs": 0.017500000074505806,
+                "noise": 0.005167958650787489,
+                "cpuOn": 0.06849999975413085,
+                "cpuOff": 0.054999999217689034,
+                "timedShare": 0.875,
+                "timerGpuMs": 2.637824
+              },
+              {
+                "onMs": 2.7090000000223515,
+                "offMs": 2.6865000000223516,
+                "overhead": 0.008375209380164783,
+                "deltaMs": 0.022499999999999964,
+                "noise": 0.0044296788317449995,
+                "cpuOn": 0.039499999955296516,
+                "cpuOff": 0.046000000052154065,
+                "timedShare": 0.86,
+                "timerGpuMs": 2.638336
+              },
+              {
+                "onMs": 2.711500000022352,
+                "offMs": 2.698500000052154,
+                "overhead": 0.004817491187677048,
+                "deltaMs": 0.012999999970197962,
+                "noise": 0.01217038541192391,
+                "cpuOn": 0.07549999967217445,
+                "cpuOff": 0.03549999944865703,
+                "timedShare": 0.87,
+                "timerGpuMs": 2.637824
+              }
+            ]
+          }
+        },
+        {
+          "condition": {
+            "spec": "bilinear:2:dispatch",
+            "path": "bilinear",
+            "ratio": 2,
+            "mode": "dispatch"
+          },
+          "renderSize": [
+            960,
+            540
+          ],
+          "summary": {
+            "onMs": 0.2552500000037253,
+            "offMs": 0.264250000026077,
+            "deltaMs": -1.3877787807814457e-17,
+            "overhead": 0.0028213503081312985,
+            "noise": 0.07100169338758087,
+            "overheadRange": [
+              -0.13574660626741553,
+              0.10144927557827765
+            ],
+            "cpuOn": 0.029249999988824125,
+            "cpuOff": 0.023999999910593033,
+            "timedShare": 0.8574999999999999,
+            "timerGpuMs": 0.157952,
+            "perBlock": [
+              {
+                "onMs": 0.45650000002235175,
+                "offMs": 0.4770000000298023,
+                "overhead": -0.042976939216288756,
+                "deltaMs": -0.02050000000745056,
+                "noise": 0.1380065718326809,
+                "cpuOn": 0.02850000020116568,
+                "cpuOff": 0.023999999836087228,
+                "timedShare": 0.845,
+                "timerGpuMs": 0.33792
+              },
+              {
+                "onMs": 0.45499999999999996,
+                "offMs": 0.4564999999850988,
+                "overhead": -0.0032858707232154005,
+                "deltaMs": -0.0014999999850988655,
+                "noise": 0.08351648345098397,
+                "cpuOn": 0.019999999962747095,
+                "cpuOff": 0.019500000178813932,
+                "timedShare": 0.835,
+                "timerGpuMs": 0.339968
+              },
+              {
+                "onMs": 0.4775000000372529,
+                "offMs": 0.5525,
+                "overhead": -0.13574660626741553,
+                "deltaMs": -0.07499999996274709,
+                "noise": 0.002094240868739635,
+                "cpuOn": 0.02849999990314245,
+                "cpuOff": 0.024499999806284905,
+                "timedShare": 0.83,
+                "timerGpuMs": 0.339968
+              },
+              {
+                "onMs": 0.44700000002980234,
+                "offMs": 0.4810000000149012,
+                "overhead": -0.07068607065290133,
+                "deltaMs": -0.03399999998509884,
+                "noise": 0.044742729303504654,
+                "cpuOn": 0.021000000052154064,
+                "cpuOff": 0.020999999940395357,
+                "timedShare": 0.845,
+                "timerGpuMs": 0.339968
+              },
+              {
+                "onMs": 0.4230000000074506,
+                "offMs": 0.42799999997019766,
+                "overhead": -0.011682242904428097,
+                "deltaMs": -0.0049999999627470815,
+                "noise": 0.16548463339068856,
+                "cpuOn": 0.021500000096857548,
+                "cpuOff": 0.019999999925494193,
+                "timedShare": 0.845,
+                "timerGpuMs": 0.272384
+              },
+              {
+                "onMs": 0.3040000000223517,
+                "offMs": 0.3275000000372529,
+                "overhead": -0.0717557252281773,
+                "deltaMs": -0.023500000014901157,
+                "noise": 0.44736842106875563,
+                "cpuOn": 0.02899999991059303,
+                "cpuOff": 0.02250000011175871,
+                "timedShare": 0.855,
+                "timerGpuMs": 0.17408
+              },
+              {
+                "onMs": 0.20649999998509883,
+                "offMs": 0.20100000001490115,
+                "overhead": 0.027363183929303148,
+                "deltaMs": 0.005499999970197678,
+                "noise": 0.07263922518683968,
+                "cpuOn": 0.02950000010430813,
+                "cpuOff": 0.025500000044703486,
+                "timedShare": 0.88,
+                "timerGpuMs": 0.141824
+              },
+              {
+                "onMs": 0.1900000000372529,
+                "offMs": 0.1725,
+                "overhead": 0.10144927557827765,
+                "deltaMs": 0.01750000003725291,
+                "noise": 0.16842105236327545,
+                "cpuOn": 0.029500000141561032,
+                "cpuOff": 0.027499999776482584,
+                "timedShare": 0.86,
+                "timerGpuMs": 0.12134400000000001
+              },
+              {
+                "onMs": 0.17300000000745058,
+                "offMs": 0.16699999999254944,
+                "overhead": 0.035928143803406254,
+                "deltaMs": 0.006000000014901141,
+                "noise": 0.06936416158832207,
+                "cpuOn": 0.032500000074505805,
+                "cpuOff": 0.027999999970197677,
+                "timedShare": 0.865,
+                "timerGpuMs": 0.108544
+              },
+              {
+                "onMs": 0.1750000000372529,
+                "offMs": 0.16450000002980233,
+                "overhead": 0.06382978726777089,
+                "deltaMs": 0.010500000007450577,
+                "noise": 0.045714285960002904,
+                "cpuOn": 0.029500000067055224,
+                "cpuOff": 0.025499999970197678,
+                "timedShare": 0.885,
+                "timerGpuMs": 0.105472
+              },
+              {
+                "onMs": 0.17550000000745059,
+                "offMs": 0.16,
+                "overhead": 0.09687500004656613,
+                "deltaMs": 0.015500000007450582,
+                "noise": 0.02849002806428444,
+                "cpuOn": 0.0399999999627471,
+                "cpuOff": 0.02399999998509884,
+                "timedShare": 0.865,
+                "timerGpuMs": 0.105472
+              },
+              {
+                "onMs": 0.16949999999254942,
+                "offMs": 0.16800000000745058,
+                "overhead": 0.008928571339477998,
+                "deltaMs": 0.0014999999850988377,
+                "noise": 0.06489675525300687,
+                "cpuOn": 0.030500000081956385,
+                "cpuOff": 0.0225,
+                "timedShare": 0.875,
+                "timerGpuMs": 0.102912
+              }
+            ]
+          }
+        }
+      ],
+      "pageErrors": [],
+      "logRecords": [
+        "[warning] The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127"
+      ]
+    },
+    "intel": {
+      "gpuAudit": {
+        "options": {
+          "powerPreference": "low-power",
+          "expectedVendor": "intel",
+          "withoutTimestamps": false
+        },
+        "requests": [
+          {
+            "requested": {
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "effective": {
+              "powerPreference": "low-power",
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "info": {
+              "vendor": "intel",
+              "architecture": "gen-12lp",
+              "device": "",
+              "description": ""
+            }
+          }
+        ],
+        "devices": [
+          {
+            "info": {
+              "vendor": "intel",
+              "architecture": "gen-12lp",
+              "device": "",
+              "description": ""
+            },
+            "features": [
+              "bgra8unorm-storage",
+              "clip-distances",
+              "core-features-and-limits",
+              "depth-clip-control",
+              "depth32float-stencil8",
+              "dual-source-blending",
+              "float32-blendable",
+              "float32-filterable",
+              "indirect-first-instance",
+              "rg11b10ufloat-renderable",
+              "shader-f16",
+              "subgroups",
+              "texture-compression-bc",
+              "texture-compression-bc-sliced-3d",
+              "texture-formats-tier1",
+              "texture-formats-tier2",
+              "timestamp-query"
+            ],
+            "limits": {
+              "maxTextureDimension2D": 8192,
+              "maxComputeInvocationsPerWorkgroup": 256
+            },
+            "lost": null
+          }
+        ]
+      },
+      "frames": 100,
+      "warmup": 60,
+      "blocks": 12,
+      "inflight": 8,
+      "attachOnly": true,
+      "results": [
+        {
+          "condition": {
+            "spec": "temporal:2:dispatch:none",
+            "path": "temporal",
+            "ratio": 2,
+            "mode": "dispatch",
+            "variant": "none"
+          },
+          "renderSize": [
+            960,
+            540
+          ],
+          "summary": {
+            "onMs": 25.00199999999255,
+            "offMs": 25.1860000000149,
+            "deltaMs": -0.011749999970197322,
+            "overhead": -0.00045868960296946426,
+            "noise": 0.013273956314294833,
+            "overheadRange": [
+              -0.12088744779715954,
+              0.14094259983462298
+            ],
+            "cpuOn": 0.3127499996870756,
+            "cpuOff": 0.31600000012665985,
+            "timedShare": 0,
+            "timerGpuMs": 0,
+            "perBlock": [
+              {
+                "onMs": 24.5970000000298,
+                "offMs": 23.691999999955296,
+                "overhead": 0.038198548036308067,
+                "deltaMs": 0.9050000000745051,
+                "noise": 0.2072610480998916,
+                "cpuOn": 0.4689999993890524,
+                "cpuOff": 0.37250000014901163,
+                "timedShare": 0,
+                "timerGpuMs": 0
+              },
+              {
+                "onMs": 22.604000000059607,
+                "offMs": 22.804999999925492,
+                "overhead": -0.008813856604540371,
+                "deltaMs": -0.20099999986588557,
+                "noise": 0.015660944968088373,
+                "cpuOn": 0.25899999968707565,
+                "cpuOff": 0.27049999982118605,
+                "timedShare": 0,
+                "timerGpuMs": 0
+              },
+              {
+                "onMs": 29.3285000000149,
+                "offMs": 25.705499999970197,
+                "overhead": 0.14094259983462298,
+                "deltaMs": 3.6230000000447014,
+                "noise": 0.4426070204777882,
+                "cpuOn": 2.8034999996423724,
+                "cpuOff": 0.48749999970197677,
+                "timedShare": 0,
+                "timerGpuMs": 0
+              },
+              {
+                "onMs": 27.5279999999702,
+                "offMs": 25.9360000000149,
+                "overhead": 0.06138186304574278,
+                "deltaMs": 1.5919999999552985,
+                "noise": 0.20589944782865896,
+                "cpuOn": 0.507999999076128,
+                "cpuOff": 0.32849999971687793,
+                "timedShare": 0,
+                "timerGpuMs": 0
+              },
+              {
+                "onMs": 24.943499999940393,
+                "offMs": 28.3735000000149,
+                "overhead": -0.12088744779715954,
+                "deltaMs": -3.4300000000745072,
+                "noise": 0.010062741794094398,
+                "cpuOn": 0.3089999993890524,
+                "cpuOff": 0.3724999990314245,
+                "timedShare": 0,
+                "timerGpuMs": 0
+              },
+              {
+                "onMs": 24.925999999940395,
+                "offMs": 25.1575,
+                "overhead": -0.009202027230829968,
+                "deltaMs": -0.23150000005960436,
+                "noise": 0.007381850279228313,
+                "cpuOn": 0.31599999964237213,
+                "cpuOff": 0.30300000011920925,
+                "timedShare": 0,
+                "timerGpuMs": 0
+              },
+              {
+                "onMs": 25.212999999895693,
+                "offMs": 25.263000000044705,
+                "overhead": -0.001979179042430612,
+                "deltaMs": -0.05000000014901218,
+                "noise": 0.010391464721805738,
+                "cpuOn": 0.3070000001788139,
+                "cpuOff": 0.33350000061094764,
+                "timedShare": 0,
+                "timerGpuMs": 0
+              },
+              {
+                "onMs": 24.873000000044705,
+                "offMs": 24.8479999999702,
+                "overhead": 0.0010061171955302317,
+                "deltaMs": 0.02500000007450609,
+                "noise": 0.000884493226782561,
+                "cpuOn": 0.30700000040233133,
+                "cpuOff": 0.2944999996572733,
+                "timedShare": 0,
+                "timerGpuMs": 0
+              },
+              {
+                "onMs": 24.9839999999851,
+                "offMs": 24.957499999925496,
+                "overhead": 0.0010618050710080595,
+                "deltaMs": 0.026500000059606066,
+                "noise": 0.010886967660501295,
+                "cpuOn": 0.3094999997317791,
+                "cpuOff": 0.31349999994039535,
+                "timedShare": 0,
+                "timerGpuMs": 0
+              },
+              {
+                "onMs": 25.1660000000149,
+                "offMs": 25.2145000000298,
+                "overhead": -0.0019234964014691602,
+                "deltaMs": -0.048500000014900735,
+                "noise": 0.026066915683422794,
+                "cpuOn": 0.2990000002086163,
+                "cpuOff": 0.3000000000745058,
+                "timedShare": 0,
+                "timerGpuMs": 0
+              },
+              {
+                "onMs": 27.8810000000149,
+                "offMs": 25.422999999970198,
+                "overhead": 0.09668410494621349,
+                "deltaMs": 2.458000000044702,
+                "noise": 0.21735231877794012,
+                "cpuOn": 0.3319999999552965,
+                "cpuOff": 0.3140000002831221,
+                "timedShare": 0,
+                "timerGpuMs": 0
+              },
+              {
+                "onMs": 25.02,
+                "offMs": 25.134500000029803,
+                "overhead": -0.004555491457147287,
+                "deltaMs": -0.11450000002980332,
+                "noise": 0.006954436453221699,
+                "cpuOn": 0.31599999986588956,
+                "cpuOff": 0.3179999999701977,
+                "timedShare": 0,
+                "timerGpuMs": 0
+              }
+            ]
+          }
+        },
+        {
+          "condition": {
+            "spec": "temporal:2:dispatch",
+            "path": "temporal",
+            "ratio": 2,
+            "mode": "dispatch"
+          },
+          "renderSize": [
+            960,
+            540
+          ],
+          "summary": {
+            "onMs": 25.12550000000745,
+            "offMs": 25.30675000000745,
+            "deltaMs": -0.17749999996274823,
+            "overhead": -0.0069633078110369895,
+            "noise": 0.00736824781825998,
+            "overheadRange": [
+              -0.07021559362177587,
+              0.016258514437676563
+            ],
+            "cpuOn": 0.32825000010430816,
+            "cpuOff": 0.3205000001564622,
+            "timedShare": 0.885,
+            "timerGpuMs": 24.269601,
+            "perBlock": [
+              {
+                "onMs": 24.875500000044703,
+                "offMs": 25.108999999985098,
+                "overhead": -0.009299454376539673,
+                "deltaMs": -0.2334999999403955,
+                "noise": 0.003658217928855506,
+                "cpuOn": 0.33099999971687794,
+                "cpuOff": 0.3465000005066395,
+                "timedShare": 0.885,
+                "timerGpuMs": 23.9040685
+              },
+              {
+                "onMs": 25.2395000000298,
+                "offMs": 25.4910000000149,
+                "overhead": -0.009866227295318053,
+                "deltaMs": -0.2514999999851,
+                "noise": 0.011608787817463287,
+                "cpuOn": 0.32700000025331977,
+                "cpuOff": 0.316000000089407,
+                "timedShare": 0.89,
+                "timerGpuMs": 24.471123
+              },
+              {
+                "onMs": 25.83,
+                "offMs": 25.75550000011921,
+                "overhead": 0.0028925860449398044,
+                "deltaMs": 0.07449999988078915,
+                "noise": 0.04994192799070859,
+                "cpuOn": 0.34549999982118607,
+                "cpuOff": 0.33749999940395353,
+                "timedShare": 0.89,
+                "timerGpuMs": 24.865835499999996
+              },
+              {
+                "onMs": 25.289500000029804,
+                "offMs": 25.732499999925494,
+                "overhead": -0.017215583402194645,
+                "deltaMs": -0.44299999989569017,
+                "noise": 0.054686727697960694,
+                "cpuOn": 0.3674999999254942,
+                "cpuOff": 0.3915000008046627,
+                "timedShare": 0.885,
+                "timerGpuMs": 24.6003145
+              },
+              {
+                "onMs": 26.136499999985098,
+                "offMs": 26.2579999999702,
+                "overhead": -0.004627161245534306,
+                "deltaMs": -0.12149999998510097,
+                "noise": 0.0016452088064669568,
+                "cpuOn": 0.3310000006109476,
+                "cpuOff": 0.31849999979138377,
+                "timedShare": 0.88,
+                "timerGpuMs": 24.527189999999997
+              },
+              {
+                "onMs": 25.1860000000149,
+                "offMs": 27.088000000044705,
+                "overhead": -0.07021559362177587,
+                "deltaMs": -1.9020000000298047,
+                "noise": 0.009926149454016658,
+                "cpuOn": 0.31349999986588956,
+                "cpuOff": 0.36049999929964543,
+                "timedShare": 0.88,
+                "timerGpuMs": 24.66521
+              },
+              {
+                "onMs": 24.965999999940394,
+                "offMs": 25.2139999999851,
+                "overhead": -0.00983580550665708,
+                "deltaMs": -0.2480000000447049,
+                "noise": 0.012577104865030586,
+                "cpuOn": 0.2950000001490116,
+                "cpuOff": 0.303999999538064,
+                "timedShare": 0.89,
+                "timerGpuMs": 24.162089
+              },
+              {
+                "onMs": 25.064999999999998,
+                "offMs": 24.663999999910594,
+                "overhead": 0.016258514437676563,
+                "deltaMs": 0.40100000008940384,
+                "noise": 0.0040694195045199505,
+                "cpuOn": 0.32949999995529655,
+                "cpuOff": 0.28900000020861627,
+                "timedShare": 0.885,
+                "timerGpuMs": 24.305213000000002
+              },
+              {
+                "onMs": 24.8779999999702,
+                "offMs": 24.837000000029803,
+                "overhead": 0.0016507629721926875,
+                "deltaMs": 0.04099999994039649,
+                "noise": 0.004180400356127006,
+                "cpuOn": 0.30349999941885475,
+                "cpuOff": 0.3095000004023314,
+                "timedShare": 0.89,
+                "timerGpuMs": 24.150813499999998
+              },
+              {
+                "onMs": 24.897500000074505,
+                "offMs": 25.134999999999998,
+                "overhead": -0.00944897552916224,
+                "deltaMs": -0.2374999999254932,
+                "noise": 0.003895973492499697,
+                "cpuOn": 0.3219999994337559,
+                "cpuOff": 0.32500000029802323,
+                "timedShare": 0.885,
+                "timerGpuMs": 24.159693
+              },
+              {
+                "onMs": 24.991999999955297,
+                "offMs": 24.834499999955298,
+                "overhead": 0.00634198393365204,
+                "deltaMs": 0.15749999999999886,
+                "noise": 0.01704545454906242,
+                "cpuOn": 0.30900000035762787,
+                "cpuOff": 0.3085000000149012,
+                "timedShare": 0.89,
+                "timerGpuMs": 24.062453499999997
+              },
+              {
+                "onMs": 25.362000000029802,
+                "offMs": 25.399500000029803,
+                "overhead": -0.0014764070158844733,
+                "deltaMs": -0.03750000000000142,
+                "noise": 0.004810346182503303,
+                "cpuOn": 0.3380000001192093,
+                "cpuOff": 0.3225000005215406,
+                "timedShare": 0.88,
+                "timerGpuMs": 24.233988999999998
+              }
+            ]
+          }
+        },
+        {
+          "condition": {
+            "spec": "spatial:2:dispatch",
+            "path": "spatial",
+            "ratio": 2,
+            "mode": "dispatch"
+          },
+          "renderSize": [
+            960,
+            540
+          ],
+          "summary": {
+            "onMs": 7.501750000044703,
+            "offMs": 7.4655000000074505,
+            "deltaMs": 0.007749999985098732,
+            "overhead": 0.0010772736155535423,
+            "noise": 0.02301925743753256,
+            "overheadRange": [
+              -0.03154431685651227,
+              0.04787775890280832
+            ],
+            "cpuOn": 0.14724999975413083,
+            "cpuOff": 0.13275000039488077,
+            "timedShare": 0.8374999999999999,
+            "timerGpuMs": 6.51924275,
+            "perBlock": [
+              {
+                "onMs": 7.459500000029802,
+                "offMs": 7.505500000044703,
+                "overhead": -0.006128838853457719,
+                "deltaMs": -0.04600000001490123,
+                "noise": 0.020242643600749736,
+                "cpuOn": 0.14799999974668027,
+                "cpuOff": 0.14499999940395356,
+                "timedShare": 0.855,
+                "timerGpuMs": 6.4003250000000005
+              },
+              {
+                "onMs": 7.453000000044703,
+                "offMs": 7.653499999940395,
+                "overhead": -0.026197164682466023,
+                "deltaMs": -0.20049999989569223,
+                "noise": 0.008855494443715492,
+                "cpuOn": 0.13249999985098837,
+                "cpuOff": 0.15049999959766863,
+                "timedShare": 0.835,
+                "timerGpuMs": 6.468918
+              },
+              {
+                "onMs": 7.6875,
+                "offMs": 7.414500000029802,
+                "overhead": 0.03681974508990504,
+                "deltaMs": 0.27299999997019775,
+                "noise": 0.03291056908243079,
+                "cpuOn": 0.14799999959766863,
+                "cpuOff": 0.1280000001937151,
+                "timedShare": 0.85,
+                "timerGpuMs": 6.555897
+              },
+              {
+                "onMs": 7.661999999955297,
+                "offMs": 7.425499999970198,
+                "overhead": 0.03184970708855284,
+                "deltaMs": 0.2364999999850994,
+                "noise": 0.056643174094639086,
+                "cpuOn": 0.1569999998062849,
+                "cpuOff": 0.1335000005364418,
+                "timedShare": 0.85,
+                "timerGpuMs": 6.6052185
+              },
+              {
+                "onMs": 7.445,
+                "offMs": 7.656000000014901,
+                "overhead": -0.027560083596458895,
+                "deltaMs": -0.21100000001490038,
+                "noise": 0.016118200134318347,
+                "cpuOn": 0.1459999994933605,
+                "cpuOff": 0.14300000056624412,
+                "timedShare": 0.83,
+                "timerGpuMs": 6.454101
+              },
+              {
+                "onMs": 7.4589999999850995,
+                "offMs": 7.655499999970198,
+                "overhead": -0.02566782051934735,
+                "deltaMs": -0.19649999998509848,
+                "noise": 0.023863788707675773,
+                "cpuOn": 0.1535000006854534,
+                "cpuOff": 0.13200000025331973,
+                "timedShare": 0.835,
+                "timerGpuMs": 6.386705
+              },
+              {
+                "onMs": 7.550499999970198,
+                "offMs": 7.398999999985099,
+                "overhead": 0.02047573996288743,
+                "deltaMs": 0.15149999998509855,
+                "noise": 0.037745844646198935,
+                "cpuOn": 0.14149999931454657,
+                "cpuOff": 0.12600000001490116,
+                "timedShare": 0.835,
+                "timerGpuMs": 6.5378495
+              },
+              {
+                "onMs": 7.715,
+                "offMs": 7.3625000000745064,
+                "overhead": 0.04787775890280832,
+                "deltaMs": 0.3524999999254934,
+                "noise": 0.035774465319558774,
+                "cpuOn": 0.1594999996572733,
+                "cpuOff": 0.11599999979138374,
+                "timedShare": 0.88,
+                "timerGpuMs": 6.6737085
+              },
+              {
+                "onMs": 7.497000000029802,
+                "offMs": 7.560499999970197,
+                "overhead": -0.008398915407796581,
+                "deltaMs": -0.06349999994039557,
+                "noise": 0.06189142324366556,
+                "cpuOn": 0.13499999955296516,
+                "cpuOff": 0.13700000010430813,
+                "timedShare": 0.83,
+                "timerGpuMs": 6.500636
+              },
+              {
+                "onMs": 7.506500000059605,
+                "offMs": 7.751000000014901,
+                "overhead": -0.03154431685651227,
+                "deltaMs": -0.2444999999552966,
+                "noise": 0.01505362021159153,
+                "cpuOn": 0.12950000032782555,
+                "cpuOff": 0.13950000032782556,
+                "timedShare": 0.835,
+                "timerGpuMs": 6.560558500000001
+              },
+              {
+                "onMs": 7.486000000014901,
+                "offMs": 7.424500000029802,
+                "overhead": 0.008283386084564803,
+                "deltaMs": 0.0614999999850987,
+                "noise": 0.022174726167389348,
+                "cpuOn": 0.14649999991059304,
+                "cpuOff": 0.13050000004470347,
+                "timedShare": 0.84,
+                "timerGpuMs": 6.460115500000001
+              },
+              {
+                "onMs": 7.753499999940395,
+                "offMs": 7.422999999970198,
+                "overhead": 0.04452377744463476,
+                "deltaMs": 0.33049999997019697,
+                "noise": 0.014316115295189166,
+                "cpuOn": 0.15750000007450582,
+                "cpuOff": 0.11400000020861625,
+                "timedShare": 0.865,
+                "timerGpuMs": 6.6239685
+              }
+            ]
+          }
+        },
+        {
+          "condition": {
+            "spec": "bilinear:2:dispatch",
+            "path": "bilinear",
+            "ratio": 2,
+            "mode": "dispatch"
+          },
+          "renderSize": [
+            960,
+            540
+          ],
+          "summary": {
+            "onMs": 0.7557500000298023,
+            "offMs": 0.8009999999776483,
+            "deltaMs": -0.03725000001490114,
+            "overhead": -0.04648075181278871,
+            "noise": 0.09155396362343467,
+            "overheadRange": [
+              -0.13706207751390576,
+              0.11747430238435186
+            ],
+            "cpuOn": 0.07225000027567148,
+            "cpuOff": 0.06925000000745057,
+            "timedShare": 0.83,
+            "timerGpuMs": 0.5260255,
+            "perBlock": [
+              {
+                "onMs": 0.7609999999403954,
+                "offMs": 0.6810000000149012,
+                "overhead": 0.11747430238435186,
+                "deltaMs": 0.07999999992549411,
+                "noise": 0.09461235201896201,
+                "cpuOn": 0.07500000014901162,
+                "cpuOff": 0.059499999880790716,
+                "timedShare": 0.835,
+                "timerGpuMs": 0.551871
+              },
+              {
+                "onMs": 0.7424999999999999,
+                "offMs": 0.8114999999850988,
+                "overhead": -0.0850277264157312,
+                "deltaMs": -0.06899999998509887,
+                "noise": 0.144107743947193,
+                "cpuOn": 0.06750000029802322,
+                "cpuOff": 0.06950000017881394,
+                "timedShare": 0.83,
+                "timerGpuMs": 0.49101249999999996
+              },
+              {
+                "onMs": 0.7580000000447035,
+                "offMs": 0.7264999999850988,
+                "overhead": 0.04335856856194176,
+                "deltaMs": 0.03150000005960463,
+                "noise": 0.13984168876405753,
+                "cpuOn": 0.07800000041723251,
+                "cpuOff": 0.06350000008940697,
+                "timedShare": 0.83,
+                "timerGpuMs": 0.5325230000000001
+              },
+              {
+                "onMs": 0.7304999998956918,
+                "offMs": 0.8300000000000001,
+                "overhead": -0.11987951819796172,
+                "deltaMs": -0.09950000010430826,
+                "noise": 0.16837782339186982,
+                "cpuOn": 0.06700000032782555,
+                "cpuOff": 0.07300000011920929,
+                "timedShare": 0.825,
+                "timerGpuMs": 0.509737
+              },
+              {
+                "onMs": 0.7124999999254942,
+                "offMs": 0.7545000000298023,
+                "overhead": -0.05566600411219247,
+                "deltaMs": -0.042000000104308155,
+                "noise": 0.0575438597806236,
+                "cpuOn": 0.07000000014901162,
+                "cpuOff": 0.05749999985098839,
+                "timedShare": 0.835,
+                "timerGpuMs": 0.508356
+              },
+              {
+                "onMs": 0.8510000000149012,
+                "offMs": 0.8160000000149011,
+                "overhead": 0.042892156861961794,
+                "deltaMs": 0.03500000000000003,
+                "noise": 0.22561692130016495,
+                "cpuOn": 0.08549999997019767,
+                "cpuOff": 0.0775,
+                "timedShare": 0.825,
+                "timerGpuMs": 0.6168975000000001
+              },
+              {
+                "onMs": 0.8085000000149012,
+                "offMs": 0.8525,
+                "overhead": -0.05161290320832712,
+                "deltaMs": -0.04399999998509885,
+                "noise": 0.040816326492998684,
+                "cpuOn": 0.07400000035762787,
+                "cpuOff": 0.05700000002980232,
+                "timedShare": 0.83,
+                "timerGpuMs": 0.573512
+              },
+              {
+                "onMs": 0.7535000000149013,
+                "offMs": 0.7859999999403954,
+                "overhead": -0.0413486004172503,
+                "deltaMs": -0.03249999992549413,
+                "noise": 0.05706702052998976,
+                "cpuOn": 0.06150000020861626,
+                "cpuOff": 0.07200000025331973,
+                "timedShare": 0.835,
+                "timerGpuMs": 0.5179910000000001
+              },
+              {
+                "onMs": 0.7490000000596047,
+                "offMs": 0.6810000000149011,
+                "overhead": 0.09985315718533871,
+                "deltaMs": 0.06800000004470352,
+                "noise": 0.016021361655321434,
+                "cpuOn": 0.07200000055134297,
+                "cpuOff": 0.04400000020861626,
+                "timedShare": 0.825,
+                "timerGpuMs": 0.519528
+              },
+              {
+                "onMs": 0.8710000000149012,
+                "offMs": 0.7904999999701977,
+                "overhead": 0.10183428216032686,
+                "deltaMs": 0.08050000004470348,
+                "noise": 0.20665901279670743,
+                "cpuOn": 0.08400000028312206,
+                "cpuOff": 0.06900000005960463,
+                "timedShare": 0.825,
+                "timerGpuMs": 0.6396575
+              },
+              {
+                "onMs": 0.7019999999552965,
+                "offMs": 0.8135000000149012,
+                "overhead": -0.13706207751390576,
+                "deltaMs": -0.1115000000596047,
+                "noise": 0.0028490028916378133,
+                "cpuOn": 0.06949999973177909,
+                "cpuOff": 0.06949999995529652,
+                "timedShare": 0.83,
+                "timerGpuMs": 0.483669
+              },
+              {
+                "onMs": 0.7909999999403954,
+                "offMs": 0.8444999999552966,
+                "overhead": -0.06335109534367456,
+                "deltaMs": -0.05350000001490118,
+                "noise": 0.08849557522790732,
+                "cpuOn": 0.0725,
+                "cpuOff": 0.07850000061094761,
+                "timedShare": 0.825,
+                "timerGpuMs": 0.5739805
+              }
+            ]
+          }
+        }
+      ],
+      "pageErrors": [],
+      "logRecords": [
+        "[warning] The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127"
+      ]
+    }
+  },
+  "limits": [
+    "Physical OS sleep/resume and mixed-monitor moves untested",
+    "Candidate image quality not regraded",
+    "No Windows performance ranking for comparisons below 3x their noise floor",
+    "Fresh-instance renderer binding-buffer retention reproduced and unresolved",
+    "AMD, mobile tilers and forced FXC untested",
+    "Early stress screenshots used multiple velocity-matrix owners and are excluded from visual claims; final harness gives the live node sole ownership."
+  ],
+  "initializationDiagnostics": {
+    "nvidia": {
+      "gpuAudit": {
+        "options": {
+          "powerPreference": "high-performance",
+          "expectedVendor": "nvidia",
+          "withoutTimestamps": false
+        },
+        "requests": [
+          {
+            "requested": {
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "effective": {
+              "powerPreference": "high-performance",
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "info": {
+              "vendor": "nvidia",
+              "architecture": "ampere",
+              "device": "",
+              "description": ""
+            }
+          }
+        ],
+        "devices": [
+          {
+            "info": {
+              "vendor": "nvidia",
+              "architecture": "ampere",
+              "device": "",
+              "description": ""
+            },
+            "features": [
+              "bgra8unorm-storage",
+              "clip-distances",
+              "core-features-and-limits",
+              "depth-clip-control",
+              "depth32float-stencil8",
+              "dual-source-blending",
+              "float32-blendable",
+              "float32-filterable",
+              "indirect-first-instance",
+              "rg11b10ufloat-renderable",
+              "shader-f16",
+              "subgroups",
+              "texture-compression-bc",
+              "texture-compression-bc-sliced-3d",
+              "texture-formats-tier1",
+              "texture-formats-tier2",
+              "timestamp-query"
+            ],
+            "limits": {
+              "maxTextureDimension2D": 8192,
+              "maxComputeInvocationsPerWorkgroup": 256
+            },
+            "lost": null
+          }
+        ]
+      },
+      "diagnostics": {
+        "errors": [
+          {
+            "name": "UpscalerNotReadyError",
+            "code": "UPSCALER_NOT_READY",
+            "reason": "preparing"
+          },
+          {
+            "name": "UpscalerNotReadyError",
+            "code": "UPSCALER_NOT_READY",
+            "reason": "preparing"
+          }
+        ],
+        "warnings": 1,
+        "encodersBeforeReady": 0,
+        "readyAfterAwait": true
+      },
+      "issues": []
+    },
+    "intel": {
+      "gpuAudit": {
+        "options": {
+          "powerPreference": "low-power",
+          "expectedVendor": "intel",
+          "withoutTimestamps": false
+        },
+        "requests": [
+          {
+            "requested": {
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "effective": {
+              "powerPreference": "low-power",
+              "featureLevel": "compatibility",
+              "xrCompatible": false
+            },
+            "info": {
+              "vendor": "intel",
+              "architecture": "gen-12lp",
+              "device": "",
+              "description": ""
+            }
+          }
+        ],
+        "devices": [
+          {
+            "info": {
+              "vendor": "intel",
+              "architecture": "gen-12lp",
+              "device": "",
+              "description": ""
+            },
+            "features": [
+              "bgra8unorm-storage",
+              "clip-distances",
+              "core-features-and-limits",
+              "depth-clip-control",
+              "depth32float-stencil8",
+              "dual-source-blending",
+              "float32-blendable",
+              "float32-filterable",
+              "indirect-first-instance",
+              "rg11b10ufloat-renderable",
+              "shader-f16",
+              "subgroups",
+              "texture-compression-bc",
+              "texture-compression-bc-sliced-3d",
+              "texture-formats-tier1",
+              "texture-formats-tier2",
+              "timestamp-query"
+            ],
+            "limits": {
+              "maxTextureDimension2D": 8192,
+              "maxComputeInvocationsPerWorkgroup": 256
+            },
+            "lost": null
+          }
+        ]
+      },
+      "diagnostics": {
+        "errors": [
+          {
+            "name": "UpscalerNotReadyError",
+            "code": "UPSCALER_NOT_READY",
+            "reason": "preparing"
+          },
+          {
+            "name": "UpscalerNotReadyError",
+            "code": "UPSCALER_NOT_READY",
+            "reason": "preparing"
+          }
+        ],
+        "warnings": 1,
+        "encodersBeforeReady": 0,
+        "readyAfterAwait": true
+      },
+      "issues": []
+    }
+  },
+  "ownedEdgeTeardownVerified": true
+}

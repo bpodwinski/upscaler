@@ -1,0 +1,146 @@
+[
+  {
+    "variant": "async",
+    "run": 0,
+    "cache": "cold",
+    "mainApiMs": 2.077,
+    "pipelines": 8,
+    "apiThreads": [
+      "CrGpuMain"
+    ],
+    "firstSubmitMs": 3971,
+    "maxFrameGapMs": 1018.2000000000003
+  },
+  {
+    "variant": "async",
+    "run": 0,
+    "cache": "warm",
+    "mainApiMs": 0.957,
+    "pipelines": 8,
+    "apiThreads": [
+      "CrGpuMain"
+    ],
+    "firstSubmitMs": 500,
+    "maxFrameGapMs": 72.79999999999995
+  },
+  {
+    "variant": "async",
+    "run": 1,
+    "cache": "cold",
+    "mainApiMs": 1.901,
+    "pipelines": 8,
+    "apiThreads": [
+      "CrGpuMain"
+    ],
+    "firstSubmitMs": 2827,
+    "maxFrameGapMs": 1024.2000000000003
+  },
+  {
+    "variant": "async",
+    "run": 1,
+    "cache": "warm",
+    "mainApiMs": 1.034,
+    "pipelines": 8,
+    "apiThreads": [
+      "CrGpuMain"
+    ],
+    "firstSubmitMs": 572.3999999985099,
+    "maxFrameGapMs": 78.70000000000005
+  },
+  {
+    "variant": "async",
+    "run": 2,
+    "cache": "cold",
+    "mainApiMs": 2.268,
+    "pipelines": 8,
+    "apiThreads": [
+      "CrGpuMain"
+    ],
+    "firstSubmitMs": 2875.39999999851,
+    "maxFrameGapMs": 1060.5
+  },
+  {
+    "variant": "async",
+    "run": 2,
+    "cache": "warm",
+    "mainApiMs": 0.958,
+    "pipelines": 8,
+    "apiThreads": [
+      "CrGpuMain"
+    ],
+    "firstSubmitMs": 651.4000000059605,
+    "maxFrameGapMs": 151.5
+  },
+  {
+    "variant": "v0.4.0",
+    "run": 0,
+    "cache": "cold",
+    "mainApiMs": 1647.425,
+    "pipelines": 10,
+    "apiThreads": [
+      "CrGpuMain"
+    ],
+    "firstSubmitMs": 13979.39999999851,
+    "maxFrameGapMs": 2242.5
+  },
+  {
+    "variant": "v0.4.0",
+    "run": 0,
+    "cache": "warm",
+    "mainApiMs": 197.192,
+    "pipelines": 10,
+    "apiThreads": [
+      "CrGpuMain"
+    ],
+    "firstSubmitMs": 326.8999999985099,
+    "maxFrameGapMs": 224.2
+  },
+  {
+    "variant": "v0.4.0",
+    "run": 1,
+    "cache": "cold",
+    "mainApiMs": 1638.507,
+    "pipelines": 10,
+    "apiThreads": [
+      "CrGpuMain"
+    ],
+    "firstSubmitMs": 780.7999999970198,
+    "maxFrameGapMs": 2575.6000000000004
+  },
+  {
+    "variant": "v0.4.0",
+    "run": 1,
+    "cache": "warm",
+    "mainApiMs": 122.432,
+    "pipelines": 10,
+    "apiThreads": [
+      "CrGpuMain"
+    ],
+    "firstSubmitMs": 295.09999999403954,
+    "maxFrameGapMs": 90.89999999999998
+  },
+  {
+    "variant": "v0.4.0",
+    "run": 2,
+    "cache": "cold",
+    "mainApiMs": 1691.791,
+    "pipelines": 10,
+    "apiThreads": [
+      "CrGpuMain"
+    ],
+    "firstSubmitMs": 830.2999999970198,
+    "maxFrameGapMs": 2563.6000000000004
+  },
+  {
+    "variant": "v0.4.0",
+    "run": 2,
+    "cache": "warm",
+    "mainApiMs": 152.924,
+    "pipelines": 10,
+    "apiThreads": [
+      "CrGpuMain"
+    ],
+    "firstSubmitMs": 361.20000000298023,
+    "maxFrameGapMs": 121.19999999999999
+  }
+]

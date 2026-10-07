@@ -1,0 +1,787 @@
+{
+  "chromeVersion": "Chrome/154.0.8037.98",
+  "edgeVersion": "Edg/154.0.4258.53",
+  "chrome": [
+    {
+      "demo": "01-hello",
+      "cache": "cold",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 933,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "01-hello",
+      "cache": "warm",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 721,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": []
+    },
+    {
+      "demo": "02-fsr1-vs-fsr3",
+      "cache": "cold",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 853,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "02-fsr1-vs-fsr3",
+      "cache": "warm",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 617,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": []
+    },
+    {
+      "demo": "03-split-compare",
+      "cache": "cold",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 1429,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "03-split-compare",
+      "cache": "warm",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 1231,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": []
+    },
+    {
+      "demo": "04-aliasing-torture",
+      "cache": "cold",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 821,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "04-aliasing-torture",
+      "cache": "warm",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 1037,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": []
+    },
+    {
+      "demo": "05-transparency",
+      "cache": "cold",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 906,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "05-transparency",
+      "cache": "warm",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 1246,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": []
+    },
+    {
+      "demo": "06-screenspace-gi",
+      "cache": "cold",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 1203,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "06-screenspace-gi",
+      "cache": "warm",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 1083,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": []
+    },
+    {
+      "demo": "07-tsl-node",
+      "cache": "cold",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 747,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "07-tsl-node",
+      "cache": "warm",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 717,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": []
+    },
+    {
+      "demo": "08-tsl-compose",
+      "cache": "cold",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 734,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "08-tsl-compose",
+      "cache": "warm",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 553,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": []
+    },
+    {
+      "demo": "09-kitchen-sink",
+      "cache": "cold",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 2763,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "09-kitchen-sink",
+      "cache": "warm",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 2348,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": []
+    },
+    {
+      "demo": "10-ssgi-denoise",
+      "cache": "cold",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 2346,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "10-ssgi-denoise",
+      "cache": "warm",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 1908,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": []
+    },
+    {
+      "demo": "11-node-reactive",
+      "cache": "cold",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 964,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "11-node-reactive",
+      "cache": "warm",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 766,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": []
+    },
+    {
+      "demo": "12-temporal-guides",
+      "cache": "cold",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 1016,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "12-temporal-guides",
+      "cache": "warm",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 1131,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": []
+    },
+    {
+      "demo": "13-guides-node",
+      "cache": "cold",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 1189,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "13-guides-node",
+      "cache": "warm",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 1108,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": []
+    },
+    {
+      "demo": "14-pathtracer-alpha",
+      "cache": "cold",
+      "syncComputeCalls": 12,
+      "asyncComputeCalls": 3,
+      "queueSubmissions": 228,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "THREE.Source: \"Source\" has been renamed to \"TextureSource\". Please update your code to use \"THREE.TextureSource\" instead."
+      ]
+    },
+    {
+      "demo": "14-pathtracer-alpha",
+      "cache": "warm",
+      "syncComputeCalls": 12,
+      "asyncComputeCalls": 3,
+      "queueSubmissions": 2650,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": [
+        "THREE.Source: \"Source\" has been renamed to \"TextureSource\". Please update your code to use \"THREE.TextureSource\" instead."
+      ]
+    },
+    {
+      "demo": "15-transparent-canvas",
+      "cache": "cold",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 1004,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "15-transparent-canvas",
+      "cache": "warm",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 768,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": []
+    },
+    {
+      "demo": "16-spatial-node",
+      "cache": "cold",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 3,
+      "queueSubmissions": 761,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "16-spatial-node",
+      "cache": "warm",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 3,
+      "queueSubmissions": 562,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": []
+    },
+    {
+      "demo": "s1-reinvest",
+      "cache": "cold",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 56,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "s1-reinvest",
+      "cache": "warm",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 1200,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": []
+    },
+    {
+      "demo": "s2-fractal",
+      "cache": "cold",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 841,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": []
+    },
+    {
+      "demo": "s2-fractal",
+      "cache": "warm",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 828,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": []
+    },
+    {
+      "demo": "s3-how-low",
+      "cache": "cold",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 1280,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "s3-how-low",
+      "cache": "warm",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 1623,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": []
+    },
+    {
+      "demo": "s4-convergence",
+      "cache": "cold",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 373,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": []
+    },
+    {
+      "demo": "s4-convergence",
+      "cache": "warm",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 507,
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "issues": []
+    }
+  ],
+  "edge": [
+    {
+      "demo": "01-hello",
+      "cache": "cold",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 305,
+      "adapter": {
+        "vendor": "intel",
+        "architecture": "gen-12lp",
+        "device": "",
+        "description": ""
+      },
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "01-hello",
+      "cache": "warm",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 313,
+      "adapter": {
+        "vendor": "intel",
+        "architecture": "gen-12lp",
+        "device": "",
+        "description": ""
+      },
+      "issues": []
+    },
+    {
+      "demo": "06-screenspace-gi",
+      "cache": "cold",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 399,
+      "adapter": {
+        "vendor": "intel",
+        "architecture": "gen-12lp",
+        "device": "",
+        "description": ""
+      },
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "06-screenspace-gi",
+      "cache": "warm",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 393,
+      "adapter": {
+        "vendor": "intel",
+        "architecture": "gen-12lp",
+        "device": "",
+        "description": ""
+      },
+      "issues": []
+    },
+    {
+      "demo": "07-tsl-node",
+      "cache": "cold",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 322,
+      "adapter": {
+        "vendor": "intel",
+        "architecture": "gen-12lp",
+        "device": "",
+        "description": ""
+      },
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "07-tsl-node",
+      "cache": "warm",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 265,
+      "adapter": {
+        "vendor": "intel",
+        "architecture": "gen-12lp",
+        "device": "",
+        "description": ""
+      },
+      "issues": []
+    },
+    {
+      "demo": "13-guides-node",
+      "cache": "cold",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 353,
+      "adapter": {
+        "vendor": "intel",
+        "architecture": "gen-12lp",
+        "device": "",
+        "description": ""
+      },
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "13-guides-node",
+      "cache": "warm",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 544,
+      "adapter": {
+        "vendor": "intel",
+        "architecture": "gen-12lp",
+        "device": "",
+        "description": ""
+      },
+      "issues": []
+    },
+    {
+      "demo": "15-transparent-canvas",
+      "cache": "cold",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 416,
+      "adapter": {
+        "vendor": "intel",
+        "architecture": "gen-12lp",
+        "device": "",
+        "description": ""
+      },
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "15-transparent-canvas",
+      "cache": "warm",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 8,
+      "queueSubmissions": 380,
+      "adapter": {
+        "vendor": "intel",
+        "architecture": "gen-12lp",
+        "device": "",
+        "description": ""
+      },
+      "issues": []
+    },
+    {
+      "demo": "16-spatial-node",
+      "cache": "cold",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 3,
+      "queueSubmissions": 306,
+      "adapter": {
+        "vendor": "intel",
+        "architecture": "gen-12lp",
+        "device": "",
+        "description": ""
+      },
+      "issues": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "demo": "16-spatial-node",
+      "cache": "warm",
+      "syncComputeCalls": 0,
+      "asyncComputeCalls": 3,
+      "queueSubmissions": 242,
+      "adapter": {
+        "vendor": "intel",
+        "architecture": "gen-12lp",
+        "device": "",
+        "description": ""
+      },
+      "issues": []
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import { npmInvocation } from './npm-command.mjs';
 // Optional local convenience. Releases normally need no local step: use the
 // "Run workflow" button on publish.yml, or create a vX.Y.Z tag on main
 // (docs/releasing.md). This does what the button does, from your checkout:
@@ -241,11 +242,12 @@ export function release({ argv, run, log = console.log, warn = console.warn }) {
  * @returns {string}
  */
 function runCommand(command, args, { inherit = false } = {}) {
+    const invocation = command === 'npm' ? npmInvocation(args) : [command, args];
     if (inherit) {
-        execFileSync(command, args, { stdio: 'inherit' });
+        execFileSync(...invocation, { stdio: 'inherit' });
         return '';
     }
-    return execFileSync(command, args, {
+    return execFileSync(...invocation, {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
         maxBuffer: 64 * 1024 * 1024,

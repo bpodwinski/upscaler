@@ -1,0 +1,122 @@
+[
+  {
+    "variant": "source-filter-bundle-v1",
+    "name": "ratio-2-r1-A1-source-filter-bundle-v1.json",
+    "status": "complete",
+    "scenario": "Q1",
+    "ratio": 2,
+    "computeMs": 1.1955200000000001,
+    "validation": [],
+    "browserValidation": []
+  },
+  {
+    "variant": "source-filter-bundle-v1",
+    "name": "ratio-2-r1-A2-source-filter-bundle-v1.json",
+    "status": "complete",
+    "scenario": "Q1",
+    "ratio": 2,
+    "computeMs": 1.3562880000000002,
+    "validation": [],
+    "browserValidation": []
+  },
+  {
+    "variant": "source-filter-bundle-v1",
+    "name": "ratio-2-r1-B1-local-baseline-through-e00-harness.json",
+    "status": "complete",
+    "scenario": "Q1",
+    "ratio": 2,
+    "computeMs": 1.312256,
+    "validation": [],
+    "browserValidation": []
+  },
+  {
+    "variant": "source-filter-bundle-v1",
+    "name": "ratio-2-r1-B2-local-baseline-through-e00-harness.json",
+    "status": "complete",
+    "scenario": "Q1",
+    "ratio": 2,
+    "computeMs": 1.292288,
+    "validation": [],
+    "browserValidation": []
+  },
+  {
+    "variant": "source-structural-bundle-v1",
+    "name": "ratio-2-r1-A1-source-structural-bundle-v1.json",
+    "status": "complete",
+    "scenario": "Q1",
+    "ratio": 2,
+    "computeMs": 1.5237119999999997,
+    "validation": [],
+    "browserValidation": []
+  },
+  {
+    "variant": "source-structural-bundle-v1",
+    "name": "ratio-2-r1-A2-source-structural-bundle-v1.json",
+    "status": "complete",
+    "scenario": "Q1",
+    "ratio": 2,
+    "computeMs": 1.6706560000000001,
+    "validation": [],
+    "browserValidation": []
+  },
+  {
+    "variant": "source-structural-bundle-v1",
+    "name": "ratio-2-r1-B1-local-baseline-through-e00-harness.json",
+    "status": "complete",
+    "scenario": "Q1",
+    "ratio": 2,
+    "computeMs": 1.3056,
+    "validation": [],
+    "browserValidation": []
+  },
+  {
+    "variant": "source-structural-bundle-v1",
+    "name": "ratio-2-r1-B2-local-baseline-through-e00-harness.json",
+    "status": "complete",
+    "scenario": "Q1",
+    "ratio": 2,
+    "computeMs": 1.147904,
+    "validation": [],
+    "browserValidation": []
+  },
+  {
+    "variant": "source-spd-resolver-bundle-v1",
+    "name": "ratio-2-r1-A1-source-spd-resolver-bundle-v1.json",
+    "status": "complete",
+    "scenario": "Q1",
+    "ratio": 2,
+    "computeMs": 1.766912,
+    "validation": [],
+    "browserValidation": []
+  },
+  {
+    "variant": "source-spd-resolver-bundle-v1",
+    "name": "ratio-2-r1-A2-source-spd-resolver-bundle-v1.json",
+    "status": "complete",
+    "scenario": "Q1",
+    "ratio": 2,
+    "computeMs": 2.013696,
+    "validation": [],
+    "browserValidation": []
+  },
+  {
+    "variant": "source-spd-resolver-bundle-v1",
+    "name": "ratio-2-r1-B1-local-baseline-through-e00-harness.json",
+    "status": "complete",
+    "scenario": "Q1",
+    "ratio": 2,
+    "computeMs": 1.23904,
+    "validation": [],
+    "browserValidation": []
+  },
+  {
+    "variant": "source-spd-resolver-bundle-v1",
+    "name": "ratio-2-r1-B2-local-baseline-through-e00-harness.json",
+    "status": "complete",
+    "scenario": "Q1",
+    "ratio": 2,
+    "computeMs": 1.242624,
+    "validation": [],
+    "browserValidation": []
+  }
+]

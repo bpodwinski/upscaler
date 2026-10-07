@@ -202,6 +202,7 @@ async function run(request: ProbeRequest) {
         ratio: request.ratio,
         path: request.path,
     });
+    await pass.init();
     // Inputs for dispatch mode: one real scene render into the pass's target.
     bench.update(0, false);
     pass.draw(scene, camera, 1 / 60);

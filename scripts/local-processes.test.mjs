@@ -1,8 +1,9 @@
 import { spawn } from 'node:child_process';
+import { PassThrough } from 'node:stream';
 import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 
 import {
     DEFAULT_BENCH_URL,
@@ -97,4 +98,30 @@ test('removeTempDirectory removes a tree and never throws', async () => {
     expect(await removeTempDirectory(directory)).toBe(true);
     expect(existsSync(directory)).toBe(false);
     expect(await removeTempDirectory(undefined)).toBe(true);
+});
+
+test('refuses to remove the temporary root or an outside directory', async () => {
+    const warn=vi.spyOn(console,'warn').mockImplementation(()=>{});
+    try {
+        expect(await removeTempDirectory(tmpdir())).toBe(false);
+        expect(await removeTempDirectory(join(tmpdir(),'..','outside'))).toBe(false);
+    } finally { warn.mockRestore(); }
+});
+
+test('allows a successful browser launcher exit while its relaunched CDP endpoint starts', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true });
+    try {
+        await waitForUrl('http://127.0.0.1:9357/json/version', {
+            child: { exitCode: 0, signalCode: null }, allowSuccessfulExit: true,
+        });
+        expect(fetch).toHaveBeenCalledTimes(1);
+    } finally { fetch.mockRestore(); }
+});
+
+test('releases inherited pipe handles after an owned parent has already exited', async () => {
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    await stopChild({ exitCode: 0, signalCode: null, stdio: [null, stdout, stderr] });
+    expect(stdout.destroyed).toBe(true);
+    expect(stderr.destroyed).toBe(true);
 });

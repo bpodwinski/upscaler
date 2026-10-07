@@ -3,3 +3,5 @@ dist/
 bench/dist/
 *.log
 .DS_Store
+
+bench/results/windows-local/

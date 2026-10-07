@@ -289,6 +289,8 @@ function placeCamera(): void {
 //* Loop — draw the non-jittered producers first, then FSR (which jitters the
 //* camera internally and restores it in endFrame).
 const timer = new THREE.Timer();
+await Promise.all([fsr.init(), bilinear.init(), native.init()]);
+
 renderer.setAnimationLoop(() => {
     timer.update();
     const dt = Math.min(timer.getDelta(), 0.1);

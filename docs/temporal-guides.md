@@ -188,6 +188,7 @@ import { MomentsPass } from '@pmndrs/upscaler';
 
 const moments = new MomentsPass({ renderer });
 moments.configure({ width, height, space: 'ycocg' }); // or 'linear' (default)
+await moments.init();
 moments.dispatch({ source: giTexture });              // per frame, any float texture
 // moments.moments        rgba16float, source size:   .rg = (s, s²) per texel
 // moments.coarseMoments  rgba16float, ⌈size / 4⌉:   .rg = 4×4 block means of (s, s²)

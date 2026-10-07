@@ -1,3 +1,4 @@
+import { npmInvocation } from './npm-command.mjs';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -55,8 +56,7 @@ assertCleanFiles(distFiles, 'dist');
 //* Package Manifest ===
 
 const packed = spawnSync(
-    'npm',
-    ['pack', '--dry-run', '--ignore-scripts', '--json'],
+    ...npmInvocation(['pack', '--dry-run', '--ignore-scripts', '--json']),
     { cwd: root, encoding: 'utf8' },
 );
 if (packed.status !== 0)

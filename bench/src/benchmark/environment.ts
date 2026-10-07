@@ -27,32 +27,29 @@ export function collectBenchmarkEnvironment(
 ): Promise<BenchmarkEnvironment> {
     const backend = renderer.backend as RendererBackendDetails;
     const device = backend.device;
-    return navigator.gpu
-        .requestAdapter()
-        .then((adapter) => {
-            const adapterInfo = backend.adapter?.info ?? adapter?.info;
-            const adapterName = adapterInfo
-                ? [
-                      adapterInfo.vendor,
-                      adapterInfo.architecture,
-                      adapterInfo.device,
-                      adapterInfo.description,
-                  ]
-                      .filter(Boolean)
-                      .join(' ')
-                : 'adapter-info-unavailable';
-            return {
-                browser: navigator.userAgent,
-                operatingSystem: navigator.platform,
-                adapter: adapterName,
-                backend: backend.isWebGPUBackend === true ? 'WebGPU' : 'unknown',
-                webgpuFeatures: device ? [...device.features].sort() : [],
-                threeVersion: THREE.REVISION,
-                dimensions: { ...config.dimensions },
-                ratio: config.ratio,
-                fixedTimestep: config.timestepSeconds,
-            };
-        });
+    // Report the device used to render; a fresh request can select another GPU.
+    const adapterInfo = device?.adapterInfo ?? backend.adapter?.info;
+    const adapterName = adapterInfo
+        ? [
+              adapterInfo.vendor,
+              adapterInfo.architecture,
+              adapterInfo.device,
+              adapterInfo.description,
+          ]
+              .filter(Boolean)
+              .join(' ')
+        : 'adapter-info-unavailable';
+    return Promise.resolve({
+        browser: navigator.userAgent,
+        operatingSystem: navigator.platform,
+        adapter: adapterName,
+        backend: backend.isWebGPUBackend === true ? 'WebGPU' : 'unknown',
+        webgpuFeatures: device ? [...device.features].sort() : [],
+        threeVersion: THREE.REVISION,
+        dimensions: { ...config.dimensions },
+        ratio: config.ratio,
+        fixedTimestep: config.timestepSeconds,
+    });
 }
 
 /**

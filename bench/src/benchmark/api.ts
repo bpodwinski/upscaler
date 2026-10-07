@@ -80,7 +80,10 @@ class BrowserBenchmarkApi implements UpscalerBenchmarkApi {
 
     async reset(): Promise<void> {
         const { pipeline, bench, config, scenario, camera } = this._context;
-        if (pipeline) await pipeline.drainTiming();
+        if (pipeline) {
+            await pipeline.resolver.prepare();
+            await pipeline.drainTiming();
+        }
         const canvas = this._context.renderer.domElement;
         const resized =
             canvas.width !== config.dimensions.width || canvas.height !== config.dimensions.height;
@@ -202,6 +205,7 @@ class BrowserBenchmarkApi implements UpscalerBenchmarkApi {
             pipeline.setHostPreExposure(scenarioFrame.hostPreExposure);
         if (scenarioFrame.resetHistory) pipeline.reset(bench.scene, camera, frame);
 
+        await pipeline.resolver.prepare();
         await pipeline.prepareTiming();
         pipeline.advanceAutomatedFrame(frame);
         pipeline.renderInput(

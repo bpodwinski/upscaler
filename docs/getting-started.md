@@ -162,6 +162,7 @@ function resize() {
     });
 }
 resize();
+await upscalePass.init();
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); resize(); });
 
 const timer = new THREE.Timer();
@@ -199,12 +200,13 @@ import { mrt, output, velocity } from 'three/tsl';
 import { Upscaler, QualityMode } from '@pmndrs/upscaler';
 
 const upscaler = new Upscaler({ renderer });
-upscaler.init(); // compiles the pipelines; renderer.init() must have resolved
+// Configure first so only the selected path is prepared.
 upscaler.configure({
     displayWidth, displayHeight,           // physical pixels
     qualityMode: QualityMode.Quality,      // or customUpscaleRatio, or renderWidth/renderHeight
     path: 'temporal',
 });
+await upscaler.init();
 
 // Render target at RENDER resolution. Attachment names route the MRT outputs and the
 // attachment count must equal the MRT output count.
@@ -295,3 +297,25 @@ latest timed frame (labels such as `reconstruct`, `exposure`, `shadingChange`,
 `accumulate`, `rcas`). It holds only the passes that frame ran, so summing it gives the
 frame's upscale cost. It's empty while timing is off, where the device lacks
 `timestamp-query`, and for the first frame or so after timing starts.
+
+## Asynchronous preparation
+
+Configure sizes and path, then await `init()` before raw dispatch. Configuration
+allocates textures synchronously and queues only that path's pipelines. Await
+initialization again when switching to a path whose pipelines are not ready.
+`isReady` describes mandatory-pass readiness, not every optional setting.
+
+`prepare()` explicitly warms the current settings and retries failed compilation.
+A newly enabled debug view or shading-change detector otherwise prepares on first
+dispatch and stays inactive until ready. Activation invalidates affected history
+without changing the input frame's jitter. Settings are frozen across split dispatch.
+
+TSL nodes prepare automatically, show the input color while pending, and avoid
+jitter until mandatory pipelines are ready. Failed compilation is reported once;
+explicit initialization rejects and node fallback remains usable. `UpscalePass`
+also presents its reduced-resolution input during path preparation. Its raw
+`outputTexture` is ready for use after awaiting initialization.
+
+`Upscaler.isSupported(device)` checks baseline device limits without compiling
+or allocating. Timestamp queries are optional. Support does not guarantee shader
+compilation, device health, or allocation at an arbitrary output size.

@@ -45,7 +45,6 @@ const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerH
 
 //* Upscaler — raw driver (no UpscalePass: we need the split dispatch).
 const upscaler = new Upscaler({ renderer, gpuTiming: true });
-upscaler.init();
 // Motion vectors must be jitter-free.
 velocity.setProjectionMatrix(upscaler.unjitteredProjectionMatrix);
 
@@ -145,7 +144,10 @@ Object.assign(window as unknown as Record<string, unknown>, {
 
 //* Loop — the split frame.
 const timer = new THREE.Timer();
+await Promise.all([upscaler.init()]);
+
 renderer.setAnimationLoop(() => {
+    if (!upscaler.isReady) return;
     timer.update();
     const dt = Math.min(timer.getDelta(), 0.1);
     const t = timer.getElapsed();

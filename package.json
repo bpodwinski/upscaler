@@ -70,7 +70,7 @@
         "globals": "^15.14.0",
         "lil-gui": "^0.20.0",
         "three": "^0.186.1",
-        "three-gpu-pathtracer": "^0.0.26",
+        "three-gpu-pathtracer": "https://codeload.github.com/gkjohnson/three-gpu-pathtracer/tar.gz/5f0ad5154a44224ae4b6c801b65778471dabf367",
         "three-mesh-bvh": "^0.9.15",
         "typescript": "^5.7.0",
         "typescript-eslint": "^8.20.0",

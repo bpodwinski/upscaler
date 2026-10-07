@@ -13,6 +13,7 @@ import {
 import { StorageTexture, type Texture, type WebGPURenderer } from 'three/webgpu';
 
 import { ComputePass } from './internal/ComputePass';
+import { notReadyError } from './initializationError';
 import { ConstantsBuffer } from './internal/ConstantsBuffer';
 import { GpuTimer } from './internal/GpuTimer';
 import { getDevice, getGPUTexture } from './internal/threeWebGPU';
@@ -189,6 +190,14 @@ export class Upscaler {
     private _historyIndex = 0;
     private _depthIndex = 0;
     private _initialized = false;
+    private _generation = 0;
+    private _deviceLost = false;
+    private readonly _passes = new Map<string, ComputePass>();
+    private readonly _requests = new Map<string, Promise<void>>();
+    private readonly _failures = new Map<string, unknown>();
+    private _effectiveSettings: RuntimeSettings = { ...this.settings };
+    private _shadingActive = false;
+    private _debugActive = false;
 
     // GPU-side working set (owned raw textures + the three-visible output)
     private _output: StorageTexture | null = null;
@@ -272,73 +281,164 @@ export class Upscaler {
         this._crossFrameReconstruct = options._crossFrameReconstruct ?? null;
     }
 
-    /**
-     * Compiles all compute pipelines. Call once after `renderer.init()`.
-     */
-    init(): void {
+    /** Baseline device capability only; does not compile or allocate anything. */
+    static isSupported(device: GPUDevice): boolean {
+        const limits = device.limits;
+        return limits.maxBindGroups >= 1 &&
+            limits.maxBindingsPerBindGroup >= 13 &&
+            limits.maxSampledTexturesPerShaderStage >= 9 &&
+            limits.maxStorageTexturesPerShaderStage >= 3 &&
+            limits.maxStorageBuffersPerShaderStage >= 2 &&
+            limits.maxUniformBuffersPerShaderStage >= 1 &&
+            limits.maxSamplersPerShaderStage >= 1 &&
+            limits.maxUniformBufferBindingSize >= ConstantsBuffer.SIZE &&
+            limits.maxComputeWorkgroupSizeX >= 8 && limits.maxComputeWorkgroupSizeY >= 8 &&
+            limits.maxComputeInvocationsPerWorkgroup >= 64 &&
+            limits.maxComputeWorkgroupStorageSize >= 1280;
+    }
+
+    /** Prepare the configured path. Call after renderer.init(); await before raw dispatch. */
+    init(): Promise<void> {
+        return this.prepare();
+    }
+
+    /** Explicitly warms the current path and optional settings; also retries failed requests. */
+    prepare(): Promise<void> {
+        this._ensureResources();
+        const preparation = this._deviceLost
+            ? Promise.reject(new Error("@pmndrs/upscaler: GPU device lost."))
+            : this._queuePreparation(true);
+        // Pass failures already report their cause. Ignored promises must not add
+        // an unhandled rejection; returning the original still rejects for awaiters.
+        void preparation.catch(() => {});
+        return preparation;
+    }
+
+    /** Mandatory passes are ready; newly requested optional passes may still be preparing. */
+    get isReady(): boolean {
+        return this._initialized && !this._deviceLost &&
+            this._mandatoryPasses().every(name => this._passes.has(name));
+    }
+
+    /** The debug view actually used by the most recent frame (None while preparing). */
+    get activeDebugView(): DebugView {
+        return this._effectiveSettings.debugView;
+    }
+
+    private _ensureResources(): void {
         if (this._initialized) return;
         const device = getDevice(this._renderer);
         this._device = device;
+        this._deviceLost = false;
+        const generation = this._generation;
+        void device.lost.then(() => {
+            if (generation === this._generation) this._deviceLost = true;
+        });
         this._constants = new ConstantsBuffer(device);
         if (this._gpuTiming) this._timer = new GpuTimer(device);
         this._linearSampler = device.createSampler({
-            label: 'upscale-linear-clamp',
-            magFilter: 'linear',
-            minFilter: 'linear',
-            addressModeU: 'clamp-to-edge',
-            addressModeV: 'clamp-to-edge',
+            label: 'upscale-linear-clamp', magFilter: 'linear', minFilter: 'linear',
+            addressModeU: 'clamp-to-edge', addressModeV: 'clamp-to-edge',
         });
-
-        this._blitPass = new ComputePass(device, 'blit', BLIT_SHADER);
-        this._easuPass = new ComputePass(device, 'easu', EASU_SHADER);
-        this._rcasPass = new ComputePass(device, 'rcas', this._rcasShader);
-        this._spatialRcasPass =
-            this._spatialRcasShader === null
-                ? this._rcasPass
-                : new ComputePass(device, 'rcas', this._spatialRcasShader);
-        if (this._crossFrameReconstruct) {
-            this._reconstructPass = new ComputePass(
-                device,
-                'reconstruct',
-                this._crossFrameReconstruct.shader,
-            );
-            if (this._crossFrameReconstruct.cameraCompensated) {
-                this._reprojectBuffer = device.createBuffer({
-                    label: 'upscale-reproject',
-                    size: 32,
-                    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-                });
-            }
-        } else {
-            this._reconstructPass = new ComputePass(device, 'reconstruct', RECONSTRUCT_SHADER);
-            this._depthClipPass = new ComputePass(
-                device,
-                'depth-clip',
-                this._depthClipShader ?? DEPTH_CLIP_SHADER,
-            );
+        if (this._crossFrameReconstruct?.cameraCompensated) {
+            this._reprojectBuffer = device.createBuffer({
+                label: 'upscale-reproject', size: 32,
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            });
         }
-        this._accumulatePass = new ComputePass(device, 'accumulate', ACCUMULATE_SHADER, {
-            shaderKey: 'baseline:accumulate',
-            assembledChunks: [],
-        });
-        this._exposurePass = new ComputePass(device, 'exposure', LUMINANCE_PYRAMID_SHADER);
-        this._shadingChangePass = new ComputePass(
-            device,
-            'shading-change',
-            this._shadingChangeShader ?? SHADING_CHANGE_SHADER,
-        );
-        this._generateReactivePass = new ComputePass(
-            device,
-            'gen-reactive',
-            GENERATE_REACTIVE_SHADER,
-        );
-        this._debugPass = new ComputePass(device, 'debug', DEBUG_SHADER, {
-            shaderKey: 'baseline:debug',
-            assembledChunks: [],
-        });
-
         this._jitter = new JitterSequence(this._ratio);
         this._initialized = true;
+    }
+
+    private _mandatoryPasses(): string[] {
+        if (this._path === 'bilinear') return ['blit'];
+        if (this._path === 'spatial') return ['easu', 'spatialRcas', 'blit'];
+        const geometry = this._crossFrameReconstruct ? ['reconstruct'] : ['reconstruct', 'depthClip'];
+        return this._path === 'guides' ? geometry :
+            [...geometry, 'accumulate', 'exposure', 'generateReactive', 'rcas', 'blit'];
+    }
+
+    private _requestPass(name: string, retry: boolean): Promise<void> {
+        if (this._passes.has(name)) return Promise.resolve();
+        if (this._failures.has(name)) {
+            if (!retry) return Promise.reject(this._failures.get(name));
+            this._failures.delete(name);
+            this._requests.delete(name);
+        }
+        const existing = this._requests.get(name);
+        if (existing) return existing;
+        const shaders: Record<string, [string, string]> = {
+            blit: ['blit', BLIT_SHADER], easu: ['easu', EASU_SHADER],
+            rcas: ['rcas', this._rcasShader],
+            spatialRcas: ['rcas', this._spatialRcasShader ?? this._rcasShader],
+            reconstruct: ['reconstruct', this._crossFrameReconstruct?.shader ?? RECONSTRUCT_SHADER],
+            depthClip: ['depth-clip', this._depthClipShader ?? DEPTH_CLIP_SHADER],
+            accumulate: ['accumulate', ACCUMULATE_SHADER],
+            exposure: ['exposure', LUMINANCE_PYRAMID_SHADER],
+            generateReactive: ['gen-reactive', GENERATE_REACTIVE_SHADER],
+            shadingChange: ['shading-change', this._shadingChangeShader ?? SHADING_CHANGE_SHADER],
+            debug: ['debug', DEBUG_SHADER],
+        };
+        const [label, code] = shaders[name];
+        const generation = this._generation;
+        const request = ComputePass.create(this._device, label, code).then(pass => {
+            if (generation !== this._generation || this._deviceLost) {
+                throw new Error('@pmndrs/upscaler: preparation cancelled by disposal or device loss.');
+            }
+            this._passes.set(name, pass);
+            switch (name) {
+                case 'blit': this._blitPass = pass; break;
+                case 'easu': this._easuPass = pass; break;
+                case 'rcas': this._rcasPass = pass; break;
+                case 'spatialRcas': this._spatialRcasPass = pass; break;
+                case 'reconstruct': this._reconstructPass = pass; break;
+                case 'depthClip': this._depthClipPass = pass; break;
+                case 'accumulate': this._accumulatePass = pass; break;
+                case 'exposure': this._exposurePass = pass; break;
+                case 'generateReactive': this._generateReactivePass = pass; break;
+                case 'shadingChange': this._shadingChangePass = pass; break;
+                case 'debug': this._debugPass = pass; break;
+            }
+        }).catch(error => {
+            if (generation === this._generation && !this._failures.has(name)) {
+                this._failures.set(name, error);
+                console.error('@pmndrs/upscaler: failed to prepare ' + label, error);
+            }
+            throw error;
+        });
+        this._requests.set(name, request);
+        return request;
+    }
+
+    private _queuePreparation(retry: boolean): Promise<void> {
+        const names = this._mandatoryPasses();
+        if (this._path === 'temporal') {
+            if (this.settings.detectShadingChanges) names.push('shadingChange');
+            if (this.settings.debugView !== DebugView.None) names.push('debug');
+        }
+        return Promise.all(names.filter(name => !this._passes.has(name)).map(name => this._requestPass(name, retry))).then(() => {});
+    }
+
+    private _startDispatch(): void {
+        if (!this.isReady) {
+            throw notReadyError(this, 'Upscaler', this._deviceLost ? 'device-lost' : 'preparing');
+        }
+        // Automatic preparation handles rejection here; explicit prepare() still rejects.
+        void this._queuePreparation(false).catch(() => {});
+        const shading = this._path === 'temporal' && this.settings.detectShadingChanges && this._passes.has('shadingChange');
+        const debug = this._path === 'temporal' && this.settings.debugView !== DebugView.None && this._passes.has('debug');
+        if ((shading && !this._shadingActive) || (debug && !this._debugActive)) {
+            // The input may already have rendered with this frame's jitter.
+            // Invalidate history without changing that projection's sample.
+            this._pendingReset = true;
+            this._shadingMemoryStale = true;
+        }
+        this._shadingActive = shading;
+        this._debugActive = debug;
+        this._effectiveSettings = {
+            ...this.settings, detectShadingChanges: shading,
+            debugView: debug ? this.settings.debugView : DebugView.None,
+        };
     }
 
     /**
@@ -347,7 +447,7 @@ export class Upscaler {
      * @param config - Display size, quality mode/ratio, and pipeline path
      */
     configure(config: UpscalerConfig): void {
-        if (!this._initialized) this.init();
+        this._ensureResources();
 
         // A new pass graph: samples still in flight from the old one must not
         // land in gpuTimings after it.
@@ -376,6 +476,7 @@ export class Upscaler {
         this._jitter.setRatio(this._ratio);
         this._allocateTextures();
         this.resetHistory();
+        void this._queuePreparation(false).catch(() => {});
     }
 
     //* Accessors
@@ -604,6 +705,7 @@ export class Upscaler {
      * @param camera - The scene camera (near/far and projection type)
      */
     dispatch(inputs: DispatchInputs, camera: JitterableCamera): void {
+        this._startDispatch();
         if (this._path === 'guides') {
             throw new Error(
                 "@pmndrs/upscaler: the 'guides' path has no upscale — drive it with dispatchGuides().",
@@ -670,6 +772,7 @@ export class Upscaler {
      * @param camera - The scene camera (near/far and projection type)
      */
     dispatchGuides(inputs: GuideDispatchInputs, camera: JitterableCamera): void {
+        this._startDispatch();
         if (this._path !== 'temporal' && this._path !== 'guides') {
             throw new Error(
                 `@pmndrs/upscaler: dispatchGuides() requires the temporal or guides path (got '${this._path}').`,
@@ -713,6 +816,7 @@ export class Upscaler {
      * @param camera - The camera passed to {@link dispatchGuides}
      */
     dispatchUpscale(inputs: DispatchInputs, camera: JitterableCamera): void {
+        if (!this.isReady) throw new Error("@pmndrs/upscaler: await init() before dispatchUpscale().");
         if (this._path !== 'temporal') {
             throw new Error(
                 `@pmndrs/upscaler: dispatchUpscale() requires the temporal path (got '${this._path}').`,
@@ -751,6 +855,12 @@ export class Upscaler {
 
     /** Releases all GPU resources. */
     dispose(): void {
+        this._generation++;
+        this._passes.clear();
+        this._requests.clear();
+        this._failures.clear();
+        this._shadingActive = false;
+        this._debugActive = false;
         this._destroyTextures();
         this._constants?.dispose();
         this._reprojectBuffer?.destroy();
@@ -803,7 +913,7 @@ export class Upscaler {
 
         //* RCAS — sharpen in the caller's color domain
         const exposureView = this._exposure![0].createView();
-        if (this.settings.sharpness > 0) {
+        if (this._effectiveSettings.sharpness > 0) {
             this._encodeRcas(
                 encoder,
                 this._easuOutput!.createView(),
@@ -1054,7 +1164,7 @@ export class Upscaler {
         //* Shading Change — fused multi-scale block-mean detector (skipped
         //* entirely when the detector is off; accumulate then reads a zero dummy).
         let shadingSignalView = this._reactiveDummy!.createView();
-        if (!this.settings.detectShadingChanges) this._shadingMemoryStale = true;
+        if (!this._effectiveSettings.detectShadingChanges) this._shadingMemoryStale = true;
         else {
             const shadingMemoryIn = this._shadingBlockMemory![this._historyIndex];
             if (this._shadingMemoryStale) {
@@ -1126,7 +1236,7 @@ export class Upscaler {
         accumulatePass.end();
 
         //* Output — debug view, RCAS sharpen, or plain resolve
-        if (this.settings.debugView !== DebugView.None) {
+        if (this._effectiveSettings.debugView !== DebugView.None) {
             const debugBindGroup = this._debugPass.createBindGroup([
                 { buffer: this._constants.buffer },
                 this._dilatedMotion!.createView(),
@@ -1150,7 +1260,7 @@ export class Upscaler {
                 this._displayHeight,
             );
             debugPass.end();
-        } else if (this.settings.sharpness > 0) {
+        } else if (this._effectiveSettings.sharpness > 0) {
             this._encodeRcas(
                 encoder,
                 historyOut.createView(),
@@ -1243,12 +1353,12 @@ export class Upscaler {
         // NDC delta -> UV delta: u = 0.5 + ndc.x/2, v = 0.5 - ndc.y/2.
         c.setMotionScale(0.5, -0.5);
         c.setDepthNearFar(camera.near, camera.far);
-        c.setSharpness(Math.min(1, Math.max(0, this.settings.sharpness)));
-        c.setMaxAccumulation(Math.max(1, this.settings.maxAccumulation));
-        c.setExposure(this.settings.exposure);
+        c.setSharpness(Math.min(1, Math.max(0, this._effectiveSettings.sharpness)));
+        c.setMaxAccumulation(Math.max(1, this._effectiveSettings.maxAccumulation));
+        c.setExposure(this._effectiveSettings.exposure);
         c.setDeltaTime(inputs.deltaTime ?? 1 / 60);
         c.setFrameIndex(this._frameIndex);
-        c.setDebugMode(this.settings.debugView);
+        c.setDebugMode(this._effectiveSettings.debugView);
 
         // The input-space flag only matters to the final output pass (blit
         // or RCAS) — earlier passes ignore it, so it is staged once here.
@@ -1259,12 +1369,12 @@ export class Upscaler {
         }
         if ((camera as PerspectiveCamera).isPerspectiveCamera) flags |= FLAG_PERSPECTIVE;
         if (this._path === 'temporal') flags |= FLAG_INPUT_REINHARD;
-        if (this.settings.lockThinFeatures) flags |= FLAG_LOCKS;
-        if (this.settings.autoExposure) flags |= FLAG_AUTO_EXPOSURE;
-        if (this.settings.detectShadingChanges) flags |= FLAG_SHADING_CHANGE;
+        if (this._effectiveSettings.lockThinFeatures) flags |= FLAG_LOCKS;
+        if (this._effectiveSettings.autoExposure) flags |= FLAG_AUTO_EXPOSURE;
+        if (this._effectiveSettings.detectShadingChanges) flags |= FLAG_SHADING_CHANGE;
         if (inputs.reactive || inputs.reactiveOpaqueColor) flags |= FLAG_REACTIVE;
         if (inputs.exposureTexture) flags |= FLAG_EXTERNAL_EXPOSURE;
-        if (this.settings.rcasDenoise) flags |= FLAG_RCAS_DENOISE;
+        if (this._effectiveSettings.rcasDenoise) flags |= FLAG_RCAS_DENOISE;
         c.setFlags(flags);
     }
 

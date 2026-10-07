@@ -115,7 +115,7 @@ const BASELINE_FINGERPRINTS: Record<string, string> = {
     // 2026-10-05: pre-exposure read guarded with max(…, 1e-4) like RCAS/blit,
     // so a fixed/external exposure of 0 no longer blacks out accumulation.
     accumulate: '1505bcb5',
-    luminancePyramid: 'b74eee0d',
+    luminancePyramid: '373ea933',
     // Updated 2026-07-22: reactive merge-not-overwrite (guides spec M3) — the
     // generator max-merges an incoming mask instead of being suppressed by it.
     generateReactive: '9d0739e5',
@@ -140,6 +140,13 @@ describe('assembleShader', () => {
         const chunk = 'fn shared() -> f32 { return 1.0; }';
         const out = assembleShader(chunk, 'fn other() {}', chunk);
         expect(out.match(/fn shared/g)).toHaveLength(1);
+    });
+
+    it('assembles deterministically across repeated calls', () => {
+        for (const source of [BLIT_SHADER, EASU_SHADER, RCAS_SHADER, ACCUMULATE_SHADER,
+            RECONSTRUCT_SHADER, DEPTH_CLIP_SHADER, DEBUG_SHADER, LUMINANCE_PYRAMID_SHADER]) {
+            expect(assembleShader(source)).toBe(assembleShader(source));
+        }
     });
 
     it('drops empty parts', () => {
@@ -579,17 +586,18 @@ describe('E00 benchmark foundation', () => {
         expect(summary.computeSum.samples).toEqual([2]);
     });
 
-    it('threads optional pipeline constants and metadata', () => {
+    it('threads optional pipeline constants and metadata', async () => {
         let descriptor: GPUComputePipelineDescriptor | null = null;
         const pipeline = { getBindGroupLayout: () => ({}) } as unknown as GPUComputePipeline;
         const device = {
             createShaderModule: () => ({}),
-            createComputePipeline: (value: GPUComputePipelineDescriptor) => {
+            lost: new Promise<GPUDeviceLostInfo>(() => {}),
+            createComputePipelineAsync: (value: GPUComputePipelineDescriptor) => {
                 descriptor = value;
                 return pipeline;
             },
         } as unknown as GPUDevice;
-        const pass = new ComputePass(device, 'test', '@compute fn main() {}', {
+        const pass = await ComputePass.create(device, 'test', '@compute fn main() {}', {
             constants: { SAMPLE_COUNT: 4 },
             shaderKey: 'test-key',
             assembledChunks: ['common', 'body'],

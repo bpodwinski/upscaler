@@ -13,6 +13,15 @@ export default defineConfig(({ mode }) => {
 
     return {
         root,
+        optimizeDeps: { exclude: ['three-gpu-pathtracer/webgpu'] },
+        plugins: [{
+            name: 'pathtracer-texture-source-compat',
+            transform(code: string, id: string) {
+                if (!id.split('?')[0].replaceAll('\\', '/').endsWith('/three-gpu-pathtracer/src/uniforms/EquirectHdrInfoUniform.js')) return;
+                // Examples use r186+, which renamed Source; keep the dependency's local identifier.
+                return code.replace('HalfFloatType, Source, RepeatWrapping', 'HalfFloatType, TextureSource as Source, RepeatWrapping');
+            },
+        }],
         // Own dep-optimizer cache, separate from the bench's (see bench/vite.config.ts):
         // a shared node_modules/.vite makes concurrent dev servers 504 each other.
         cacheDir: resolve(root, '../node_modules/.vite-examples'),

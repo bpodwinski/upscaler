@@ -152,6 +152,7 @@ function resizeBenchmark(dimensions: BenchmarkDimensions): void {
 
 if (automated) {
     resizeBenchmark(config.dimensions);
+    await pipeline?.resolver.prepare();
     await pipeline?.prepareEffectReadiness(camera);
     pipeline?.reset(bench.scene, camera, 0);
 }
@@ -225,8 +226,8 @@ window.__UPSCALER_BENCH__ = createBenchmarkApi({
 let pageDisposed = false;
 window.addEventListener(
     'pagehide',
-    () => {
-        if (pageDisposed) return;
+    (event) => {
+        if (event.persisted || pageDisposed) return;
         pageDisposed = true;
         renderer.setAnimationLoop(null);
         controls?.dispose();
@@ -237,7 +238,6 @@ window.addEventListener(
         renderer.dispose();
         window.__UPSCALER_BENCH__ = undefined;
     },
-    { once: true },
 );
 
 //* Main Loop
@@ -265,6 +265,7 @@ if (!automated && pipeline && controls) {
             detectShadingChanges: state.detectShadingChanges,
             debugView: state.debugView,
         });
+        if (!pipeline.resolver.isReady) return;
         pipeline.render(bench.scene, camera, dt, interactiveFrame++);
         updateStats(dt);
     });
