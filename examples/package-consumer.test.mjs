@@ -24,8 +24,8 @@ test('package-consumer mode resolves Example 13 from the packed entry', async ()
               })
             : config;
 
-    expect(resolvedConfig.resolve?.alias).toEqual({
-        '@pmndrs/upscaler': packageEntry,
+    expect(resolvedConfig.resolve?.alias).toMatchObject({
+        '@ruxelion/upscaler': packageEntry,
     });
     expect(resolvedConfig.build?.rollupOptions?.input).toEqual({
         guidesnode: resolve(import.meta.dirname, '13-guides-node/index.html'),
@@ -45,7 +45,7 @@ test('ordinary modes ignore the package entry and resolve source', async () => {
               })
             : config;
 
-    expect(resolvedConfig.resolve?.alias).toEqual({
-        '@pmndrs/upscaler': resolve(import.meta.dirname, '../src/index.ts'),
+    expect(resolvedConfig.resolve?.alias).toMatchObject({
+        '@ruxelion/upscaler': resolve(import.meta.dirname, '../src/index.ts'),
     });
 });

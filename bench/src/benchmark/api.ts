@@ -1,6 +1,6 @@
 import type * as THREE from 'three/webgpu';
 
-import { DebugView } from '@pmndrs/upscaler';
+import { DebugView } from '@ruxelion/upscaler';
 
 import type { BenchPipeline } from '../BenchPipeline';
 import type { BenchScene } from '../BenchScene';

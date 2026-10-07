@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { rtt, mix, mrt, output, pass, texture, vec3, vec4, velocity } from 'three/tsl';
 
-import { UpscalePass, temporalGuides, upscale, type TemporalGuidesNode } from '@pmndrs/upscaler';
+import { UpscalePass, temporalGuides, upscale, type TemporalGuidesNode } from '@ruxelion/upscaler';
 
 import { bootRenderer, displaySize } from '../shared/boot';
 import { addStudioLighting, createGridFloor } from '../shared/props';
@@ -99,7 +99,7 @@ function updateBadge(): void {
     const shared = u !== null && u !== undefined && guidesNode?.upscaler === u;
     const reconstruct = u?.gpuTimings.get('reconstruct');
     badge.innerHTML =
-        `<b>@pmndrs/upscaler</b>  temporalGuides() + upscale({ guides })\n` +
+        `<b>@ruxelion/upscaler</b>  temporalGuides() + upscale({ guides })\n` +
         `orange = disocclusion guide, consumed pre-upscale\n` +
         (u
             ? `render   ${u.renderWidth}×${u.renderHeight}\n` +

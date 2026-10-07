@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 
-import { QualityMode } from '@pmndrs/upscaler';
+import { QualityMode } from '@ruxelion/upscaler';
 
 import { bootRenderer, displaySize } from '../shared/boot';
 import { UpscalePresenter } from '../shared/UpscalePresenter';
@@ -46,7 +46,7 @@ const badge = document.getElementById('badge')!;
 function updateBadge(): void {
     const u = presenter.upscaler;
     badge.innerHTML =
-        `<b>@pmndrs/upscaler</b>  FSR3 temporal\n` +
+        `<b>@ruxelion/upscaler</b>  FSR3 temporal\n` +
         `render   ${u.renderWidth}×${u.renderHeight}\n` +
         `display  ${u.displayWidth}×${u.displayHeight}  (${u.upscaleRatio.toFixed(1)}x)`;
 }

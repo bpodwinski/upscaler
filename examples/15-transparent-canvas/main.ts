@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import GUI from 'lil-gui';
 
-import { DebugView, UpscalePass } from '@pmndrs/upscaler';
+import { DebugView, UpscalePass } from '@ruxelion/upscaler';
 
 import { bootRenderer, displaySize } from '../shared/boot';
 
@@ -144,7 +144,7 @@ renderer.setAnimationLoop(() => {
 
     const u = pass.upscaler;
     badge.innerHTML =
-        `<b>@pmndrs/upscaler</b>  FSR3 ${settings.path} · transparent canvas\n` +
+        `<b>@ruxelion/upscaler</b>  FSR3 ${settings.path} · transparent canvas\n` +
         `render   ${u.renderWidth}×${u.renderHeight}\n` +
         `display  ${u.displayWidth}×${u.displayHeight}  (${u.upscaleRatio.toFixed(1)}x)`;
 });

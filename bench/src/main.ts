@@ -1,7 +1,7 @@
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import * as THREE from 'three/webgpu';
 
-import { DebugView, QualityMode } from '@pmndrs/upscaler';
+import { DebugView, QualityMode } from '@ruxelion/upscaler';
 
 import { BenchPipeline } from './BenchPipeline';
 import { createBenchScene } from './BenchScene';

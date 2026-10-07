@@ -4,7 +4,7 @@ import { describe, expect, test } from 'vitest';
 
 import { checkPreconditions, parseReleaseArgs, release } from './release.mjs';
 
-const PACKAGE = JSON.stringify({ name: '@pmndrs/upscaler', version: '0.2.0' });
+const PACKAGE = JSON.stringify({ name: '@ruxelion/upscaler', version: '0.2.0' });
 
 /**
  * A runner that answers the read-only git queries release.mjs makes and records
@@ -124,7 +124,7 @@ describe('computing the version', () => {
 
         expect(result).toEqual({ version: '0.3.0', tag: 'v0.3.0', pushed: false });
         const text = output.lines.join('\n');
-        expect(text).toContain('@pmndrs/upscaler 0.2.0 → 0.3.0 (npm dist-tag: latest; npm has no latest yet)');
+        expect(text).toContain('@ruxelion/upscaler 0.2.0 → 0.3.0 (npm dist-tag: latest; npm has no latest yet)');
         expect(text).toContain('Commits since v0.2.0 (3):');
         expect(text).toContain('feat!: carry alpha unconditionally');
         expect(text).toContain('Bump: minor (a breaking change bumps minor while 0.x)');
@@ -175,7 +175,7 @@ describe('computing the version', () => {
         expect(output.lines.join('\n')).toContain(`→ ${expected}`);
         expect(output.warnings).toEqual([]);
         const views = calls.map((call) => call.line).filter((line) => line.startsWith('npm view'));
-        expect(views).toEqual(argv.includes('--preid') ? [] : ['npm view @pmndrs/upscaler dist-tags.latest']);
+        expect(views).toEqual(argv.includes('--preid') ? [] : ['npm view @ruxelion/upscaler dist-tags.latest']);
     });
 
     test('warns and defers to publish.yml when npm latest cannot be read', () => {
@@ -210,7 +210,7 @@ describe('--dry-run', () => {
         // Only read-only queries: git, plus npm's latest dist-tag for the summary.
         expect(
             calls.every(
-                (call) => call.line.startsWith('git ') || call.line === 'npm view @pmndrs/upscaler dist-tags.latest',
+                (call) => call.line.startsWith('git ') || call.line === 'npm view @ruxelion/upscaler dist-tags.latest',
             ),
         ).toBe(true);
     });

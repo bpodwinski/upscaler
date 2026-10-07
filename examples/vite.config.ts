@@ -32,7 +32,10 @@ export default defineConfig(({ mode }) => {
         base: process.env.PAGES_BASE ?? '/',
         resolve: {
             alias: {
-                '@pmndrs/upscaler': packageConsumer
+                '@ruxelion/upscaler/core': packageConsumer ? resolve(packageEntry!, '../core.js') : resolve(root, '../src/core/index.ts'),
+                '@ruxelion/upscaler/babylon': packageConsumer ? resolve(packageEntry!, '../babylon.js') : resolve(root, '../src/babylon/index.ts'),
+                '@ruxelion/upscaler/three': packageConsumer ? resolve(packageEntry!, '../three.js') : resolve(root, '../src/three/index.ts'),
+                '@ruxelion/upscaler': packageConsumer
                     ? packageEntry
                     : resolve(root, '../src/index.ts'),
             },
@@ -63,6 +66,8 @@ export default defineConfig(({ mode }) => {
                           pathtraceralpha: resolve(root, '14-pathtracer-alpha/index.html'),
                           transparentcanvas: resolve(root, '15-transparent-canvas/index.html'),
                           spatialnode: resolve(root, '16-spatial-node/index.html'),
+                          core: resolve(root, '17-core-webgpu/index.html'),
+                          babylon: resolve(root, '18-babylon-framegraph/index.html'),
                           s1reinvest: resolve(root, 's1-reinvest/index.html'),
                           s2fractal: resolve(root, 's2-fractal/index.html'),
                           s3howlow: resolve(root, 's3-how-low/index.html'),

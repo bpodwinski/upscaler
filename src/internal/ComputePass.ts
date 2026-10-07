@@ -51,7 +51,7 @@ function deviceCache(device: GPUDevice): DeviceCache {
 
 function compile(device: GPUDevice, label: string, code: string, options: ComputePassOptions): Promise<GPUComputePipeline> {
     const cache = deviceCache(device);
-    if (cache.lost) return Promise.reject(new Error('@pmndrs/upscaler: GPU device lost.'));
+    if (cache.lost) return Promise.reject(new Error('@ruxelion/upscaler: GPU device lost.'));
     const constants = Object.fromEntries(Object.entries(options.constants ?? {}).sort(([a], [b]) => a.localeCompare(b)));
     const key = JSON.stringify([code, 'main', 'auto', Object.entries(constants).map(
         ([name, value]) => [name, typeof value, Object.is(value, -0) ? '-0' : String(value)],
@@ -60,7 +60,7 @@ function compile(device: GPUDevice, label: string, code: string, options: Comput
     if (existing) return existing;
     const pipeline = new Promise<GPUComputePipeline>((resolve, reject) => {
         const start = (): void => {
-            if (cache.lost) { reject(new Error('@pmndrs/upscaler: GPU device lost.')); return; }
+            if (cache.lost) { reject(new Error('@ruxelion/upscaler: GPU device lost.')); return; }
             cache.active++;
             void (async () => {
                 try {
@@ -73,7 +73,7 @@ function compile(device: GPUDevice, label: string, code: string, options: Comput
                         label: `upscale-${label}`, layout: 'auto',
                         compute: { module, entryPoint: 'main', constants },
                     });
-                    if (cache.lost) throw new Error('@pmndrs/upscaler: GPU device lost.');
+                    if (cache.lost) throw new Error('@ruxelion/upscaler: GPU device lost.');
                     resolve(result);
                 } catch (error) { reject(error); }
                 finally {

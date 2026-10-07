@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import GUI from 'lil-gui';
 
-import { DebugView, type UpscalePath } from '@pmndrs/upscaler';
+import { DebugView, type UpscalePath } from '@ruxelion/upscaler';
 
 import { bootRenderer, displaySize } from '../shared/boot';
 import { UpscalePresenter } from '../shared/UpscalePresenter';

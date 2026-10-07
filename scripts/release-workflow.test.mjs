@@ -117,12 +117,15 @@ function git(cwd, args) {
 function configureUser(directory) {
     git(directory, ['config', 'user.name', 'Workflow Test']);
     git(directory, ['config', 'user.email', 'workflow@example.test']);
+    // Fixtures must not launch the host's signing agent or interactive pinentry.
+    git(directory, ['config', 'commit.gpgsign', 'false']);
+    git(directory, ['config', 'tag.gpgsign', 'false']);
 }
 
 function writePackage(directory, version) {
     writeFileSync(
         join(directory, 'package.json'),
-        `${JSON.stringify({ name: '@pmndrs/upscaler', version }, null, 4)}\n`,
+        `${JSON.stringify({ name: '@ruxelion/upscaler', version }, null, 4)}\n`,
     );
 }
 
@@ -540,7 +543,7 @@ describe('npm dist-tag', () => {
                 const job = runJob(fixture, { tag: 'v0.3.0', npmLatest: '0.2.0' });
 
                 expect(job.failed, job.output).toBeNull();
-                expect(job.latestLookups).toEqual(['view @pmndrs/upscaler dist-tags.latest']);
+                expect(job.latestLookups).toEqual(['view @ruxelion/upscaler dist-tags.latest']);
                 expect(job.output).toContain("0.3.0 is at or above npm's latest (0.2.0): dist-tag 'latest'");
                 expect(job.outputs.dist).toEqual({ tag: 'latest' });
                 expect(job.publishes).toEqual(['publish --access public --tag latest']);
@@ -615,7 +618,7 @@ describe('npm dist-tag', () => {
                 const job = runJob(fixture, { tag: 'v0.3.0', npmLatest });
 
                 expect(job.failed).toBe('Choose npm dist-tag');
-                expect(job.output).toMatch(/unable to read npm's latest dist-tag for @pmndrs\/upscaler/i);
+                expect(job.output).toMatch(/unable to read npm's latest dist-tag for @ruxelion\/upscaler/i);
                 expect(job.installs).toEqual([]);
                 expect(job.publishes).toEqual([]);
                 expect(job.releases).toEqual([]);

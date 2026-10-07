@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import GUI from 'lil-gui';
 
-import { type UpscalePath } from '@pmndrs/upscaler';
+import { type UpscalePath } from '@ruxelion/upscaler';
 
 import { bootRenderer, displaySize } from '../shared/boot';
 import { UpscalePresenter } from '../shared/UpscalePresenter';

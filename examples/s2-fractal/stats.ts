@@ -1,6 +1,6 @@
 import type * as THREE from 'three/webgpu';
 
-import { DebugView, type RuntimeSettings, type UpscalePath } from '@pmndrs/upscaler';
+import { DebugView, type RuntimeSettings, type UpscalePath } from '@ruxelion/upscaler';
 
 //* Measured GPU time for the three stages of a frame:
 //*   raymarch — three's own render-pass timestamps (`trackTimestamp`)

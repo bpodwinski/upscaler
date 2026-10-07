@@ -184,7 +184,7 @@ The statistics half an SVGF-class denoiser needs, as a standalone primitive with
 `Upscaler`, and has its own constants buffer and pipeline.
 
 ```ts
-import { MomentsPass } from '@pmndrs/upscaler';
+import { MomentsPass } from '@ruxelion/upscaler';
 
 const moments = new MomentsPass({ renderer });
 moments.configure({ width, height, space: 'ycocg' }); // or 'linear' (default)

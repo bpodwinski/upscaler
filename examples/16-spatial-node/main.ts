@@ -13,7 +13,7 @@ import {
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import GUI from 'lil-gui';
 
-import { upscaleSpatial, type Upscaler } from '@pmndrs/upscaler';
+import { upscaleSpatial, type Upscaler } from '@ruxelion/upscaler';
 
 import { bootRenderer, displaySize } from '../shared/boot';
 import { addStudioLighting, createGridTexture } from '../shared/props';
@@ -176,7 +176,7 @@ function updateHud(): void {
     const u = upscaler();
     const rcasMs = u?.gpuTimings.get('rcas');
     hud.innerHTML =
-        `<b>@pmndrs/upscaler</b>  upscaleSpatial() node\n` +
+        `<b>@ruxelion/upscaler</b>  upscaleSpatial() node\n` +
         `pipeline.outputNode = upscaleSpatial(color)\n` +
         `input     ${state.source === 'pass' ? 'pass() in-graph' : 'texture() external RT'}\n` +
         `sharpen   ${state.sharpness.toFixed(2)}${state.rcasDenoise ? ' + denoise' : ''}\n` +

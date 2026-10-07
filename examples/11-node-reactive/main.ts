@@ -3,7 +3,7 @@ import { mrt, output, pass, velocity } from 'three/tsl';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import GUI from 'lil-gui';
 
-import { DebugView, upscale } from '@pmndrs/upscaler';
+import { DebugView, upscale } from '@ruxelion/upscaler';
 
 import { bootRenderer } from '../shared/boot';
 import { addStudioLighting, createGridFloor } from '../shared/props';
@@ -149,7 +149,7 @@ const hud = document.getElementById('hud')!;
 function updateHud(): void {
     const u = fsrNode?.upscaler;
     hud.innerHTML =
-        `<b>@pmndrs/upscaler</b>  reactive mask (node graph)\n` +
+        `<b>@ruxelion/upscaler</b>  reactive mask (node graph)\n` +
         `reactive  ${state.reactive ? 'on (crisp)' : 'off (ghosts)'}\n` +
         `jitter    ${state.jitter ? 'on (reconstruct)' : 'off (stable)'}\n` +
         (u

@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { screenUV, smoothstep, vec3, vec4 } from 'three/tsl';
 
-import { upscaleScene, QualityMode } from '@pmndrs/upscaler';
+import { upscaleScene, QualityMode } from '@ruxelion/upscaler';
 
 import { bootRenderer } from '../shared/boot';
 import { addStudioLighting, createGridFloor } from '../shared/props';
@@ -42,7 +42,7 @@ post.outputNode = fsrNode.mul(vignette);
 
 const badge = document.getElementById('badge')!;
 badge.innerHTML =
-    `<b>@pmndrs/upscaler</b>  node composition\n` +
+    `<b>@ruxelion/upscaler</b>  node composition\n` +
     `post.outputNode = upscaleScene(scene, camera)\n                   .mul(vignette)`;
 
 window.addEventListener('resize', () => {

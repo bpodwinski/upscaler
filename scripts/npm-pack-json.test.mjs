@@ -3,8 +3,8 @@ import { describe, expect, test } from 'vitest';
 import { parsePackJson } from './npm-pack-json.mjs';
 
 const result = {
-    id: '@pmndrs/upscaler@0.3.0',
-    name: '@pmndrs/upscaler',
+    id: '@ruxelion/upscaler@0.3.0',
+    name: '@ruxelion/upscaler',
     filename: 'pmndrs-upscaler-0.3.0.tgz',
     files: [{ path: 'dist/index.js' }, { path: 'package.json' }],
 };

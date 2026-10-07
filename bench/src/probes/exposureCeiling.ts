@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 
-import { UpscalePass, type RuntimeSettings } from '@pmndrs/upscaler';
+import { UpscalePass, type RuntimeSettings } from '@ruxelion/upscaler';
 
 /**
  * Dark-scene HDR highlight probe (issue #49), driven by

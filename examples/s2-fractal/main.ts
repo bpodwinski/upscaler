@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { clamp, mix, mrt, normalize, output, screenUV, select, texture, uniform, vec2, vec4 } from 'three/tsl';
 import GUI from 'lil-gui';
 
-import { DebugView, Upscaler, type UpscalePath } from '@pmndrs/upscaler';
+import { DebugView, Upscaler, type UpscalePath } from '@ruxelion/upscaler';
 
 import { displaySize, showFatal } from '../shared/boot';
 import { basePercent } from '../shared/ui';

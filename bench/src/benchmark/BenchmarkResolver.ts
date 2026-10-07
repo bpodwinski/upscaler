@@ -1,6 +1,6 @@
 import type * as THREE from 'three/webgpu';
 
-import { Upscaler } from '@pmndrs/upscaler';
+import { Upscaler } from '@ruxelion/upscaler';
 import {
     DEPTH_CLIP_VARIANTS,
     RECONSTRUCT_CAMERA_SHADER,

@@ -1,6 +1,6 @@
 import GUI from 'lil-gui';
 
-import { DebugView, QualityMode } from '@pmndrs/upscaler';
+import { DebugView, QualityMode } from '@ruxelion/upscaler';
 
 import type { BenchMode } from './BenchPipeline';
 

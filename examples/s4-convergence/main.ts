@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { mrt, output, velocity } from 'three/tsl';
 import GUI from 'lil-gui';
 
-import { DebugView, Upscaler, generateJitterSequence, getJitterPhaseCount } from '@pmndrs/upscaler';
+import { DebugView, Upscaler, generateJitterSequence, getJitterPhaseCount } from '@ruxelion/upscaler';
 
 import { bootRenderer } from '../shared/boot';
 import { drawJitterDiagram } from './jitterDiagram';

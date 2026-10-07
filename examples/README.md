@@ -1,6 +1,11 @@
-# @pmndrs/upscaler — Examples
+# @ruxelion/upscaler — Examples
 
 Standalone, single-purpose demos of the upscaler, from a minimal starter to an
+advanced integration. Fork additions: [17 — raw WebGPU](17-core-webgpu/main.ts)
+and [18 — Babylon Frame Graph](18-babylon-framegraph/main.ts), with positive
+linear depth, external exposure, explicit motion and a reactive mask.
+
+The upstream examples below range from a minimal starter to an
 expensive screen-space effect rendered small and upscaled. WebGPU-only — open in
 Chrome/Edge 113+.
 
@@ -9,7 +14,7 @@ npm install
 npm run examples     # http://localhost:5300  (landing page links every demo)
 ```
 
-The library is consumed straight from `../src` (aliased as `@pmndrs/upscaler`), so
+The library is consumed straight from `../src` (aliased as `@ruxelion/upscaler`), so
 shader/pipeline edits hot-reload here just like in the bench.
 
 ## Showcases

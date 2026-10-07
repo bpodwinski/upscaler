@@ -16,7 +16,7 @@ import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
 import { denoise } from 'three/addons/tsl/display/DenoiseNode.js';
 import GUI from 'lil-gui';
 
-import { DebugView, upscale } from '@pmndrs/upscaler';
+import { DebugView, upscale } from '@ruxelion/upscaler';
 
 import { bootRenderer, displaySize } from '../shared/boot';
 import { addStudioLighting } from '../shared/props';
@@ -248,7 +248,7 @@ function updateHud(): void {
     const u = fsrNode?.upscaler;
     const fx = [state.ssgi && 'SSGI', state.ssr && 'SSR'].filter(Boolean).join(' + ') || 'none';
     hud.innerHTML =
-        `<b>@pmndrs/upscaler</b>  kitchen sink (node graph)\n` +
+        `<b>@ruxelion/upscaler</b>  kitchen sink (node graph)\n` +
         `effects  ${fx}\n` +
         `jitter   ${state.jitter ? 'on (reconstruct)' : 'off (stable)'}\n` +
         (u

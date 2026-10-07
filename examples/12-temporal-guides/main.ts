@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { fract, mix, mrt, output, step, texture, uv, vec3, vec4, velocity } from 'three/tsl';
 
-import { MomentsPass, Upscaler } from '@pmndrs/upscaler';
+import { MomentsPass, Upscaler } from '@ruxelion/upscaler';
 
 import { bootRenderer, displaySize } from '../shared/boot';
 import { addStudioLighting, createGridFloor } from '../shared/props';
@@ -120,7 +120,7 @@ const badge = document.getElementById('badge')!;
 function updateBadge(): void {
     const reconstruct = upscaler.gpuTimings.get('reconstruct');
     badge.innerHTML =
-        `<b>@pmndrs/upscaler</b>  temporal guides (split dispatch)\n` +
+        `<b>@ruxelion/upscaler</b>  temporal guides (split dispatch)\n` +
         `render   ${upscaler.renderWidth}×${upscaler.renderHeight}\n` +
         `display  ${upscaler.displayWidth}×${upscaler.displayHeight}  (${upscaler.upscaleRatio.toFixed(1)}x)\n` +
         `guides   dispatched post-G-buffer, pre-color\n` +

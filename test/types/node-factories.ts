@@ -16,7 +16,7 @@ import {
     upscaleSpatial,
     type Upscaler,
     type UpscalerNode,
-} from '@pmndrs/upscaler';
+} from '@ruxelion/upscaler';
 
 // `any` would also make the assignments below compile, so pin that it isn't.
 type IsAny<T> = 0 extends 1 & T ? true : false;

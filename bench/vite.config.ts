@@ -12,7 +12,7 @@ export default defineConfig({
     cacheDir: resolve(__dirname, '../node_modules/.vite-bench'),
     resolve: {
         alias: {
-            '@pmndrs/upscaler': resolve(__dirname, '../src/index.ts'),
+            '@ruxelion/upscaler': resolve(__dirname, '../src/index.ts'),
         },
     },
     // Top-level await (renderer.init) needs a modern target.

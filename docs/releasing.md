@@ -97,14 +97,14 @@ can't cut `1.0.0`. Choosing `major` explicitly does cut `1.0.0`. The policy live
 
 | Version                            | npm dist-tag  | Install                              | GitHub Release |
 | ---------------------------------- | ------------- | ------------------------------------ | -------------- |
-| `0.3.0` (newest stable)            | `latest`      | `npm i @pmndrs/upscaler`             | latest         |
-| `0.2.1` (after `0.3.0`)            | `v0.2-latest` | `npm i @pmndrs/upscaler@v0.2-latest` | not latest     |
-| `0.3.0-beta.0`                     | `beta`        | `npm i @pmndrs/upscaler@beta`        | prerelease     |
-| `1.0.0-rc.0`                       | `rc`          | `npm i @pmndrs/upscaler@rc`          | prerelease     |
-| `0.3.0-0`                          | `next`        | `npm i @pmndrs/upscaler@next`        | prerelease     |
+| `0.3.0` (newest stable)            | `latest`      | `npm i @ruxelion/upscaler`             | latest         |
+| `0.2.1` (after `0.3.0`)            | `v0.2-latest` | `npm i @ruxelion/upscaler@v0.2-latest` | not latest     |
+| `0.3.0-beta.0`                     | `beta`        | `npm i @ruxelion/upscaler@beta`        | prerelease     |
+| `1.0.0-rc.0`                       | `rc`          | `npm i @ruxelion/upscaler@rc`          | prerelease     |
+| `0.3.0-0`                          | `next`        | `npm i @ruxelion/upscaler@next`        | prerelease     |
 
 `latest` only ever moves forward. A stable version takes `latest` only when it is
-at or above npm's current `latest` (`npm view @pmndrs/upscaler dist-tags.latest`),
+at or above npm's current `latest` (`npm view @ruxelion/upscaler dist-tags.latest`),
 or when npm has no `latest` yet (a first publish). An older stable version, such as
 a maintenance release `0.2.1` published after `0.3.0`, goes to its **line tag**
 `v<major>.<minor>-latest` (`v0.2-latest`), and `latest` stays on `0.3.0`. The run

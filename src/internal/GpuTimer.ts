@@ -373,7 +373,7 @@ export class GpuTimer {
                 ? (error as { message: string }).message.trim()
                 : String(error);
         console.warn(
-            `@pmndrs/upscaler: GPU timing disabled — timestamp ${reason} (${detail}). ` +
+            `@ruxelion/upscaler: GPU timing disabled — timestamp ${reason} (${detail}). ` +
                 'Rendering is unaffected; gpuTimings will no longer update.',
         );
         if (this._authoritative && !this._authoritativeError)

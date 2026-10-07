@@ -1,6 +1,6 @@
 # Contributing
 
-How to work on `@pmndrs/upscaler` itself: the dev loop, the bench, verifying on a real
+How to work on `@ruxelion/upscaler` itself: the dev loop, the bench, verifying on a real
 GPU, and cutting a release. To *use* the library, start with
 [Getting started](getting-started.md).
 

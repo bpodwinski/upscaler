@@ -1,4 +1,4 @@
-import { generateJitterSequence } from './halton';
+import { generateJitterSequence } from './halton.js';
 
 /**
  * Computes the jitter phase count for a given upscale ratio, following the

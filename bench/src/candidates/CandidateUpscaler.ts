@@ -257,7 +257,7 @@ export class CandidateUpscaler {
             candidate !== 'source-structural-bundle-v1' &&
             candidate !== 'source-spd-resolver-bundle-v1'
         )
-            throw new Error(`@pmndrs/upscaler: unknown internal candidate bundle ${candidate}.`);
+            throw new Error(`@ruxelion/upscaler: unknown internal candidate bundle ${candidate}.`);
         this._candidateBundle = candidate ?? null;
     }
 
@@ -544,11 +544,11 @@ export class CandidateUpscaler {
         if (!this._output) {
             if (this._path === 'guides') {
                 throw new Error(
-                    "@pmndrs/upscaler: the 'guides' path produces no upscaled output — " +
+                    "@ruxelion/upscaler: the 'guides' path produces no upscaled output — " +
                         'consume the guides bundle instead (upscaler.guides).',
                 );
             }
-            throw new Error('@pmndrs/upscaler: configure() must run before outputTexture is used.');
+            throw new Error('@ruxelion/upscaler: configure() must run before outputTexture is used.');
         }
         return this._output;
     }
@@ -563,7 +563,7 @@ export class CandidateUpscaler {
     get guides(): TemporalGuides {
         if (!this._guides) {
             throw new Error(
-                '@pmndrs/upscaler: guides are only available on the temporal or guides ' +
+                '@ruxelion/upscaler: guides are only available on the temporal or guides ' +
                     'paths, after configure().',
             );
         }
@@ -637,17 +637,17 @@ export class CandidateUpscaler {
     dispatch(inputs: CandidateDispatchInputs, camera: JitterableCamera): void {
         if (this._path === 'guides') {
             throw new Error(
-                "@pmndrs/upscaler: the 'guides' path has no upscale — drive it with dispatchGuides().",
+                "@ruxelion/upscaler: the 'guides' path has no upscale — drive it with dispatchGuides().",
             );
         }
         if (this._guidesPending) {
             throw new Error(
-                '@pmndrs/upscaler: a split frame is in flight — finish it with dispatchUpscale() ' +
+                '@ruxelion/upscaler: a split frame is in flight — finish it with dispatchUpscale() ' +
                     'instead of dispatch().',
             );
         }
         if (!this._output || !this._outputGPU) {
-            throw new Error('@pmndrs/upscaler: configure() must run before dispatch().');
+            throw new Error('@ruxelion/upscaler: configure() must run before dispatch().');
         }
 
         this._writeConstants(inputs, camera);
@@ -703,20 +703,20 @@ export class CandidateUpscaler {
     dispatchGuides(inputs: GuideDispatchInputs, camera: JitterableCamera): void {
         if (this._path !== 'temporal' && this._path !== 'guides') {
             throw new Error(
-                `@pmndrs/upscaler: dispatchGuides() requires the temporal or guides path (got '${this._path}').`,
+                `@ruxelion/upscaler: dispatchGuides() requires the temporal or guides path (got '${this._path}').`,
             );
         }
         if (!this._dilatedMotion) {
-            throw new Error('@pmndrs/upscaler: configure() must run before dispatchGuides().');
+            throw new Error('@ruxelion/upscaler: configure() must run before dispatchGuides().');
         }
         if (this._guidesPending) {
             throw new Error(
-                '@pmndrs/upscaler: dispatchGuides() already ran this frame — finish with dispatchUpscale().',
+                '@ruxelion/upscaler: dispatchGuides() already ran this frame — finish with dispatchUpscale().',
             );
         }
         if (this._candidateBundle) {
             throw new Error(
-                '@pmndrs/upscaler: candidate bundles support only the monolithic dispatch().',
+                '@ruxelion/upscaler: candidate bundles support only the monolithic dispatch().',
             );
         }
 
@@ -751,16 +751,16 @@ export class CandidateUpscaler {
     dispatchUpscale(inputs: CandidateDispatchInputs, camera: JitterableCamera): void {
         if (this._path !== 'temporal') {
             throw new Error(
-                `@pmndrs/upscaler: dispatchUpscale() requires the temporal path (got '${this._path}').`,
+                `@ruxelion/upscaler: dispatchUpscale() requires the temporal path (got '${this._path}').`,
             );
         }
         if (!this._guidesPending) {
             throw new Error(
-                '@pmndrs/upscaler: call dispatchGuides() first (or use the all-in-one dispatch()).',
+                '@ruxelion/upscaler: call dispatchGuides() first (or use the all-in-one dispatch()).',
             );
         }
         if (!this._output || !this._outputGPU) {
-            throw new Error('@pmndrs/upscaler: configure() must run before dispatchUpscale().');
+            throw new Error('@ruxelion/upscaler: configure() must run before dispatchUpscale().');
         }
 
         // Rewritten (not reused) so color-dependent flags — reactive, external
@@ -862,7 +862,7 @@ export class CandidateUpscaler {
         inputs: CandidateDispatchInputs,
     ): void {
         if (!inputs.depth || !inputs.velocity) {
-            throw new Error('@pmndrs/upscaler: the temporal path requires depth and velocity inputs.');
+            throw new Error('@ruxelion/upscaler: the temporal path requires depth and velocity inputs.');
         }
         if (this._candidateBundle) {
             this._encodeCandidateTemporal(encoder, colorGPU, inputs);
@@ -944,7 +944,7 @@ export class CandidateUpscaler {
                 const incoming = getGPUTexture(this._renderer, inputs.reactive);
                 if (incoming === this._reactiveGenerated) {
                     throw new Error(
-                        '@pmndrs/upscaler: `reactive` must not be the generated mask itself ' +
+                        '@ruxelion/upscaler: `reactive` must not be the generated mask itself ' +
                             '(guides.reactive) while `reactiveOpaqueColor` is set — the generator ' +
                             'writes that texture. Pass one of the two, not both.',
                     );
@@ -1510,7 +1510,7 @@ export class CandidateUpscaler {
         if (this._warnedMsaa || tex.sampleCount <= 1) return;
         this._warnedMsaa = true;
         console.warn(
-            `@pmndrs/upscaler: the ${label} input is multisampled (sampleCount=${tex.sampleCount}). ` +
+            `@ruxelion/upscaler: the ${label} input is multisampled (sampleCount=${tex.sampleCount}). ` +
                 `FSR does its own anti-aliasing — feed it an aliased, single-sample, jittered ` +
                 `render with MSAA disabled. Multisampled inputs are not supported.`,
         );

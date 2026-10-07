@@ -1,12 +1,12 @@
 import { HalfFloatType, NoColorSpace, RGBAFormat, type Texture } from 'three';
 import { StorageTexture, type WebGPURenderer } from 'three/webgpu';
 
-import { ComputePass } from './internal/ComputePass';
-import { notReadyError } from './initializationError';
-import { ConstantsBuffer } from './internal/ConstantsBuffer';
-import { getDevice, getGPUTexture } from './internal/threeWebGPU';
-import { FLAG_MOMENTS_YCOCG } from './shaders/common';
-import { MOMENTS_SHADER } from './shaders/moments';
+import { ComputePass } from './internal/ComputePass.js';
+import { notReadyError } from './initializationError.js';
+import { ConstantsBuffer } from './internal/ConstantsBuffer.js';
+import { getDevice, getGPUTexture } from './internal/threeWebGPU.js';
+import { FLAG_MOMENTS_YCOCG } from './shaders/common.js';
+import { MOMENTS_SHADER } from './shaders/moments.js';
 
 /** Which scalar the moments are computed over. */
 export type MomentsSpace = 'linear' | 'ycocg';
@@ -71,7 +71,7 @@ export class MomentsPass {
     /** Compile asynchronously. Configure first, then await before dispatch. */
     init(): Promise<void> {
         if (this._lost) {
-            const failure = Promise.reject(new Error('@pmndrs/upscaler: MomentsPass GPU device lost.'));
+            const failure = Promise.reject(new Error('@ruxelion/upscaler: MomentsPass GPU device lost.'));
             void failure.catch(() => {});
             return failure;
         }
@@ -88,7 +88,7 @@ export class MomentsPass {
         }).catch(error => {
             if (generation === this._generation) {
                 this._preparing = null;
-                console.error('@pmndrs/upscaler: MomentsPass shader preparation failed.', error);
+                console.error('@ruxelion/upscaler: MomentsPass shader preparation failed.', error);
             }
             throw error;
         });
@@ -141,13 +141,13 @@ export class MomentsPass {
 
     /** Per-pixel moments at source size (rgba16float; rg = E[x], E[x²]). */
     get moments(): Texture {
-        if (!this._moments) throw new Error('@pmndrs/upscaler: MomentsPass.configure() first.');
+        if (!this._moments) throw new Error('@ruxelion/upscaler: MomentsPass.configure() first.');
         return this._moments;
     }
 
     /** 4×4 block-mean moments at ceil(source/4) (rgba16float; rg). */
     get coarseMoments(): Texture {
-        if (!this._coarse) throw new Error('@pmndrs/upscaler: MomentsPass.configure() first.');
+        if (!this._coarse) throw new Error('@ruxelion/upscaler: MomentsPass.configure() first.');
         return this._coarse;
     }
 
@@ -159,7 +159,7 @@ export class MomentsPass {
     dispatch(inputs: { source: Texture }): void {
         if (!this.isReady) throw notReadyError(this, 'MomentsPass', this._lost ? 'device-lost' : 'preparing');
         if (!this._pass || !this._momentsGPU || !this._coarseGPU) {
-            throw new Error('@pmndrs/upscaler: MomentsPass.configure() must run before dispatch().');
+            throw new Error('@ruxelion/upscaler: MomentsPass.configure() must run before dispatch().');
         }
         const sourceGPU = getGPUTexture(this._renderer, inputs.source);
         const bindGroup = this._pass.createBindGroup([

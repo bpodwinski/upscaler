@@ -1,6 +1,6 @@
 name: Publish to npm
 
-# Publishes @pmndrs/upscaler. Merges to main never publish. Two entry points,
+# Publishes @ruxelion/upscaler. Merges to main never publish. Two entry points,
 # both entirely in CI, share every step after "Resolve release":
 #
 #   1. Push a vX.Y.Z tag — including one created in the GitHub UI (Releases →

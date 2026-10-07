@@ -20,7 +20,7 @@ import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
 import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 import { SimplexNoise } from 'three/addons/math/SimplexNoise.js';
 
-import { DebugView, QualityMode, getQualityModeRatio } from '@pmndrs/upscaler';
+import { DebugView, QualityMode, getQualityModeRatio } from '@ruxelion/upscaler';
 
 /** Bench render modes — what fills the screen each frame. */
 export type BenchMode = 'native' | 'bilinear' | 'fsr1-spatial' | 'upscale-temporal';

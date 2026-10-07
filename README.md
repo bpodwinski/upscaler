@@ -1,10 +1,12 @@
-# @pmndrs/upscaler
+# @ruxelion/upscaler
 
-[![npm](https://img.shields.io/npm/v/@pmndrs/upscaler?color=cb3837&label=npm)](https://www.npmjs.com/package/@pmndrs/upscaler) [![live demos](https://img.shields.io/badge/demos-live-7dd3fc)](https://pmndrs.github.io/upscaler/) [![license](https://img.shields.io/npm/l/@pmndrs/upscaler?color=blue)](./LICENSE)
+Fork candidat de [@pmndrs/upscaler v0.5.0](https://github.com/pmndrs/upscaler/tree/v0.5.0), avec un cœur WebGPU indépendant des moteurs, une façade Three compatible et un adaptateur Babylon Frame Graph 9.29.x. Exports : /core, /three, /babylon ; la racine conserve Three. Voir [les contrats du fork](docs/webgpu-core.md), [Babylon](docs/babylon-framegraph.md) et [les validations restant ouvertes](docs/fork-validation.md). Le paquet candidat n'est pas publié ; les démonstrations upstream ci-dessous illustrent l'API Three d'origine.
+
+[![npm](https://img.shields.io/npm/v/@ruxelion/upscaler?color=cb3837&label=npm)](https://www.npmjs.com/package/@ruxelion/upscaler) [![live demos](https://img.shields.io/badge/demos-live-7dd3fc)](https://pmndrs.github.io/upscaler/) [![license](https://img.shields.io/npm/l/@ruxelion/upscaler?color=blue)](./LICENSE)
 
 **Render fewer pixels. Get a sharper image.**
 
-`@pmndrs/upscaler` is a temporal upscaler for the web. Render your scene at a fraction of
+`@ruxelion/upscaler` is a temporal upscaler for the web. Render your scene at a fraction of
 its resolution, and it rebuilds the full-resolution frame from the last several,
 recovering detail that no single frame ever had and anti-aliasing it along the way. It's
 the idea behind FSR 2/3, DLSS and XeSS, running in the browser on WebGPU.
@@ -56,7 +58,7 @@ and there's no WebGL fallback.
 ## Install
 
 ```bash
-npm install @pmndrs/upscaler three
+npm install @ruxelion/upscaler three
 ```
 
 WebGPU only: you need a WebGPU-capable browser (Chrome/Edge 113+) and `three`
@@ -78,7 +80,7 @@ back, jitter and all:
 
 ```ts
 import * as THREE from 'three/webgpu';
-import { upscaleScene, QualityMode } from '@pmndrs/upscaler';
+import { upscaleScene, QualityMode } from '@ruxelion/upscaler';
 
 // The upscaler stays linear/HDR; presentation is the renderer's job.
 renderer.toneMapping = THREE.ACESFilmicToneMapping;

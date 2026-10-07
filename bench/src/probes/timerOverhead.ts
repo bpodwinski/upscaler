@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 
-import { UpscalePass, type UpscalePath } from '@pmndrs/upscaler';
+import { UpscalePass, type UpscalePath } from '@ruxelion/upscaler';
 
 import { createBenchScene } from '../BenchScene';
 

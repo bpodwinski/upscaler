@@ -23,7 +23,7 @@ import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
 import { denoise } from 'three/addons/tsl/display/DenoiseNode.js';
 import GUI from 'lil-gui';
 
-import { Upscaler } from '@pmndrs/upscaler';
+import { Upscaler } from '@ruxelion/upscaler';
 
 import { displaySize, showFatal } from '../shared/boot';
 import { addRenderScale } from '../shared/ui';

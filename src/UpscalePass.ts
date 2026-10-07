@@ -1,9 +1,9 @@
 import * as THREE from 'three/webgpu';
 import { mix, mrt, output, texture, uniform, velocity } from 'three/tsl';
 
-import { Upscaler } from './Upscaler';
-import { getQualityModeRatio } from './math/resolution';
-import { DebugView, QualityMode, type RuntimeSettings, type UpscalePath } from './types';
+import { Upscaler } from './Upscaler.js';
+import { getQualityModeRatio } from './math/resolution.js';
+import { DebugView, QualityMode, type RuntimeSettings, type UpscalePath } from './types.js';
 
 /** Options for {@link UpscalePass.configure}. */
 export interface UpscalePassConfig {
@@ -109,7 +109,7 @@ export class UpscalePass {
     configure(config: UpscalePassConfig): void {
         if (config.path === 'guides') {
             throw new Error(
-                "@pmndrs/upscaler: UpscalePass presents an upscaled image — the 'guides' path " +
+                "@ruxelion/upscaler: UpscalePass presents an upscaled image — the 'guides' path " +
                     'produces none. Drive Upscaler directly (configure + dispatchGuides).',
             );
         }

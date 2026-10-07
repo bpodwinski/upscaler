@@ -1,6 +1,6 @@
 # Getting started
 
-This guide covers installing `@pmndrs/upscaler` and choosing between its four
+This guide covers installing `@ruxelion/upscaler` and choosing between its four
 integration surfaces. What the inputs must contain (velocity, depth, jitter,
 reactive masks, exposure, alpha) is specified in
 [Inputs and contracts](inputs-and-contracts.md); read that before shipping an
@@ -18,7 +18,7 @@ integration, because most upscaler bugs are input bugs.
 - A browser with WebGPU (Chrome/Edge 113+).
 
 ```bash
-npm install @pmndrs/upscaler three
+npm install @ruxelion/upscaler three
 ```
 
 ## Choose an integration
@@ -47,7 +47,7 @@ because the upscaler needs them.
 
 ```ts
 import * as THREE from 'three/webgpu';
-import { upscaleScene, QualityMode } from '@pmndrs/upscaler';
+import { upscaleScene, QualityMode } from '@ruxelion/upscaler';
 
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -84,7 +84,7 @@ display-resolution result:
 ```ts
 import * as THREE from 'three/webgpu';
 import { pass, mrt, output, velocity } from 'three/tsl';
-import { upscale } from '@pmndrs/upscaler';
+import { upscale } from '@ruxelion/upscaler';
 
 const scenePass = pass(scene, camera);
 scenePass.setMRT(mrt({ output, velocity }));
@@ -126,7 +126,7 @@ pipeline.outputNode = upscale(
 ```ts
 import * as THREE from 'three/webgpu';
 import { pass } from 'three/tsl';
-import { upscaleSpatial } from '@pmndrs/upscaler';
+import { upscaleSpatial } from '@ruxelion/upscaler';
 
 pipeline.outputNode = upscaleSpatial(pass(scene, camera).getTextureNode('output'));
 ```
@@ -149,7 +149,7 @@ float depth, and a present quad that keeps alpha. It turns "scene + camera" into
 upscaled texture without a post-processing graph.
 
 ```ts
-import { UpscalePass, QualityMode } from '@pmndrs/upscaler';
+import { UpscalePass, QualityMode } from '@ruxelion/upscaler';
 
 const upscalePass = new UpscalePass(renderer); // after await renderer.init()
 
@@ -197,7 +197,7 @@ guides frame, or need an input the other surfaces don't expose. This is the reci
 ```ts
 import * as THREE from 'three/webgpu';
 import { mrt, output, velocity } from 'three/tsl';
-import { Upscaler, QualityMode } from '@pmndrs/upscaler';
+import { Upscaler, QualityMode } from '@ruxelion/upscaler';
 
 const upscaler = new Upscaler({ renderer });
 // Configure first so only the selected path is prepared.

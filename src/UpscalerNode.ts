@@ -12,12 +12,12 @@ import {
     velocity,
 } from 'three/tsl';
 
-import { Upscaler } from './Upscaler';
-import type { TemporalGuidesNode } from './TemporalGuidesNode';
-import { getGPUTexture } from './internal/threeWebGPU';
-import { getPipelineEvents, installRenderPipelineHooks } from './internal/renderPipelineHooks';
-import { getQualityModeRatio } from './math/resolution';
-import { QualityMode, type UpscalePath } from './types';
+import { Upscaler } from './Upscaler.js';
+import type { TemporalGuidesNode } from './TemporalGuidesNode.js';
+import { getGPUTexture } from './internal/threeWebGPU.js';
+import { getPipelineEvents, installRenderPipelineHooks } from './internal/renderPipelineHooks.js';
+import { getQualityModeRatio } from './math/resolution.js';
+import { QualityMode, type UpscalePath } from './types.js';
 
 // three's node base + its builder/frame carry incomplete TS types and expect a
 // WebGPURenderer the public d.ts only types as `Renderer`, so setup()/
@@ -323,7 +323,7 @@ export class UpscalerNode extends TempNode<'vec4'> {
         if (!PIPELINE_EVENTS && !warnedLegacyPipeline) {
             warnedLegacyPipeline = true;
             console.warn(
-                '@pmndrs/upscaler: this three.js version predates the r186 render-pipeline events ' +
+                '@ruxelion/upscaler: this three.js version predates the r186 render-pipeline events ' +
                     '(OnBeforeRenderPipeline/OnAfterRenderPipeline). Support for three r184/r185 is ' +
                     'deprecated and will be removed — please upgrade to three r186+.',
             );
@@ -331,7 +331,7 @@ export class UpscalerNode extends TempNode<'vec4'> {
         if (result === 'none' && !warnedNoPipeline) {
             warnedNoPipeline = true;
             console.warn(
-                '@pmndrs/upscaler: upscale() was built outside a RenderPipeline output graph (or inside ' +
+                '@ruxelion/upscaler: upscale() was built outside a RenderPipeline output graph (or inside ' +
                     "another node's private material), so it cannot jitter the camera — running without " +
                     'jitter (no reconstruction beyond render resolution). Make it part of ' +
                     'RenderPipeline.outputNode, or pass { jitter: false } to silence this.',
@@ -339,7 +339,7 @@ export class UpscalerNode extends TempNode<'vec4'> {
         } else if (result === 'conflict' && !warnedViewOffsetConflict) {
             warnedViewOffsetConflict = true;
             console.warn(
-                '@pmndrs/upscaler: another node in this RenderPipeline (e.g. traa()/taau()) already ' +
+                '@ruxelion/upscaler: another node in this RenderPipeline (e.g. traa()/taau()) already ' +
                     'jitters the camera, so upscale() will NOT apply its own jitter (no reconstruction ' +
                     'beyond render resolution). Stacking a temporal AA with the upscaler is unsupported — ' +
                     'double jitter/double history smears — and the upscaler already anti-aliases: ' +
@@ -430,7 +430,7 @@ export class UpscalerNode extends TempNode<'vec4'> {
             if (!this._warnedMissingInputs) {
                 this._warnedMissingInputs = true;
                 console.warn(
-                    '@pmndrs/upscaler: upscale() temporal path needs depth + velocity texture nodes; ' +
+                    '@ruxelion/upscaler: upscale() temporal path needs depth + velocity texture nodes; ' +
                         'none resolved, so the node emits nothing. Pass them, or use ' +
                         'upscaleSpatial(color) for a color-only spatial upscale.',
                 );

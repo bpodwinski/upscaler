@@ -7,7 +7,9 @@ they disagree, the guides and the source win.
 
 ## Using the library
 
-Maintained, normative, for anyone integrating `@pmndrs/upscaler`:
+- [Cœur WebGPU du fork](webgpu-core.md), [Babylon Frame Graph](babylon-framegraph.md) et [validation du candidat](fork-validation.md).
+
+Maintained, normative, for anyone integrating `@ruxelion/upscaler`:
 
 - [Getting started](getting-started.md): requirements, choosing between
   `upscaleScene()`, `upscale()`, `upscaleSpatial()`, `UpscalePass` and the raw

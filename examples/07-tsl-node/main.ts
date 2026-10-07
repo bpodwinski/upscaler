@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 
-import { upscaleScene, QualityMode } from '@pmndrs/upscaler';
+import { upscaleScene, QualityMode } from '@ruxelion/upscaler';
 
 import { bootRenderer } from '../shared/boot';
 import { addStudioLighting, createGridFloor } from '../shared/props';
@@ -54,7 +54,7 @@ const badge = document.getElementById('badge')!;
 function updateBadge(): void {
     const u = fsrNode.upscaler;
     badge.innerHTML =
-        `<b>@pmndrs/upscaler</b>  upscaleScene() TSL node\n` +
+        `<b>@ruxelion/upscaler</b>  upscaleScene() TSL node\n` +
         `post.outputNode = upscaleScene(scene, camera)\n` +
         (u ? `render   ${u.renderWidth}×${u.renderHeight}\n` +
             `display  ${u.displayWidth}×${u.displayHeight}  (${u.upscaleRatio.toFixed(1)}x)` : '');

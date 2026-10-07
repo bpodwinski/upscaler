@@ -1,5 +1,7 @@
 # Architecture
 
+Fork architecture: common encoding now lives in [UpscalerCore](../src/core/UpscalerCore.ts). Textures, camera jitter, history swaps and submissions belong to the engine adapters. The early and late stages use separate uniforms. See [the fork contract](webgpu-core.md); the upstream pass descriptions below still apply to neutral settings.
+
 How the library is put together, for contributors. Consumer-facing contracts are in
 [Inputs and contracts](inputs-and-contracts.md) and
 [Temporal guides](temporal-guides.md). The per-pass audit against FidelityFX is in

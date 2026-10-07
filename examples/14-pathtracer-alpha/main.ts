@@ -8,7 +8,7 @@ import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { BlurredEnvMapGenerator, WebGPUPathTracer, FSRUpscaler } from 'three-gpu-pathtracer/webgpu';
 import GUI from 'lil-gui';
 
-import { Upscaler, getRenderResolution } from '@pmndrs/upscaler';
+import { Upscaler, getRenderResolution } from '@ruxelion/upscaler';
 
 import { bootRenderer, displaySize, showFatal } from '../shared/boot';
 
@@ -234,7 +234,7 @@ renderer.setAnimationLoop(() => {
     const { width, height } = displaySize(dpr);
     const render = getRenderResolution(width, height, settings.ratio);
     badge.innerHTML =
-        '<b>@pmndrs/upscaler</b>  optional FSR1 · transparent canvas\n' +
+        '<b>@ruxelion/upscaler</b>  optional FSR1 · transparent canvas\n' +
         'path trace  ' + render.width + '×' + render.height + '\n' +
         'display     ' + renderer.domElement.width + '×' + renderer.domElement.height + '  (' + settings.ratio.toFixed(1) + 'x)\n' +
         'presenting  ' + (attached ? 'path tracer + FSRUpscaler' : 'path tracer blit');

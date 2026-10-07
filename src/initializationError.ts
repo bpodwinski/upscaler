@@ -15,8 +15,8 @@ export class UpscalerNotReadyError extends Error {
             ? 'await MomentsPass.init() after configure() before dispatch().'
             : 'await init() (or prepare()) after configure() before dispatch.';
         super(reason === 'device-lost'
-            ? '@pmndrs/upscaler: GPU device lost; recreate the renderer and ' + surface + ' before dispatch.'
-            : '@pmndrs/upscaler: ' + action +
+            ? '@ruxelion/upscaler: GPU device lost; recreate the renderer and ' + surface + ' before dispatch.'
+            : '@ruxelion/upscaler: ' + action +
                 ' Initialization is asynchronous; migrate the old immediate-dispatch pattern.');
         this.name = 'UpscalerNotReadyError';
     }
