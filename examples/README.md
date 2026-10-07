@@ -17,6 +17,37 @@ npm run examples     # http://localhost:5300  (landing page links every demo)
 The library is consumed straight from `../src` (aliased as `@ruxelion/upscaler`), so
 shader/pipeline edits hot-reload here just like in the bench.
 
+## GitHub Pages
+
+The fork uses the same gallery and GitHub Pages deployment as upstream, with
+all 18 examples and four showcases. Its default URL is
+[bpodwinski.github.io/upscaler](https://bpodwinski.github.io/upscaler/).
+
+One-time setup on GitHub:
+
+1. Open the fork's **Actions** tab and enable workflows if GitHub asks you to.
+2. In **Settings → Pages → Build and deployment**, choose **GitHub Actions** as
+   the source. See [GitHub's setup instructions](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site#publishing-with-a-custom-github-actions-workflow).
+3. Commit and push your changes to `main`. The **Deploy examples to Pages**
+   workflow builds the gallery and publishes `examples/dist`. You can also run
+   it manually from Actions after the workflow is on GitHub.
+
+The workflow obtains the deployment path from `actions/configure-pages` rather
+than hardcoding an upstream URL. Project sites, a renamed repository and a
+custom domain therefore use the path supplied by GitHub Pages. No npm publication
+or `gh-pages` branch is required.
+
+To build and inspect the static gallery locally:
+
+```bash
+npm run examples:build
+npm run examples:preview    # http://localhost:4173
+```
+
+To reproduce a project-site build, set `PAGES_BASE=/upscaler/` for both commands.
+In PowerShell, set `$env:PAGES_BASE = '/upscaler/'` first; remove it afterwards
+with `Remove-Item Env:PAGES_BASE`.
+
 ## Showcases
 
 Bigger scenes built to be looked at — what the upscaler buys you, made visible —

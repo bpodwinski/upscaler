@@ -3,6 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <link rel="icon" href="data:," />
         <title>@ruxelion/upscaler — Examples</title>
         <style>
             :root {
@@ -150,7 +151,7 @@
         <div class="wrap">
             <h1><span>@ruxelion/upscaler</span> — Examples</h1>
             <p class="sub">
-                FSR1 spatial + FSR2/3-style temporal upscaling for the three.js WebGPURenderer.
+                FSR1 spatial + FSR2/3-style temporal upscaling — WebGPU, Three.js and Babylon.js.
             </p>
             <p class="note">
                 WebGPU-only — open in Chrome/Edge 113+ (or a browser with WebGPU enabled). Each
@@ -362,17 +363,31 @@
                     </div>
                     <span class="tag">integration</span>
                 </a>
+                <a class="card" href="17-core-webgpu/">
+                    <div class="num">17</div>
+                    <div class="title">Raw WebGPU core</div>
+                    <div class="desc">
+                        The temporal core without an engine: positive linear depth, explicit
+                        motion, a reactive mask, and independent host and conditioning exposure.
+                    </div>
+                    <span class="tag">WebGPU</span>
+                </a>
+                <a class="card" href="18-babylon-framegraph/">
+                    <div class="num">18</div>
+                    <div class="title">Babylon Frame Graph</div>
+                    <div class="desc">
+                        Temporal upscaling in Babylon 9.29 with native Frame Graph histories.
+                        Toggle exposure changes and switch to the defined bilinear fallback.
+                    </div>
+                    <span class="tag">Babylon</span>
+                </a>
             </div>
             <footer class="foot">
-                Fork examples:
-                <a href="17-core-webgpu/">17 · WebGPU core</a> ·
-                <a href="18-babylon-framegraph/">18 · Babylon Frame Graph</a><br />
-                Built by
+                <a href="https://github.com/bpodwinski/upscaler" target="_blank" rel="noopener">Fork on GitHub</a><br />
+                Upstream built by
                 <a href="https://github.com/DennisSmolek" target="_blank" rel="noopener">Dennis Smolek</a>
                 ·
-                <a href="https://www.npmjs.com/package/@ruxelion/upscaler" target="_blank" rel="noopener">npm</a>
-                ·
-                <a href="https://github.com/pmndrs/upscaler" target="_blank" rel="noopener">GitHub</a>
+                <a href="https://github.com/pmndrs/upscaler" target="_blank" rel="noopener">upstream project</a>
                 · maintained under
                 <a href="https://github.com/pmndrs" target="_blank" rel="noopener">Poimandres</a><br />
                 Based on AMD FidelityFX Super Resolution (MIT) — independent and unaffiliated.

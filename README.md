@@ -1,8 +1,8 @@
 # @ruxelion/upscaler
 
-Fork candidat de [@pmndrs/upscaler v0.5.0](https://github.com/pmndrs/upscaler/tree/v0.5.0), avec un cœur WebGPU indépendant des moteurs, une façade Three compatible et un adaptateur Babylon Frame Graph 9.29.x. Exports : /core, /three, /babylon ; la racine conserve Three. Voir [les contrats du fork](docs/webgpu-core.md), [Babylon](docs/babylon-framegraph.md) et [les validations restant ouvertes](docs/fork-validation.md). Le paquet candidat n'est pas publié ; les démonstrations upstream ci-dessous illustrent l'API Three d'origine.
+Fork candidat de [@pmndrs/upscaler v0.5.0](https://github.com/pmndrs/upscaler/tree/v0.5.0), avec un cœur WebGPU indépendant des moteurs, une façade Three compatible et un adaptateur Babylon Frame Graph 9.29.x. Exports : /core, /three, /babylon ; la racine conserve Three. Voir [les contrats du fork](docs/webgpu-core.md), [Babylon](docs/babylon-framegraph.md) et [les validations restant ouvertes](docs/fork-validation.md). Le paquet candidat n'est pas publié ; la galerie reprend les exemples upstream et ajoute WebGPU brut et Babylon. Pour activer le site du fork, suivre [la procédure GitHub Pages](examples/README.md#github-pages).
 
-[![npm](https://img.shields.io/npm/v/@ruxelion/upscaler?color=cb3837&label=npm)](https://www.npmjs.com/package/@ruxelion/upscaler) [![live demos](https://img.shields.io/badge/demos-live-7dd3fc)](https://pmndrs.github.io/upscaler/) [![license](https://img.shields.io/npm/l/@ruxelion/upscaler?color=blue)](./LICENSE)
+[![npm](https://img.shields.io/npm/v/@ruxelion/upscaler?color=cb3837&label=npm)](https://www.npmjs.com/package/@ruxelion/upscaler) [![live demos](https://img.shields.io/badge/demos-live-7dd3fc)](https://bpodwinski.github.io/upscaler/) [![license](https://img.shields.io/npm/l/@ruxelion/upscaler?color=blue)](./LICENSE)
 
 **Render fewer pixels. Get a sharper image.**
 
@@ -18,7 +18,7 @@ spend it on GI, reflections and heavier materials that wouldn't fit at native re
 pipeline.outputNode = upscaleScene(scene, camera);
 ```
 
-**▶ [See it live](https://pmndrs.github.io/upscaler/)**: showcases and 16 hands-on
+**▶ [See it live](https://bpodwinski.github.io/upscaler/)**: showcases and 18 hands-on
 examples, each one a small, readable integration.
 
 ### Built on FSR, grown up on the web
@@ -67,10 +67,11 @@ warns once and falls back to the pre-r186 render-pipeline hooks, and that fallba
 will be removed. There is no WebGL fallback. See
 [Compatibility](./docs/compatibility.md).
 
-**▶ Live demos: [pmndrs.github.io/upscaler](https://pmndrs.github.io/upscaler/)**: 16
+**▶ Live demos: [bpodwinski.github.io/upscaler](https://bpodwinski.github.io/upscaler/)**: 18
 interactive examples, covering spatial vs temporal, the aliasing-torture scene,
 transparency and reactive masks, the composable and spatial-only TSL nodes, SSGI/SSR
-upscaled in one post graph, temporal guides, and transparent-canvas alpha.
+upscaled in one post graph, temporal guides, transparent-canvas alpha, raw WebGPU
+and Babylon Frame Graph.
 
 ## Quick start
 

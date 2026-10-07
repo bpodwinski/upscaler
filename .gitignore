@@ -6,3 +6,5 @@ bench/dist/
 
 bench/results/windows-local/
 artifacts/
+.playwright-cli/
+output/playwright/

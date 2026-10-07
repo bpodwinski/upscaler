@@ -25,7 +25,7 @@ npm run build      # library build → dist/
 The bench (in [`bench/`](../bench/README.md)) renders an aliasing-hostile scene and
 lets you flip between native rendering, bilinear upscaling, FSR1 spatial, and FSR3
 temporal, with quality presets, sharpness control, debug views, and per-pass GPU
-timings. The [example gallery](https://pmndrs.github.io/upscaler/) is what's deployed
+timings. The [example gallery](https://bpodwinski.github.io/upscaler/) is what's deployed
 to GitHub Pages. CI is GPU-free, so changes to shaders or passes need a real-GPU run;
 see [Debugging](debugging.md#verifying-on-a-real-gpu). The code layout is in
 [Architecture](architecture.md).

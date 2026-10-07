@@ -3,7 +3,8 @@ name: Deploy examples to Pages
 # Builds the interactive examples gallery and publishes it to GitHub Pages.
 # The library is consumed straight from ../src via the examples vite alias, so
 # no separate library build is needed here. PAGES_BASE makes asset URLs resolve
-# under the project-site subpath (https://pmndrs.github.io/upscaler/).
+# under the fork's project-site subpath (or a custom domain).
+# Enable Settings > Pages > Source: GitHub Actions before the first deployment.
 
 on:
   push:
@@ -30,11 +31,14 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Configure GitHub Pages
+        id: pages
+        uses: actions/configure-pages@v5
       - run: npm ci
       - name: Build gallery
         run: npm run examples:build
         env:
-          PAGES_BASE: /upscaler/
+          PAGES_BASE: ${{ steps.pages.outputs.base_path }}/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: examples/dist

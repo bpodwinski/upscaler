@@ -26,8 +26,8 @@ export default defineConfig(({ mode }) => {
         // a shared node_modules/.vite makes concurrent dev servers 504 each other.
         cacheDir: resolve(root, '../node_modules/.vite-examples'),
         // Deploy base. GitHub Pages serves a project site under /<repo>/, so the CI
-        // build sets PAGES_BASE=/upscaler/; local dev/build default to '/'. A custom
-        // domain later just drops PAGES_BASE. Gallery links are relative so they
+        // build derives PAGES_BASE from configure-pages; local dev/build default
+        // to '/'. A custom domain gets '/' too. Gallery links are relative so they
         // resolve correctly under either base.
         base: process.env.PAGES_BASE ?? '/',
         resolve: {
