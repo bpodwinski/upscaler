@@ -5,6 +5,10 @@ advanced integration. Fork additions: [17 — raw WebGPU](17-core-webgpu/main.ts
 and [18 — Babylon Frame Graph](18-babylon-framegraph/main.ts), with positive
 linear depth, external exposure, explicit motion and a reactive mask.
 
+The gallery groups examples by engine: **Three.js** (16 examples and four
+showcases), **Babylon.js** (example 18), and **Raw WebGPU** (example 17). Category links at the
+top jump directly to each group.
+
 The upstream examples below range from a minimal starter to an
 expensive screen-space effect rendered small and upscaled. WebGPU-only — open in
 Chrome/Edge 113+.
