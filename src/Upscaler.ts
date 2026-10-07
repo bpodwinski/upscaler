@@ -13,6 +13,7 @@ import {
 import { StorageTexture, type Texture, type WebGPURenderer } from 'three/webgpu';
 
 import { ComputePass } from './internal/ComputePass';
+import { notReadyError } from './initializationError';
 import { ConstantsBuffer } from './internal/ConstantsBuffer';
 import { GpuTimer } from './internal/GpuTimer';
 import { getDevice, getGPUTexture } from './internal/threeWebGPU';
@@ -304,8 +305,13 @@ export class Upscaler {
     /** Explicitly warms the current path and optional settings; also retries failed requests. */
     prepare(): Promise<void> {
         this._ensureResources();
-        if (this._deviceLost) return Promise.reject(new Error("@pmndrs/upscaler: GPU device lost."));
-        return this._queuePreparation(true);
+        const preparation = this._deviceLost
+            ? Promise.reject(new Error("@pmndrs/upscaler: GPU device lost."))
+            : this._queuePreparation(true);
+        // Pass failures already report their cause. Ignored promises must not add
+        // an unhandled rejection; returning the original still rejects for awaiters.
+        void preparation.catch(() => {});
+        return preparation;
     }
 
     /** Mandatory passes are ready; newly requested optional passes may still be preparing. */
@@ -415,7 +421,7 @@ export class Upscaler {
 
     private _startDispatch(): void {
         if (!this.isReady) {
-            throw new Error('@pmndrs/upscaler: await init() after configure() before dispatch.');
+            throw notReadyError(this, 'Upscaler', this._deviceLost ? 'device-lost' : 'preparing');
         }
         // Automatic preparation handles rejection here; explicit prepare() still rejects.
         void this._queuePreparation(false).catch(() => {});

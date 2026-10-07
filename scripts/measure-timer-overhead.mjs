@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { gpuAuditSource } from './gpu-audit.mjs';
 import { browserExecutable } from './browser-executable.mjs';
 /**
  * GPU-timing overhead meter (issue #70). Drives bench/timer-overhead.html over
@@ -34,6 +35,7 @@ import { join, resolve } from 'node:path';
 
 import {
     DEFAULT_BENCH_URL,
+    closeOwnedCdpBrowser,
     parsePort,
     removeTempDirectory,
     resolveServerUrl,
@@ -62,6 +64,7 @@ function parseArguments(argv) {
 }
 
 const cli = parseArguments(process.argv.slice(2));
+const auditSource = gpuAuditSource(cli);
 const conditions = String(
     cli.conditions ?? 'temporal:2:dispatch,temporal:2:frame,spatial:2:dispatch,bilinear:2:dispatch',
 )
@@ -87,7 +90,7 @@ const port = parsePort(cli.port, '--port') ?? 9333;
 const server = resolveServerUrl(cli.url, DEFAULT_BENCH_URL);
 const outputDirectory = join(ROOT, 'bench/results/raw/timer-overhead', label);
 
-const chromeExecutable = () => browserExecutable();
+const chromeExecutable = () => browserExecutable(cli.chrome);
 
 //* CDP
 class CdpClient {
@@ -233,6 +236,7 @@ async function main() {
             logRecords.push(`[exception] ${exceptionDetails.exception?.description ?? exceptionDetails.text}`),
         );
         await Promise.all([client.call('Page.enable'), client.call('Runtime.enable'), client.call('Log.enable')]);
+        await client.call('Page.addScriptToEvaluateOnNewDocument', { source: auditSource });
         await client.call('Page.navigate', { url: `${server.origin}/timer-overhead.html` });
         for (let attempt = 0; ; attempt++) {
             if ((await evaluate(client, 'window.__timerOverhead?.ready === true')) === true) break;
@@ -281,13 +285,13 @@ async function main() {
         await mkdir(outputDirectory, { recursive: true });
         await writeFile(
             join(outputDirectory, 'summary.json'),
-            `${JSON.stringify({ width, height, frames, warmup, blocks, inflight, attachOnly, ...header, results, pageErrors, logRecords }, null, 2)}\n`,
+            `${JSON.stringify({ width, height, frames, warmup, blocks, inflight, attachOnly, ...header, gpuAudit: await evaluate(client, 'window.__gpuAudit'), results, pageErrors, logRecords }, null, 2)}\n`,
         );
         if (pageErrors.length) console.log(`\nGPU errors:\n${pageErrors.join('\n')}`);
         if (logRecords.length) console.log(`\nbrowser log:\n${logRecords.join('\n')}`);
         console.log(`\nartifacts: ${outputDirectory}`);
     } finally {
-        client?.close();
+        await closeOwnedCdpBrowser(client);
         await stopChild(chrome);
         await removeTempDirectory(profile, 'Chrome profile');
         await stopChild(viteServer);

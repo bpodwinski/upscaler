@@ -4,6 +4,7 @@
 Baseline: v0.4.0 / bfb343c. Startup implementation: 3d018e1.
 
 Current implementation status: [Windows follow-ups completed](windows-followups.md).
+Latest coverage: [Windows cross-device audit](windows-cross-device.md).
 The observations below are the original audit snapshot.
 
 ## Result and measurements

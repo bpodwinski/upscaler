@@ -1,3 +1,4 @@
+import { gpuAuditSource } from './gpu-audit.mjs';
 import { CDP } from './cdp-client.mjs';
 import { browserExecutable } from './browser-executable.mjs';
 /**
@@ -12,13 +13,14 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { parseFlags } from './cli-flags.mjs';
 import { removeTempDirectory, spawnVite, stopChild, waitForUrl } from './local-processes.mjs';
 
-const options = parseFlags(process.argv.slice(2), ['browser', 'out', 'demos', 'port', 'cdp-port', 'runs', 'trace', 'exercise', 'help']);
+const options = parseFlags(process.argv.slice(2), ['browser', 'out', 'demos', 'port', 'cdp-port', 'runs', 'trace', 'exercise', 'bench', 'power-preference', 'expected-vendor', 'without-timestamps', 'help']);
 if (options.help) {
-    console.log('Usage: node scripts/audit-windows.mjs --browser <chrome.exe|msedge.exe> [--demos 01-hello,07-tsl-node] [--runs 3] [--trace] [--out directory]');
+    console.log('Usage: node scripts/audit-windows.mjs --browser <chrome.exe|msedge.exe> [--demos 01-hello,07-tsl-node] [--runs 3] [--trace] [--out directory] [--bench --exercise] [--power-preference high-performance|low-power] [--expected-vendor vendor] [--without-timestamps]');
     process.exit(0);
 }
+const gpuSource = gpuAuditSource(options);
 const selectedBrowser = browserExecutable(options.browser);
-const demos = String(options.demos ?? '01-hello,02-fsr1-vs-fsr3,03-split-compare,04-aliasing-torture,05-transparency,06-screenspace-gi,07-tsl-node,08-tsl-compose,09-kitchen-sink,10-ssgi-denoise,11-node-reactive,12-temporal-guides,13-guides-node,14-pathtracer-alpha,15-transparent-canvas,16-spatial-node,s1-reinvest,s2-fractal,s3-how-low,s4-convergence').split(',');
+const demos = options.bench ? ['bench'] : String(options.demos ?? '01-hello,02-fsr1-vs-fsr3,03-split-compare,04-aliasing-torture,05-transparency,06-screenspace-gi,07-tsl-node,08-tsl-compose,09-kitchen-sink,10-ssgi-denoise,11-node-reactive,12-temporal-guides,13-guides-node,14-pathtracer-alpha,15-transparent-canvas,16-spatial-node,s1-reinvest,s2-fractal,s3-how-low,s4-convergence').split(',');
 const out = resolve(String(options.out ?? 'bench/results/windows-local'));
 const port = Number(options.port ?? 5301);
 const cdpPort = Number(options['cdp-port'] ?? 9341);
@@ -52,7 +54,7 @@ const instrumentation = `
 })();
 `;
 
-const server = spawnVite('examples/vite.config.ts', { hostname: '127.0.0.1', port });
+const server = spawnVite(options.bench ? 'bench/vite.config.ts' : 'examples/vite.config.ts', { hostname: '127.0.0.1', port });
 const report = { date: new Date().toISOString(), browser: selectedBrowser, node: process.version, platform: process.platform, records: [] };
 try {
     await waitForUrl('http://127.0.0.1:' + port, { child: server });
@@ -63,7 +65,7 @@ try {
             '--remote-debugging-port=' + cdpPort, '--user-data-dir=' + profile, '--window-size=960,640', 'about:blank'], { stdio: 'ignore', windowsHide: true });
         let browserClient;
         try {
-            await waitForUrl('http://127.0.0.1:' + cdpPort + '/json/version', { child: browser });
+            await waitForUrl('http://127.0.0.1:' + cdpPort + '/json/version', { child: browser, allowSuccessfulExit:true });
             const version = await (await fetch('http://127.0.0.1:' + cdpPort + '/json/version')).json();
             browserClient = await CDP.connect(version.webSocketDebuggerUrl);
             report.browserVersion = version.Browser;
@@ -72,7 +74,7 @@ try {
                 const client = await CDP.connect(target.webSocketDebuggerUrl);
                 try {
                     await client.send('Page.enable'); await client.send('Runtime.enable'); await client.send('Log.enable');
-                    await client.send('Page.addScriptToEvaluateOnNewDocument', { source: instrumentation });
+                    await client.send('Page.addScriptToEvaluateOnNewDocument', { source: gpuSource + instrumentation });
                     if (options.trace) {
                         const categories = ['gpu.dawn', 'gpu.dawn.validation', 'toplevel'];
                         report.traceCategories = categories;
@@ -80,17 +82,17 @@ try {
                     }
                     for (const cache of ['cold', 'warm']) {
                         client.events = [];
-                        await client.send('Page.navigate', { url: 'http://127.0.0.1:' + port + '/' + demo + '/' });
+                        await client.send('Page.navigate', { url: 'http://127.0.0.1:' + port + (options.bench ? '/' : '/' + demo + '/') });
                         const start = Date.now();
                         let snapshot;
                         while (Date.now() - start < (demo === '14-pathtracer-alpha' ? 60000 : 20000)) {
                             await delay(500);
-                            snapshot = await client.evaluate('({audit:window.__audit, fatal:document.getElementById("fatal")?.textContent, canvas:!!document.querySelector("canvas")})');
+                            snapshot = await client.evaluate('({audit:window.__audit, gpuAudit:window.__gpuAudit, fatal:document.getElementById("fatal")?.textContent, canvas:!!document.querySelector("canvas")})');
                             if (snapshot?.audit?.submits > 30 && snapshot.audit.pipelines.every(p => p.end !== null)) break;
                             if (snapshot?.fatal) break;
                         }
                         await delay(1000);
-                        snapshot = await client.evaluate('({audit:window.__audit, fatal:document.getElementById("fatal")?.textContent, canvas:!!document.querySelector("canvas")})');
+                        snapshot = await client.evaluate('({audit:window.__audit, gpuAudit:window.__gpuAudit, fatal:document.getElementById("fatal")?.textContent, canvas:!!document.querySelector("canvas")})');
                         const prefix = demo + '-r' + run + '-' + cache;
                         const screenshot = await client.send('Page.captureScreenshot', { format: 'png' });
                         await writeFile(join(out, prefix + '.png'), Buffer.from(screenshot.data, 'base64'));
@@ -102,6 +104,31 @@ try {
                         report.records.push(record);
                         await writeFile(join(out, 'report.json'), JSON.stringify(report, null, 2));
                         console.log(JSON.stringify({ demo, run, cache, sync: snapshot.audit?.sync, async: snapshot.audit?.pipelines.length, submits: snapshot.audit?.submits, issues: issues.length, fatal: snapshot.fatal }));
+                    }
+                    const benchmarkViews = [];
+                    if (options.bench && options.exercise) {
+                        const lists = await client.evaluate(
+                            "[...document.querySelectorAll('select')].map(s=>[...s.options].map(o=>({value:o.value,text:o.text})))");
+                        for (let select = 0; select < lists.length; select++) {
+                            const original = await client.evaluate("[...document.querySelectorAll('select')]["+select+"].value");
+                            for (let index = 0; index < lists[select].length; index++) {
+                                const option = lists[select][index];
+                                await client.evaluate("(async()=>{const s=[...document.querySelectorAll('select')]["+select+
+                                    "];s.value="+JSON.stringify(option.value)+";s.dispatchEvent(new Event('change',{bubbles:true}));"+
+                                    "await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));"+
+                                    "await window.__UPSCALER_BENCH__._context.pipeline.resolver.prepare();"+
+                                    "await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));"+
+                                    "await window.__UPSCALER_BENCH__._context.renderer.backend.device.queue.onSubmittedWorkDone();})()");
+                                const state = await client.evaluate("(()=>{const p=window.__UPSCALER_BENCH__._context.pipeline;"+
+                                    "return {mode:p.mode,ready:p.resolver.isReady,activeDebugView:p.resolver._upscaler.activeDebugView,requestedDebugView:p.resolver._upscaler.settings.debugView};})()");
+                                const shot = await client.send('Page.captureScreenshot',{format:'png'});
+                                const filename='bench-select-'+select+'-'+index+'.png';
+                                await writeFile(join(out,filename),Buffer.from(shot.data,'base64'));
+                                benchmarkViews.push({control:option.text,...state,screenshot:filename});
+                            }
+                            await client.evaluate("(()=>{const s=[...document.querySelectorAll('select')]["+select+
+                                "];s.value="+JSON.stringify(original)+";s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+                        }
                     }
                     if (options.exercise) {
                         for (const metrics of [
@@ -188,7 +215,7 @@ try {
                             (e.method === 'Log.entryAdded' && e.params.entry.level === 'error' && !e.params.entry.url?.endsWith('/favicon.ico')) ||
                             (e.method === 'Runtime.consoleAPICalled' && e.params.type === 'error'));
                         const finalAudit = await client.evaluate("window.__audit");
-                        report.records.push({ demo, run, exercise: { resize: true, dpr: true, controls, primitives, optionalUpscaler, syncComputeCalls: finalAudit.sync }, issues: errors });
+                        report.records.push({ demo, run, exercise: { resize: true, dpr: true, controls, primitives, optionalUpscaler, benchmarkViews, syncComputeCalls: finalAudit.sync }, issues: errors });
                         console.log(JSON.stringify({ demo, run, exercise: true, controls: controls.length, errors: errors.length }));
                     }
                     if (options.trace) {
@@ -221,3 +248,5 @@ try {
     }
 } finally { await stopChild(server); }
 await writeFile(join(out, 'report.json'), JSON.stringify(report, null, 2));
+
+if (report.records.some(r=>r.error||r.snapshot?.fatal||r.issues?.some(e=>e.method==='Runtime.exceptionThrown'||(e.method==='Log.entryAdded'&&e.params.entry.level==='error'&&!e.params.entry.url?.endsWith('/favicon.ico'))||(e.method==='Runtime.consoleAPICalled'&&e.params.type==='error')))) process.exitCode=1;

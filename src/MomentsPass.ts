@@ -2,6 +2,7 @@ import { HalfFloatType, NoColorSpace, RGBAFormat, type Texture } from 'three';
 import { StorageTexture, type WebGPURenderer } from 'three/webgpu';
 
 import { ComputePass } from './internal/ComputePass';
+import { notReadyError } from './initializationError';
 import { ConstantsBuffer } from './internal/ConstantsBuffer';
 import { getDevice, getGPUTexture } from './internal/threeWebGPU';
 import { FLAG_MOMENTS_YCOCG } from './shaders/common';
@@ -69,6 +70,11 @@ export class MomentsPass {
 
     /** Compile asynchronously. Configure first, then await before dispatch. */
     init(): Promise<void> {
+        if (this._lost) {
+            const failure = Promise.reject(new Error('@pmndrs/upscaler: MomentsPass GPU device lost.'));
+            void failure.catch(() => {});
+            return failure;
+        }
         if (this._pass && !this._lost) return Promise.resolve();
         if (this._preparing) return this._preparing;
         if (!this._device) {
@@ -80,10 +86,14 @@ export class MomentsPass {
             if (generation !== this._generation || this._lost) throw new Error('MomentsPass preparation cancelled.');
             this._pass = pass;
         }).catch(error => {
-            if (generation === this._generation) this._preparing = null;
+            if (generation === this._generation) {
+                this._preparing = null;
+                console.error('@pmndrs/upscaler: MomentsPass shader preparation failed.', error);
+            }
             throw error;
         });
         void this._device.lost.then(() => { if (generation === this._generation) this._lost = true; });
+        void this._preparing.catch(() => {});
         return this._preparing;
     }
 
@@ -147,7 +157,7 @@ export class MomentsPass {
      *   never filtered — any float format works)
      */
     dispatch(inputs: { source: Texture }): void {
-        if (!this.isReady) throw new Error("@pmndrs/upscaler: await MomentsPass.init() before dispatch().");
+        if (!this.isReady) throw notReadyError(this, 'MomentsPass', this._lost ? 'device-lost' : 'preparing');
         if (!this._pass || !this._momentsGPU || !this._coarseGPU) {
             throw new Error('@pmndrs/upscaler: MomentsPass.configure() must run before dispatch().');
         }

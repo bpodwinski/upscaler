@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
-import { convertToTexture, mix, mrt, output, pass, texture, vec3, vec4, velocity } from 'three/tsl';
+import { rtt, mix, mrt, output, pass, texture, vec3, vec4, velocity } from 'three/tsl';
 
-import { temporalGuides, upscale, type TemporalGuidesNode } from '@pmndrs/upscaler';
+import { UpscalePass, temporalGuides, upscale, type TemporalGuidesNode } from '@pmndrs/upscaler';
 
 import { bootRenderer, displaySize } from '../shared/boot';
 import { addStudioLighting, createGridFloor } from '../shared/props';
@@ -15,7 +15,7 @@ import { addStudioLighting, createGridFloor } from '../shared/props';
 // early stage (reconstruct + depth clip) runs once and serves both. The imperative twin of this
 // wiring is `examples/12-temporal-guides`.
 
-const { renderer, dpr } = await bootRenderer();
+const { renderer } = await bootRenderer();
 
 //* Scene — orbiting spheres + spinning knot, so disocclusion trails are
 //* always live behind the movers.
@@ -43,30 +43,37 @@ for (let i = 0; i < 3; i++) {
 
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 200);
 
-//* Post graph — rebuilt on resize (the reduced-res sizes are baked in).
+//* Post graph — resize owned targets while keeping pass identities stable.
 const post = new THREE.RenderPipeline(renderer);
+let scenePass: ReturnType<typeof pass> | null = null;
+let colorTex: ReturnType<typeof rtt> | null = null;
 const RATIO = 2;
 let guidesNode: TemporalGuidesNode | null = null;
 let fsrNode: ReturnType<typeof upscale> | null = null;
 
+function disposeGraph(): void {
+    post.dispose();
+    fsrNode?.dispose();
+    guidesNode?.dispose();
+    colorTex?.dispose();
+    scenePass?.dispose();
+}
+
 function configure(): void {
-    const { width, height } = displaySize(dpr);
+    const { width, height } = displaySize(renderer.getPixelRatio());
     const rw = Math.max(1, Math.floor(width / RATIO));
     const rh = Math.max(1, Math.floor(height / RATIO));
+    // Keep the scene pass identity stable; rebuilding it retains per-pass bindings in three.
+    if (colorTex) { colorTex.setSize(rw, rh); return; }
 
     //* Reduced-res scene pass with the color + velocity MRT.
-    const scenePass = pass(scene, camera);
+    scenePass = pass(scene, camera);
     scenePass.setMRT(mrt({ output, velocity }));
     scenePass.setResolutionScale(1 / RATIO);
 
     const beauty = scenePass.getTextureNode('output');
     const depth = scenePass.getTextureNode('depth');
     const vel = scenePass.getTextureNode('velocity');
-
-    // Dispose the previous graph's upscaler before replacing it. The linked
-    // guides node shares the upscale node's upscaler, so fsrNode owns it.
-    fsrNode?.dispose();
-    guidesNode?.dispose();
 
     //* The guides node — same depth/velocity/camera as the upscale below.
     guidesNode = temporalGuides(depth, vel, camera, { gpuTiming: true });
@@ -77,9 +84,9 @@ function configure(): void {
     const disocclusion = guidesNode.getTextureNode('disocclusion');
     const tinted = mix(beauty.rgb, vec3(1.0, 0.45, 0.15), disocclusion.r.mul(0.85));
 
-    // Pin the effected color to render res (a bare convertToTexture would
+    // Pin the effected color to render res (an automatically sized RTT would
     // render it full-res — see 09), then upscale with the SHARED computation.
-    const colorTex = convertToTexture(vec4(tinted, beauty.a), rw, rh);
+    colorTex = rtt(vec4(tinted, beauty.a), rw, rh);
     fsrNode = upscale(colorTex, depth, vel, camera, { ratio: RATIO, guides: guidesNode });
     post.outputNode = fsrNode;
     post.needsUpdate = true;
@@ -102,12 +109,14 @@ function updateBadge(): void {
             : '');
 }
 
-window.addEventListener('resize', () => {
+function resize(): void {
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     configure();
-});
+}
+window.addEventListener('resize', resize);
 
 // Exposed for the headless GPU-verification harness (the tsl/THREE handles let
 // it assemble a second, standalone guides graph against this live renderer).
@@ -118,6 +127,7 @@ Object.assign(window as unknown as Record<string, unknown>, {
         scene,
         THREE,
         temporalGuides,
+        UpscalePass,
         tsl: { pass, mrt, output, velocity, texture },
         get guidesNode() {
             return guidesNode;
@@ -131,6 +141,8 @@ Object.assign(window as unknown as Record<string, unknown>, {
 //* Loop — the nodes drive the split frame; we just render the post graph.
 const timer = new THREE.Timer();
 renderer.setAnimationLoop(() => {
+    // Monitor DPI can change after the resize event, or without changing CSS size.
+    if (renderer.getPixelRatio() !== Math.min(window.devicePixelRatio, 2)) resize();
     timer.update();
     const t = timer.getElapsed();
 
@@ -145,4 +157,13 @@ renderer.setAnimationLoop(() => {
 
     post.render();
     updateBadge();
+});
+
+let pageDisposed = false;
+window.addEventListener('pagehide', event => {
+    if (event.persisted || pageDisposed) return;
+    pageDisposed = true;
+    renderer.setAnimationLoop(null);
+    disposeGraph();
+    renderer.dispose();
 });

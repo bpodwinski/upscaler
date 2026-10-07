@@ -48,6 +48,11 @@ Maintained, for contributors:
 
 Live records, kept current as findings land:
 
+- [Async initialization migration](async-init-migration.md): before/after examples
+  for the draft #83 API change and preparation/readiness rules.
+- [Windows cross-device audit](windows-cross-device.md): adapter metadata, NVIDIA
+  and Intel verification, lifecycle fixes and remaining measurement limits.
+
 - [FSR 3.1.5 parity report](research/PARITY.md): where this implementation matches
   and diverges from FSR 3.1.5, and the measurements behind each choice.
 - [Paper notes](research/PAPER-NOTES.md): a running tracker of write-up-worthy

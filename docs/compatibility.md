@@ -37,9 +37,10 @@ re-verified on r186.1.
 - **`timestamp-query`** is optional and only used when GPU timing is opted into
   (`gpuTiming: true`; off by default). Without it, `upscaler.gpuTimings` stays empty
   and nothing else changes. It's often missing on mobile.
-- **Measured hardware.** Performance and quality measurements so far come from one
-  adapter family (Apple Metal). Treat the published millisecond figures as indicative
-  on other GPUs, especially mobile tilers.
+- **Measured hardware.** The original performance/quality program used Apple Metal.
+  The [Windows cross-device audit](windows-cross-device.md) adds NVIDIA and Intel
+  coverage, with explicit adapter identity and noise limits. Treat figures as
+  specific to their recorded workload and hardware; mobile tilers remain unverified.
 
 ## Out of scope by design
 

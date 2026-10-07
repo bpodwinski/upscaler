@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PerspectiveCamera, Texture } from 'three';
 import type { WebGPURenderer } from 'three/webgpu';
 import { Upscaler } from './Upscaler';
+import { UpscalerNotReadyError } from './initializationError';
+import { MomentsPass } from './MomentsPass';
 import { DebugView } from './types';
 
 function deferred<T>() {
@@ -37,7 +39,7 @@ function fixture() {
         createComputePipelineAsync: vi.fn((descriptor: GPUComputePipelineDescriptor) =>
             new Promise<GPUComputePipeline>((resolve, reject) => jobs.push({ label: descriptor.label!, resolve, reject }))),
         createBuffer: resource, createSampler: resource, createTexture: resource,
-        createBindGroup: resource, createCommandEncoder: () => encoder,
+        createBindGroup: resource, createCommandEncoder: vi.fn(() => encoder),
     };
     const renderer = {
         backend: { device, get: () => ({ texture: resource() }) }, initTexture() {},
@@ -57,6 +59,7 @@ describe('Upscaler preparation', () => {
         vi.stubGlobal('GPUBufferUsage', { UNIFORM: 64, COPY_DST: 8, STORAGE: 128 });
         vi.stubGlobal('GPUTextureUsage', { TEXTURE_BINDING: 4, STORAGE_BINDING: 8, COPY_DST: 2 });
         vi.spyOn(console, 'error').mockImplementation(() => {});
+        vi.spyOn(console, 'warn').mockImplementation(() => {});
     });
     afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
@@ -70,14 +73,36 @@ describe('Upscaler preparation', () => {
     });
 
     it('allocates synchronously but refuses dispatch until mandatory pipelines resolve', async () => {
-        const { upscaler, finish } = fixture();
+        const { upscaler, device, finish } = fixture();
         upscaler.configure({ displayWidth: 32, displayHeight: 32, path: 'bilinear' });
         expect(upscaler.outputTexture).toBeDefined();
         expect(upscaler.isReady).toBe(false);
         expect(() => upscaler.dispatch({ color: new Texture() }, new PerspectiveCamera())).toThrow('await init()');
+        expect(() => upscaler.dispatch({ color: new Texture() }, new PerspectiveCamera())).toThrow(UpscalerNotReadyError);
+        expect(console.warn).toHaveBeenCalledTimes(1);
+        expect(device.createCommandEncoder).not.toHaveBeenCalled();
         const ready = upscaler.init();
         await finish(); await ready;
         expect(upscaler.isReady).toBe(true);
+    });
+
+    it('does not warn for correctly awaited initialization', async () => {
+        const { upscaler, finish } = fixture();
+        upscaler.configure({ displayWidth: 32, displayHeight: 32, path: 'bilinear' });
+        const ready = upscaler.init(); await finish(); await ready;
+        upscaler.dispatch({ color: new Texture() }, new PerspectiveCamera());
+        expect(console.warn).not.toHaveBeenCalled();
+    });
+
+    it('handles an ignored preparation rejection while preserving rejection for awaiters', async () => {
+        const { upscaler, jobs } = fixture();
+        upscaler.configure({ displayWidth: 32, displayHeight: 32, path: 'bilinear' });
+        const ignored = upscaler.init();
+        jobs.splice(0).forEach(job => job.reject(new Error('ignored compile failure')));
+        // Allow the unhandled-rejection checkpoint before attaching the consumer catch.
+        await new Promise(resolve => setTimeout(resolve, 0));
+        await expect(ignored).rejects.toThrow('ignored compile failure');
+        expect(console.error).toHaveBeenCalledTimes(1);
     });
 
     it('compiles only the configured path and preserves sharing across disposal', async () => {
@@ -159,5 +184,15 @@ describe('Upscaler preparation', () => {
         const ready = upscaler.init(); await finish(); await ready;
         lost.resolve({} as GPUDeviceLostInfo); await Promise.resolve();
         expect(upscaler.isReady).toBe(false);
+    });
+
+    it('rejects MomentsPass initialization after device loss instead of returning its old ready promise', async () => {
+        const { renderer, lost, finish } = fixture();
+        const moments = new MomentsPass({ renderer });
+        moments.configure({ width: 16, height: 16 });
+        const ready = moments.init(); await finish(); await ready;
+        lost.resolve({} as GPUDeviceLostInfo); await Promise.resolve();
+        expect(moments.isReady).toBe(false);
+        await expect(moments.init()).rejects.toThrow('GPU device lost');
     });
 });

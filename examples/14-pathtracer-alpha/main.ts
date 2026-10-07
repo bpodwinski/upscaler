@@ -239,11 +239,14 @@ renderer.setAnimationLoop(() => {
         'display     ' + renderer.domElement.width + '×' + renderer.domElement.height + '  (' + settings.ratio.toFixed(1) + 'x)\n' +
         'presenting  ' + (attached ? 'path tracer + FSRUpscaler' : 'path tracer blit');
 });
-window.addEventListener('pagehide', () => {
+let pageDisposed = false;
+window.addEventListener('pagehide', event => {
+    if (event.persisted || pageDisposed) return;
+    pageDisposed = true;
     renderer.setAnimationLoop(null);
     controls.dispose();
     if (!attached) fsr.dispose();
     pathTracer.dispose(); // owns and disposes the attached optional FSR adapter
     blurredEnv.dispose();
     renderer.dispose();
-}, { once: true });
+});
