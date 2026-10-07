@@ -171,7 +171,7 @@ try {
     if(report.issues.length)throw new Error('Lifecycle run reported browser/GPU errors.');
 } catch(error) {
     report.failure=String(error);
-    if(client){report.gpuAudit=await client.evaluate('window.__gpuAudit').catch(()=>null);report.finalLive=await client.evaluate('window.__resourceAudit?.live()').catch(()=>null);} 
+    if(client){report.gpuAudit=await client.evaluate('window.__gpuAudit').catch(()=>null);report.finalLive=await client.evaluate('window.__resourceAudit?.live()').catch(()=>null);}
     if(client)report.events=client.events;
     await writeFile(join(output,'report.json'),JSON.stringify(report,null,2));
     throw error;
