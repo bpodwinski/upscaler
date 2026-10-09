@@ -1,6 +1,13 @@
 import type { CoreConfiguration, ResourceDescriptor, ResourceName } from './types.js';
 
-/** Pure requirements: numeric WebGPU usage bits also work before WebGPU globals exist. */
+/**
+ * Describe adapter-owned textures without allocating GPU resources.
+ * Numeric usage flags allow Frame Graph registration before WebGPU initialization.
+ *
+ * @param config - Dimensions, path and shader variants to validate.
+ * @returns Fresh allocation descriptors, including native history requirements.
+ * @throws If dimensions or configuration variants are invalid.
+ */
 export function getResourceDescriptors(config: CoreConfiguration): ResourceDescriptor[] {
     for (const value of [config.renderWidth, config.renderHeight, config.displayWidth, config.displayHeight]) {
         if (!Number.isSafeInteger(value) || value < 1) throw new Error('UpscalerCore: dimensions must be positive integers.');

@@ -12,6 +12,7 @@ import type { Matrix } from '@babylonjs/core/Maths/math.vector.js';
 import type { CoreConfiguration, CoreResources, FrameData, ResourceDescriptor, ResourceName, RuntimeSettings } from '../core/types.js';
 import { freezeJitteredProjection, getBabylonDevice, getBabylonEncoder, resolveBabylonTexture } from './compatibility.js';
 
+/** Babylon-supported configuration; split guides are enabled on the temporal path via createGuidesTask(). */
 export type FrameGraphUpscaleConfiguration = Omit<CoreConfiguration, 'path'> & { path?: 'temporal' | 'spatial' | 'bilinear' };
 
 /** Render-resolution guides owned by Babylon's texture manager, available on the temporal path. */
@@ -24,17 +25,24 @@ export interface FrameGraphUpscaleGuides {
     readonly disocclusion: number;
 }
 
+/** Configuration, frame callback and initial runtime settings for the Frame Graph adapter. */
 export interface FrameGraphUpscaleOptions {
+    /** Allocation and shader requirements; configure again only between frames. */
     configuration: FrameGraphUpscaleConfiguration;
     /**
      * Must match the conditioning/host exposure baked into the input textures.
      * In split mode this runs for each phase; geometry must stay identical until upscale finishes.
      */
     frame: () => FrameData;
+    /** Initial runtime overrides merged with DEFAULT_SETTINGS. */
     settings?: Partial<RuntimeSettings>;
 }
 
-/** Converts the pure core requirements to Babylon-owned Frame Graph allocations. */
+/**
+ * Convert core texture requirements into native Frame Graph allocation options.
+ * @param descriptor - Validated requirement from getResourceDescriptors().
+ * @returns Single-sample options preserving dimensions, format, storage and history flags.
+ */
 export function getBabylonTextureOptions(descriptor: ResourceDescriptor): FrameGraphTextureCreationOptions {
     const integer = descriptor.format === 'rgba32uint';
     const red = descriptor.format === 'r8unorm' || descriptor.format === 'r32float';
@@ -46,17 +54,31 @@ export function getBabylonTextureOptions(descriptor: ResourceDescriptor): FrameG
     };
 }
 
-/** Temporal, spatial or bilinear reconstruction. The texture manager owns history swaps. */
+/**
+ * Temporal, spatial or bilinear reconstruction on Babylon's current WebGPU encoder.
+ * The texture manager owns all allocations and history swaps. See docs/babylon-framegraph.md.
+ * @remarks Prepare before execution and wrap jittered scene rendering in beginFrame/endFrame.
+ */
 export class FrameGraphUpscaleTask extends FrameGraphTask {
+    /** Final input color; may be produced between guides and upscale. */
     colorTexture!: number;
+    /** Render-resolution depth matching configuration.depthMode; temporal only. */
     depthTexture!: number;
+    /** Render-resolution velocity converted through frame().motionScale; temporal only. */
     velocityTexture!: number;
+    /** Optional authored reactive mask in R. */
     reactiveTexture?: number;
+    /** Optional opaque reference color for automatic reactive-mask generation. */
     reactiveOpaqueColorTexture?: number;
+    /** Optional 1x1 conditioning exposure overriding the CPU value. */
     exposureTexture?: number;
+    /** Optional 1x1 host pre-exposure baked into input color. */
     preExposureTexture?: number;
+    /** Stable display-resolution output handle resolved when the graph is built. */
     readonly outputTexture: number;
+    /** Stable temporal guide handles; dilatedDepth resolves to current history.write. */
     readonly guides: FrameGraphUpscaleGuides;
+    /** Mutable runtime defaults; frame callback settings can override them. */
     readonly settings: RuntimeSettings;
     private readonly core: UpscalerCore;
     private readonly fallback: UpscalerCore;
@@ -76,6 +98,12 @@ export class FrameGraphUpscaleTask extends FrameGraphTask {
     /** Use this projection when generating unjittered motion vectors. */
     unjitteredProjectionMatrix: Matrix | null = null;
 
+    /**
+     * Register stable output/guide handles and configure core-owned GPU state.
+     * @param name - Task label used for graph passes and allocations.
+     * @param graph - Host Frame Graph on an initialized Babylon 9.29 WebGPU engine.
+     * @param options - Configuration, per-phase frame callback and initial settings.
+     */
     constructor(name: string, graph: FrameGraph, options: FrameGraphUpscaleOptions) {
         super(name, graph);
         this.configuration = { ...options.configuration, path: options.configuration.path ?? 'temporal' };
@@ -92,7 +120,12 @@ export class FrameGraphUpscaleTask extends FrameGraphTask {
         });
     }
 
-    /** Call between frames, then rebuild the Frame Graph to allocate the new requirements. */
+    /**
+     * Change requirements between frames, then prepare and rebuild the Frame Graph.
+     * @param configuration - Dimensions and shader variants; temporal is the default path.
+     * @returns No value; history and preparation readiness are invalidated.
+     * @throws If a jitter/split frame is active or a guides task would lose its temporal path.
+     */
     configure(configuration: FrameGraphUpscaleConfiguration): void {
         if (this.splitPending) throw new Error('@ruxelion/upscaler: cannot configure during a Babylon split frame; finish upscale or resetHistory() first.');
         if (this.restoreProjection) throw new Error('@ruxelion/upscaler: cannot configure during an active Babylon frame.');
@@ -104,6 +137,10 @@ export class FrameGraphUpscaleTask extends FrameGraphTask {
         this.temporalLastFrame = false; this.initialized = false; this.preparation = undefined; this.guidesRecorded = false;
         this.sequence.setRatio(configuration.displayWidth / configuration.renderWidth);
     }
+    /**
+     * Prepare shared temporal/optional passes and the defined bilinear fallback.
+     * @returns Shared preparation completion; a failed request can be retried.
+     */
     prepare(): Promise<void> {
         // Both tasks share compilation, including optional passes changed by frame callbacks.
         if (this.preparation) return this.preparation;
@@ -117,17 +154,30 @@ export class FrameGraphUpscaleTask extends FrameGraphTask {
         });
         return this.preparation = preparation;
     }
+    /** @returns Pipeline preparation completion requested by Frame Graph initialization. */
     override initAsync(): Promise<void> { return this.prepare(); }
+    /** @returns Whether the owner and fallback are prepared on a live device. */
     override isReady(): boolean { return this.initialized && this.core.isReady && this.fallback.isReady; }
+    /** Select the defined bilinear fallback; transitions reset history, and activation requires readiness. */
     override get disabled(): boolean { return this._disabled; }
     override set disabled(value: boolean) {
         if (value === this._disabled) return;
         if (!value && !this.isReady()) throw new Error('@ruxelion/upscaler: cannot activate an unprepared Babylon task.');
         this._disabled = value; this.resetHistory();
     }
+    /**
+     * Cancel any split frame and restart temporal history and jitter sequencing.
+     * @returns No value; native texture ownership and history rotation stay with Babylon.
+     */
     resetHistory(): void { this.core.resetHistory(); this.splitPending = false; this.temporalLastFrame = false; this.sequence.reset(); }
+    /** Current projection offset in render pixels; zero for disabled and non-temporal paths. */
     get jitter(): Readonly<{ x: number; y: number }> { return this.currentJitter; }
-    /** Wrap input rendering and graph execution in beginFrame / endFrame (try/finally). */
+    /**
+     * Apply jitter while preserving the camera's original projection ownership.
+     * @param camera - Camera used to render depth, velocity and color inputs.
+     * @returns No value; always call endFrame() in a finally after graph execution.
+     * @throws If another jitter frame is active.
+     */
     beginFrame(camera: Camera): void {
         if (this.restoreProjection) throw new Error('@ruxelion/upscaler: a Babylon jitter frame is already active.');
         this.sequence.advance(); const [x, y] = this.sequence.current; const [px, py] = this.sequence.previous;
@@ -138,6 +188,10 @@ export class FrameGraphUpscaleTask extends FrameGraphTask {
         projection.fromArray(jitterProjection(projection.m, this.currentJitter, this.configuration.renderWidth, this.configuration.renderHeight));
         this.restoreProjection = freezeJitteredProjection(camera, projection);
     }
+    /**
+     * Restore the camera projection and invalidate any abandoned split frame.
+     * @returns No value; safe to call when no camera frame is active.
+     */
     endFrame(): void {
         this.restoreProjection?.(); this.restoreProjection = null;
         // A consumer may have thrown before the final task executed.
@@ -148,6 +202,9 @@ export class FrameGraphUpscaleTask extends FrameGraphTask {
      * Opt into guides -> host consumer(s) -> upscale. Add the returned task to the same
      * graph before consumers and this task. It shares allocations and compilation with
      * its owner and produces guides even when the owner selects its disabled bilinear pass.
+     * @param name - Optional early-task label; defaults to the owner name plus "-guides".
+     * @returns The same early task on repeated calls; add it once before consumers and owner.
+     * @throws If the owner uses a non-temporal path.
      */
     createGuidesTask(name = `${this.name}-guides`): FrameGraphTask {
         if (this.configuration.path !== 'temporal') throw new Error('@ruxelion/upscaler: a guides task requires the temporal path.');
@@ -196,6 +253,12 @@ export class FrameGraphUpscaleTask extends FrameGraphTask {
         this.guidesRecorded = true;
     }
 
+    /**
+     * Register passes and declare input/working-set dependencies for lifetime analysis.
+     * @param skipCreationOfDisabledPasses - Omit the bilinear disabled pass when true.
+     * @returns No value; Frame Graph resolves allocations when building the graph.
+     * @throws If required inputs or split-task ordering are missing.
+     */
     record(skipCreationOfDisabledPasses = false): void {
         const required = this.configuration.path === 'temporal' ? [['color', this.colorTexture], ['depth', this.depthTexture], ['velocity', this.velocityTexture]] : [['color', this.colorTexture]];
         for (const [name, value] of required) if (value === undefined) throw new Error(`@ruxelion/upscaler: missing Babylon ${name} handle.`);
@@ -262,5 +325,9 @@ export class FrameGraphUpscaleTask extends FrameGraphTask {
             this.temporalLastFrame = true;
         }
     }
+    /**
+     * Restore camera state and release owned cores; the texture manager owns textures.
+     * @returns No value; create a new task for subsequent rendering.
+     */
     override dispose(): void { this.endFrame(); this.core.dispose(); this.fallback.dispose(); super.dispose(); }
 }

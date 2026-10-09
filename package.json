@@ -6,11 +6,11 @@
     "license": "MIT",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/ruxelion/upscaler.git"
+        "url": "git+https://github.com/bpodwinski/upscaler.git"
     },
-    "homepage": "https://github.com/ruxelion/upscaler#readme",
+    "homepage": "https://github.com/bpodwinski/upscaler#readme",
     "bugs": {
-        "url": "https://github.com/ruxelion/upscaler/issues"
+        "url": "https://github.com/bpodwinski/upscaler/issues"
     },
     "sideEffects": false,
     "keywords": [

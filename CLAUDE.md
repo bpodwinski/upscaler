@@ -1,4 +1,13 @@
-# @pmndrs/upscaler — Claude Code Instructions & Handoff
+# @ruxelion/upscaler — Agent Instructions & Upstream Handoff
+
+This fork shares encoding in `src/core/UpscalerCore.ts`, preserves Three through
+the root and `/three`, and adds Babylon 9.29.x through `/babylon`. Its repository
+is `bpodwinski/upscaler`; `@ruxelion/upscaler` remains the npm package name.
+The maintained fork contracts are `docs/webgpu-core.md` and
+`docs/babylon-framegraph.md`, with validation limits in `docs/fork-validation.md`.
+The upstream handoff below records Three-specific architecture and historical
+GPU findings; use the current source and maintained fork guides when they differ.
+The conventions and provenance requirements at the end apply to new fork code too.
 
 FSR1 spatial + FSR2/3-style **temporal** upscaling for three.js `WebGPURenderer`, as hand-written **WGSL compute passes**. WebGPU-only, TypeScript, no TSL, no WebGL fallback. Extracted from the homefig monorepo into this standalone repo (`pmndrs/upscaler`).
 

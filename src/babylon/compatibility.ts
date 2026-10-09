@@ -20,16 +20,41 @@ function internals(engine: AbstractEngine): EngineInternals {
     return candidate as EngineInternals;
 }
 
+/**
+ * Access the initialized Babylon 9.29 WebGPU device through the guarded bridge.
+ * @param engine - Host WebGPU engine.
+ * @returns The engine-owned device.
+ * @throws If the engine version or internals are unsupported.
+ */
 export function getBabylonDevice(engine: AbstractEngine): GPUDevice { return internals(engine)._device; }
-/** Preserve a host-frozen projection as well as ordinary computed projections. */
+/**
+ * Preserve host projection ownership while temporarily applying jitter.
+ * @param camera - Camera whose projection will be temporarily frozen.
+ * @param projection - Jittered projection to use while rendering inputs.
+ * @returns A callback restoring both the original matrix and its frozen state.
+ */
 export function freezeJitteredProjection(camera: Camera, projection: Matrix): () => void {
     const frozen = (camera as unknown as { _doNotComputeProjectionMatrix: boolean })._doNotComputeProjectionMatrix;
     const original = camera.getProjectionMatrix().clone(); camera.freezeProjectionMatrix(projection);
     return () => { camera.freezeProjectionMatrix(original); if (!frozen) camera.unfreezeProjectionMatrix(); };
 }
+/**
+ * Close the active render pass before borrowing Babylon's current encoder.
+ * @param engine - Initialized Babylon 9.29 WebGPU engine.
+ * @returns The host-owned encoder, which the caller must not finish or submit.
+ * @throws If the engine version or internals are unsupported.
+ */
 export function getBabylonEncoder(engine: AbstractEngine): GPUCommandEncoder {
     const host = internals(engine); host._endCurrentRenderPass(); return host._renderEncoder;
 }
+/**
+ * Resolve a Frame Graph handle at execution time, after native history rotation.
+ * @param manager - Texture manager owning the allocation.
+ * @param handle - Concrete or resolved dangling texture handle.
+ * @param write - Select history.write; use true for the current dilated-depth guide.
+ * @returns The GPU texture and cached single-mip view, without transferring ownership.
+ * @throws If the handle has no WebGPU allocation.
+ */
 export function resolveBabylonTexture(manager: FrameGraphTextureManager, handle: number, write = false): TextureResource {
     const internal = manager.getTextureFromHandle(handle, write);
     const hardware = internal?._hardwareTexture as unknown as { underlyingResource?: GPUTexture } | undefined;

@@ -1,7 +1,13 @@
 # Getting started
 
-This guide covers installing `@ruxelion/upscaler` and choosing between its four
-integration surfaces. What the inputs must contain (velocity, depth, jitter,
+The fork exports `/core` without engine dependencies, `/babylon` for Babylon
+9.29.x, and `/three` plus the compatible root for Three.js. Start with
+[WebGPU core](webgpu-core.md) or [Babylon Frame Graph](babylon-framegraph.md)
+for those integrations. Engine peer dependencies are optional; the npm candidate
+is not published yet, so validate a locally packed archive before release.
+
+The rest of this guide covers the four Three integration surfaces.
+What the inputs must contain (velocity, depth, jitter,
 reactive masks, exposure, alpha) is specified in
 [Inputs and contracts](inputs-and-contracts.md); read that before shipping an
 integration, because most upscaler bugs are input bugs.

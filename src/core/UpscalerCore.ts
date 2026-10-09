@@ -14,7 +14,9 @@ import { FLAG_AUTO_EXPOSURE, FLAG_EXTERNAL_EXPOSURE, FLAG_INPUT_REINHARD, FLAG_L
 import { getResourceDescriptors } from './resources.js';
 import { DebugView, DEFAULT_SETTINGS, type CoreConfiguration, type CoreResources, type FrameData, type ResourceDescriptor, type ResourceName, type RuntimeSettings, type TextureHistory, type TextureResource } from './types.js';
 
+/** Device and optional host instrumentation for renderer-independent encoding. */
 export interface UpscalerCoreOptions {
+    /** Initialized device shared with the host renderer. */
     device: GPUDevice;
     /** Optional host profiling. The host resolves and reads its own query sets. */
     timestampWrites?: (pass: string) => GPUComputePassTimestampWrites | undefined;
@@ -25,9 +27,19 @@ export interface UpscalerCoreOptions {
     cameraCompensated?: boolean;
 }
 
-/** WebGPU-only orchestration. Textures and command submission always belong to the caller. */
+/**
+ * Renderer-independent WebGPU pass orchestration with one active split frame.
+ * Textures, history swaps and command submission belong to the caller.
+ * See docs/webgpu-core.md for resource and frame contracts.
+ *
+ * @remarks Configure and prepare before encoding; reset after abandoning an encoder.
+ */
 export class UpscalerCore {
-    /** Minimum limits for the complete temporal path, without optional GPU features. */
+    /**
+     * Check minimum limits for the complete temporal path.
+     * @param device - Host device whose limits are inspected.
+     * @returns Whether the limits support the path without optional GPU features.
+     */
     static isSupported(device: GPUDevice): boolean {
         const limits = device.limits;
         return limits.maxBindGroups >= 1 && limits.maxBindingsPerBindGroup >= 13
@@ -65,6 +77,10 @@ export class UpscalerCore {
     private accumulation = DEFAULT_SETTINGS.maxAccumulation;
     private shadingStale = true;
 
+    /**
+     * Create core-owned buffers and a sampler on the host device.
+     * @param options - Shared device, instrumentation and optional benchmark overrides.
+     */
     constructor(options: UpscalerCoreOptions) {
         this.options = options; this.device = options.device;
         this.early = new ConstantsBuffer(this.device); this.late = new ConstantsBuffer(this.device);
@@ -73,6 +89,12 @@ export class UpscalerCore {
         void this.device.lost.then(() => { this.lost = true; this.generation++; this.pending = null; });
     }
 
+    /**
+     * Validate configuration and invalidate history between frames.
+     * @param configuration - Dimensions, path, depth contract and shader variants.
+     * @returns Fresh requirements for caller-owned texture allocations.
+     * @throws If a split frame is active, the device is lost or configuration is invalid.
+     */
     configure(configuration: CoreConfiguration): ResourceDescriptor[] {
         this.assertAlive();
         if (this.pending) throw new Error('UpscalerCore: cannot configure during a split frame.');
@@ -103,9 +125,17 @@ export class UpscalerCore {
         const geometry = this.options.crossFrameReconstruct ? ['reconstruct'] : ['reconstruct', 'depthClip'];
         return path === 'guides' ? geometry : [...geometry, 'accumulate', 'exposure', 'generateReactive', 'rcas', 'blit'];
     }
+    /** Whether mandatory pipelines are available on a live device; optional passes may need preparation. */
     get isReady(): boolean { return !this.disposed && !this.lost && this.required().every(p => this.passes.has(p)); }
 
-    /** Optional passes can be prepared between frames without invalidating mandatory readiness. */
+    /**
+     * Compile required pipelines and optional passes selected by runtime settings.
+     * @param settings - Optional shading-change and debug passes to prepare.
+     * @param retry - Retry previously failed pipeline compilations; defaults to true.
+     * @returns Completion of this configuration's pipeline preparation.
+     * @throws The returned promise rejects on compilation failure, reconfiguration,
+     * disposal or device loss.
+     */
     prepare(settings: Partial<RuntimeSettings> = DEFAULT_SETTINGS, retry = true): Promise<void> {
         if (this.disposed || this.lost) return Promise.reject(new Error('UpscalerCore: disposal or GPU device loss cancelled preparation.'));
         const names = this.required();
@@ -254,6 +284,14 @@ export class UpscalerCore {
         buffer.setFlags(flags); buffer.upload();
     }
 
+    /**
+     * Encode the configured path, composing guides and upscale for temporal frames.
+     * @param encoder - Host encoder; this method neither finishes nor submits it.
+     * @param resources - Resolved inputs and allocations matching configure().
+     * @param frame - Current geometry, exposures and runtime settings.
+     * @returns No value; passes are appended to the host encoder.
+     * @throws If preparation, resource validation or frame ordering fails.
+     */
     encode(encoder: GPUCommandEncoder, resources: CoreResources, frame: FrameData): void {
         const path = this.configuration.path ?? 'temporal';
         if (path === 'guides') throw new Error('UpscalerCore: guides path requires encodeGuides().');
@@ -272,6 +310,14 @@ export class UpscalerCore {
         } else this.output(encoder, resources, frame, color, exposure, color, false);
         this.pendingReset = false;
     }
+    /**
+     * Publish geometry guides before the final color input is available.
+     * @param encoder - Host encoder shared with intervening consumers and the late phase.
+     * @param resources - Geometry inputs and the complete configured working set.
+     * @param frame - Geometry and reset state to freeze until encodeUpscale().
+     * @returns No value; the temporal path opens a split frame, while guides-only completes here.
+     * @throws If the path, preparation, resources or active-frame state are invalid.
+     */
     encodeGuides(encoder: GPUCommandEncoder, resources: CoreResources, frame: FrameData): void {
         if (!['temporal', 'guides'].includes(this.configuration.path ?? 'temporal')) throw new Error('UpscalerCore: encodeGuides requires temporal or guides path.');
         const reset = this.begin(resources, frame, 'guides'); this.constants(this.early, resources, frame, reset);
@@ -301,6 +347,14 @@ export class UpscalerCore {
         }
         else this.pendingReset = false;
     }
+    /**
+     * Complete a temporal split frame using its previously encoded guides.
+     * @param encoder - Host encoder containing the early phase and any guide consumers.
+     * @param resources - Same geometry and working textures, with final color/exposure inputs.
+     * @param frame - Unchanged geometry and maxAccumulation, plus current runtime settings.
+     * @returns No value; completion consumes the active split frame without swapping textures.
+     * @throws If guides are missing or the frozen frame/resource contract changes.
+     */
     encodeUpscale(encoder: GPUCommandEncoder, resources: CoreResources, frame: FrameData): void {
         this.assertAlive(); if (!this.pending) throw new Error('UpscalerCore: encode guides first with encodeGuides before encodeUpscale.');
         if (this.pending.geometry !== this.geometry(frame)) throw new Error('UpscalerCore: geometry changed during a split frame.');
@@ -359,7 +413,15 @@ export class UpscalerCore {
         entries.push(exposure, this.single(resources, 'output').view, alpha);
         this.pass(encoder, name, entries, this.configuration.displayWidth, this.configuration.displayHeight, rcas ? 'rcas' : 'blit');
     }
+    /**
+     * Abandon a split frame and schedule history/scatter invalidation on the next encode.
+     * @returns No value; caller-owned textures are not immediately cleared or swapped.
+     */
     resetHistory(): void { this.pending = null; this.pendingReset = true; this.shadingStale = true; this.scatterIndex = 0; }
+    /**
+     * Cancel preparation and destroy core-owned buffers without destroying host textures.
+     * @returns No value; subsequent encoding requires a new core instance.
+     */
     dispose(): void {
         if (this.disposed) return; this.disposed = true; this.generation++; this.pending = null;
         this.scatter?.forEach(b => b.destroy()); this.scatter = null; this.reprojection?.destroy();

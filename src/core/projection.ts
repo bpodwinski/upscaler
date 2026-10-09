@@ -1,6 +1,15 @@
 import type { JitterOffset } from './types.js';
 
-/** Compose a clip-space translation with an existing column-major projection. */
+/**
+ * Compose jitter with an existing projection without modifying the caller's matrix.
+ *
+ * @param projection - Sixteen column-major projection elements.
+ * @param jitter - Offset in render pixels, with X right and Y down.
+ * @param width - Positive render width in pixels.
+ * @param height - Positive render height in pixels.
+ * @returns A translated projection preserving existing projection terms.
+ * @throws If the matrix length or render dimensions are invalid.
+ */
 export function jitterProjection(projection: ArrayLike<number>, jitter: JitterOffset, width: number, height: number): Float32Array {
     if (projection.length !== 16 || width <= 0 || height <= 0) throw new Error('UpscalerCore: invalid projection or jitter dimensions.');
     const result = Float32Array.from(projection);

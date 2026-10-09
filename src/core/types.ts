@@ -24,7 +24,7 @@ export enum QualityMode {
 /**
  * Which upscaling path the pipeline runs.
  *
- * - `bilinear` — plain bilinear sample + display transform. The naive
+ * - `bilinear` — plain bilinear sample in the caller's color domain. The naive
  *   baseline every other mode is compared against (and, at ratio 1, the
  *   "native" passthrough mode).
  * - `spatial` — single-frame FSR1 (EASU + RCAS). No history, no motion
@@ -32,9 +32,9 @@ export enum QualityMode {
  * - `temporal` — FSR2/3-style jittered temporal accumulation. Requires depth
  *   and motion vectors.
  * - `guides` — the temporal path's geometry front-end only (dilated
- *   depth/motion + disocclusion via {@link Upscaler.dispatchGuides}), for
- *   apps that consume the {@link TemporalGuides} bundle without upscaling.
- *   No color input, no history, no output texture.
+ *   depth/motion + disocclusion via `UpscalerCore.encodeGuides`), for
+ *   apps that consume guides without upscaling. No color input or output;
+ *   the adapter retains the depth history required for disocclusion.
  */
 export type UpscalePath = 'bilinear' | 'spatial' | 'temporal' | 'guides';
 
@@ -42,7 +42,7 @@ export type UpscalePath = 'bilinear' | 'spatial' | 'temporal' | 'guides';
  * A sub-pixel jitter offset in render pixels, each axis in `[-0.5, 0.5]`.
  * x points right and y points down (texel coordinates, top-left origin): the
  * sample for render texel `(i, j)` sits at `(i + 0.5 + x, j + 0.5 + y)` in the
- * unjittered image's pixel coordinates. See {@link Upscaler.jitter}.
+ * unjittered image's pixel coordinates. Used by FrameData and engine adapters.
  */
 export interface JitterOffset {
     readonly x: number;
@@ -129,26 +129,39 @@ export interface RuntimeSettings {
 
 /** Configuration applied only between frames. */
 export interface CoreConfiguration {
+    /** Positive integer input width in pixels. */
     renderWidth: number;
+    /** Positive integer input height in pixels. */
     renderHeight: number;
+    /** Positive integer output width in pixels. */
     displayWidth: number;
+    /** Positive integer output height in pixels. */
     displayHeight: number;
+    /** Processing path; defaults to temporal. */
     path?: UpscalePath;
+    /** Hardware depth by default, or positive linear R32F with a finite positive background. */
     depthMode?: 'hardware' | 'linear';
+    /** Upstream metering by default; provided publishes CPU or GPU exposure without metering. */
     exposureMode?: 'upstream' | 'provided';
+    /** Correct history for conditioning-exposure changes; disabled by default. */
     correctConditioningExposure?: boolean;
+    /** Temporal RCAS age knee in [0, 1]; zero preserves the upstream lobe. Requires preparation/reset. */
     rcasAgeKnee?: number;
 }
 
+/** Caller-owned texture and resolved view used for resource validation and bindings. */
 export interface TextureResource {
     texture: GPUTexture;
     /** A single-mip storage view, or a depth-only view for combined depth/stencil. */
     view: GPUTextureView;
 }
+/** Previous/current allocations; the caller advances history after submitting a frame. */
 export interface TextureHistory { read: TextureResource; write: TextureResource }
+/** Names of allocations described by getResourceDescriptors(), excluding host inputs. */
 export type ResourceName = 'output' | 'exposure' | 'dummy' | 'easuOutput' | 'dilatedDepth' |
     'dilatedMotion' | 'masks' | 'history' | 'locks' | 'reactiveGenerated' | 'shadingLumaHistory' |
     'shadingSignal' | 'shadingBlockMemory';
+/** Resolved host inputs and configured working textures; ownership remains with the host. */
 export type CoreResources = Partial<Record<ResourceName, TextureResource | TextureHistory>> & {
     color?: TextureResource;
     depth?: TextureResource;
@@ -160,23 +173,36 @@ export type CoreResources = Partial<Record<ResourceName, TextureResource | Textu
     /** Previous dilated depth published to guides consumers (not used by production reconstruction). */
     previousDepth?: TextureResource;
 };
+/** Per-frame geometry, exposure and settings; geometry stays fixed across split phases. */
 export interface FrameData {
+    /** Host frame index; identical across both phases of a split frame. */
     frameIndex: number;
+    /** Current projection jitter in render pixels; defaults to zero. */
     jitter?: JitterOffset;
+    /** Previous projection jitter in render pixels; defaults to zero. */
     jitterPrevious?: JitterOffset;
+    /** Per-axis conversion from input velocity to UV delta; defaults to (0.5, -0.5). */
     motionScale?: JitterOffset;
+    /** Camera near plane for hardware-depth decoding; defaults to 0.1. */
     near?: number;
+    /** Camera far plane for hardware-depth decoding; defaults to 1000. */
     far?: number;
+    /** Enable perspective hardware-depth decoding; false selects orthographic. */
     perspective?: boolean;
+    /** Hardware reversed-depth convention; ignored for positive linear depth. */
     reversedDepth?: boolean;
+    /** Elapsed time in seconds; defaults to 1/60. */
     deltaTime?: number;
+    /** Request history invalidation; must stay identical across split phases. */
     reset?: boolean;
     /** Host exposure baked into input color; default 1, preserved at output. */
     hostPreExposure?: number;
+    /** Current runtime overrides merged with DEFAULT_SETTINGS. */
     settings?: Partial<RuntimeSettings>;
     /** Bench-only current-view to previous-view reprojection constants. */
     reprojection?: Float32Array;
 }
+/** Pure allocation requirement, including usage flags, initialization and history policy. */
 export interface ResourceDescriptor {
     name: ResourceName;
     width: number;
@@ -188,6 +214,7 @@ export interface ResourceDescriptor {
     initialization: 'zero';
 }
 
+/** Neutral upstream runtime settings used when a frame does not override individual fields. */
 export const DEFAULT_SETTINGS: Readonly<RuntimeSettings> = Object.freeze({
     sharpness: 0.8, rcasDenoise: false, maxAccumulation: 24, exposure: 1,
     autoExposure: true, lockThinFeatures: true, detectShadingChanges: true, debugView: DebugView.None,
