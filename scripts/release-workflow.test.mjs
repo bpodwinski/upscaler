@@ -334,6 +334,8 @@ function runJob(
 
     // actions/checkout: full history + tags; the pushed tag, or the dispatching branch.
     git(fixture.root, ['clone', '-q', fixture.origin, work]);
+    // Cloning does not carry seed-local signing configuration into this checkout.
+    configureUser(work);
     if (context.ref.startsWith('refs/tags/')) git(work, ['checkout', '-q', '--detach', context.ref]);
     else git(work, ['checkout', '-q', '-B', 'main', at ?? 'origin/main']);
 

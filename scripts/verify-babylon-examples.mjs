@@ -41,8 +41,16 @@ async function probe() {
 }
 try {
     await waitForUrl(origin + base, { child: server });
-    chrome = spawn(browserExecutable(), ['--headless=new', '--enable-unsafe-webgpu', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--remote-debugging-port=9548', '--user-data-dir=' + profile, 'about:blank'], { stdio: 'ignore', windowsHide: true });
+    const occupied = await fetch('http://127.0.0.1:9548/json/version', { signal: AbortSignal.timeout(1000) }).then(() => true, () => false);
+    assert.equal(occupied, false, 'CDP port 9548 is already in use.');
+    chrome = spawn(browserExecutable(), ['--headless=new', '--enable-automation', '--enable-unsafe-webgpu', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--remote-debugging-port=9548', '--user-data-dir=' + profile, 'about:blank'], { stdio: 'ignore', windowsHide: true });
     await waitForUrl('http://127.0.0.1:9548/json/version');
+    const version = await (await fetch('http://127.0.0.1:9548/json/version')).json();
+    const identity = await CDP.connect(version.webSocketDebuggerUrl);
+    try {
+        const command = await identity.send('Browser.getBrowserCommandLine');
+        assert.ok(command.arguments.includes('--user-data-dir=' + profile), 'CDP port 9548 belongs to another browser.');
+    } finally { identity.close(); }
     const target = await (await fetch('http://127.0.0.1:9548/json/new?about:blank', { method: 'PUT' })).json();
     client = await CDP.connect(target.webSocketDebuggerUrl);
     await client.send('Runtime.enable'); await client.send('Network.enable'); await client.send('Page.enable');
@@ -59,7 +67,13 @@ try {
         assert.ok(stationary.motion.meanAbs < 1e-6, 'Static scene motion must exclude jitter: ' + stationary.motion.meanAbs);
         assert.ok(moving.motion.meanAbs > stationary.motion.meanAbs, 'Moving meshes must publish motion');
         await client.evaluate("document.querySelector('#camera').checked = true"); await settle();
-        const camera = await probe(); assert.ok(camera.motion.meanAbs > 1e-6, 'Camera motion must be represented');
+        const camera = await probe();
+        // A transparent canvas has mostly zero-motion background. Whole-frame
+        // averaging dilutes valid foreground motion below the threshold on fast
+        // GPUs. Use the existing spatial regions and also reject jitter residue.
+        const cameraMotion = Math.max(...camera.motion.regions.map(Math.abs));
+        const staticMotion = Math.max(...stationary.motion.regions.map(Math.abs));
+        assert.ok(cameraMotion > 1e-6 && cameraMotion > staticMotion * 10, `Camera motion must exceed stationary jitter in a scene region: ${cameraMotion} vs ${staticMotion}`);
         await client.evaluate("document.querySelector('#camera').checked = false"); await settle();
         if (example.includes('transparency') || example.includes('reactive-mask')) {
             assert.ok(camera.reactive.max > 0.1 && camera.reactive.meanAbs > 0.0001, 'Transparent geometry must generate reactivity');

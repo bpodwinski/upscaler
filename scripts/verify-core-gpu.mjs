@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { browserExecutable } from './browser-executable.mjs';
 import { CDP } from './cdp-client.mjs';
-import { spawnVite, waitForUrl, stopChild, removeTempDirectory } from './local-processes.mjs';
+import { spawnVite, waitForUrl, stopChild, closeOwnedCdpBrowser, removeTempDirectory } from './local-processes.mjs';
 import { npmInvocation } from './npm-command.mjs';
 import { parsePackJson } from './npm-pack-json.mjs';
 
@@ -39,8 +39,16 @@ async function waitFrames(minimum = 12) {
 }
 try {
     await waitForUrl('http://127.0.0.1:5424/17-core-webgpu/index.html', { child: server });
-    chrome = spawn(browserExecutable(), ['--headless=new', '--enable-unsafe-webgpu', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--remote-debugging-port=9545', '--user-data-dir=' + profile, '--window-size=1280,720', 'about:blank'], { stdio: 'ignore', windowsHide: true });
+    const occupied = await fetch('http://127.0.0.1:9545/json/version', { signal: AbortSignal.timeout(1000) }).then(() => true, () => false);
+    if (occupied) throw new Error('CDP port 9545 is already in use.');
+    chrome = spawn(browserExecutable(), ['--headless=new', '--enable-automation', '--enable-unsafe-webgpu', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--remote-debugging-port=9545', '--user-data-dir=' + profile, '--window-size=1280,720', 'about:blank'], { stdio: 'ignore', windowsHide: true });
     await waitForUrl('http://127.0.0.1:9545/json/version');
+    const version = await (await fetch('http://127.0.0.1:9545/json/version')).json();
+    const identity = await CDP.connect(version.webSocketDebuggerUrl);
+    try {
+        const command = await identity.send('Browser.getBrowserCommandLine');
+        if (!command.arguments.includes('--user-data-dir=' + profile)) throw new Error('CDP port 9545 belongs to another browser.');
+    } finally { identity.close(); }
     const target = await (await fetch('http://127.0.0.1:9545/json/new?about:blank', { method: 'PUT' })).json();
     client = await CDP.connect(target.webSocketDebuggerUrl); await client.send('Runtime.enable'); await client.send('Page.enable'); await client.send('Page.bringToFront');
     for (const example of ['17-core-webgpu', '18-babylon-framegraph']) {
@@ -82,7 +90,7 @@ try {
     mkdirSync(join(root, 'bench/results/windows-local/core-gpu'), { recursive: true });
     writeFileSync(join(root, 'bench/results/windows-local/core-gpu/report.json'), JSON.stringify(report, null, 2));
 } finally {
-    await client?.send('Browser.close', {}, 3000).catch(() => {});
-    client?.close(); await stopChild(chrome); await stopChild(server); await removeTempDirectory(profile, 'core GPU Chrome profile');
+    await closeOwnedCdpBrowser(client);
+    await stopChild(chrome); await stopChild(server); await removeTempDirectory(profile, 'core GPU Chrome profile');
     await removeTempDirectory(consumer, 'core GPU package consumer');
 }

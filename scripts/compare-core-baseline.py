@@ -1,14 +1,24 @@
 from pathlib import Path
 from PIL import Image, ImageChops, ImageStat
+import argparse
 import json
 
-upstream = Path('D:/Dev/upscaler/bench/results/windows-local/core-baseline')
-fork = Path('bench/results/windows-local/core-extracted')
+parser = argparse.ArgumentParser(description='Compare matching baseline and extracted-core RGBA captures.')
+parser.add_argument('baseline', type=Path, help='Directory containing upstream baseline PNG captures')
+parser.add_argument('candidate', type=Path, help='Directory containing the corresponding candidate PNG captures')
+args = parser.parse_args()
+upstream, fork = args.baseline, args.candidate
+baseline_names = {capture.name for capture in upstream.glob('*.png')}
+candidate_names = {capture.name for capture in fork.glob('*.png')}
+if not baseline_names:
+    raise RuntimeError('No baseline PNG captures found')
+if baseline_names != candidate_names:
+    missing = sorted(baseline_names - candidate_names)
+    unexpected = sorted(candidate_names - baseline_names)
+    raise RuntimeError(f'Capture sets differ: missing={missing}, unexpected={unexpected}')
 results = []
-for original in upstream.glob('*.png'):
+for original in sorted(upstream.glob('*.png')):
     candidate = fork / original.name
-    if not candidate.exists():
-        continue
     a, b = Image.open(original).convert('RGBA'), Image.open(candidate).convert('RGBA')
     if a.size != b.size:
         raise RuntimeError('Different viewport dimensions')

@@ -8,7 +8,7 @@ Assigner `colorTexture` dans tous les cas, et `depthTexture` / `velocityTexture`
 
 Les entrées doivent être rendues sous le même jitter que celui publié par upscale.jitter. beginFrame(camera) sauvegarde la projection existante, y compose le jitter et la fige. endFrame() restaure aussi son état de gel initial. Encadrer le rendu des entrées et l'exécution du graphe dans un try/finally ; en cas d'abandon, demander resetHistory(). unjitteredProjectionMatrix fournit la projection pour le calcul des mouvements.
 
-L'hôte conserve la responsabilité de rendre la scène, d'écrire les mouvements, de linéariser la profondeur et de produire l'exposition. Les tâches en amont s'exécutent avant l'upscaler. [L'exemple complet](../examples/18-babylon-framegraph/main.ts) montre ces contrats avec une scène analytique HDR, sans masquer leur production derrière un pipeline de scène.
+L'hôte conserve la responsabilité de rendre la scène, d'écrire les mouvements, de linéariser la profondeur et de produire l'exposition. Les tâches en amont s'exécutent avant l'upscaler. [L'exemple complet](https://github.com/bpodwinski/upscaler/blob/main/examples/18-babylon-framegraph/main.ts) montre ces contrats avec une scène analytique HDR, sans masquer leur production derrière un pipeline de scène.
 
 La tâche alloue toutes ses textures via le texture manager. Chaque historique a un seul handle ; getTextureFromHandle(handle, false/true) résout sa lecture/écriture. Aucune permutation supplémentaire n'est effectuée. Le traitement est enregistré dans une passe de rendu, car l'analyse des durées de vie de cette version collecte les dépendances de ces passes. Toutes les entrées et toutes les textures de travail figurent dans ses dépendances, y compris les historiques et textures factices.
 
@@ -20,27 +20,36 @@ Après resize ou changement de variante, appeler configure(), attendre prepare()
 
 Le namespace avancé babylonWebGPU expose le pont protégé pour les tâches hôtes qui encodent leurs propres compute, comme le générateur analytique de l'exemple. Sa compatibilité reste limitée à la série 9.29.x.
 
+Après perte du device, arrêter l'exécution du graphe. Une fois le moteur restauré,
+recréer le graphe, la tâche et les ressources sur le nouveau device, puis attendre
+leur préparation. Avec Babylon 9.29.0, l'observable de restauration peut se
+déclencher avant la fin de l'initialisation WebGPU : attendre également la promesse
+réelle d'initialisation du moteur avant de reconstruire. Les anciens handles et
+l'ancien cœur ne sont pas réutilisables. Cette séquence a été vérifiée par perte
+contrôlée `GPUDevice.destroy()` sur RX 580 et RTX 5080 ; elle ne couvre pas un crash
+du pilote. Les démonstrations avec meshes demandent toujours un rechargement.
+
 La future migration Exokosm devra confirmer : unité et fond de profondeur, signe/espace du mouvement, projections sans jitter, reactive mask, distinction des deux expositions, dimensions dynamiques, position des tâches et présentation HDR. Ce fork ne modifie pas Exokosm.
 
 ## Exemples avec des meshes
 
 La galerie comporte douze adaptations des démonstrations Three, construites sur
-le même [présentateur Babylon](../examples/shared/babylon/BabylonScenePresenter.ts) :
+le même [présentateur Babylon](https://github.com/bpodwinski/upscaler/blob/main/examples/shared/babylon/BabylonScenePresenter.ts) :
 
 | Exemple | Ce qu'il permet d'observer |
 | --- | --- |
-| [19 — Hello](../examples/19-babylon-hello/main.ts) | Scène 3D, animation, réglages de résolution, temporel et bilinéaire |
-| [20 — Aliasing](../examples/20-babylon-aliasing/main.ts) | Barreaux sous-pixel, fils croisés, damier géométrique, convergence immobile |
-| [21 — Comparaison](../examples/21-babylon-compare/main.ts) | Référence native sans AA et reconstruction, avec séparateur mobile |
-| [22 — Transparence](../examples/22-babylon-transparency/main.ts) | Sphère alpha-blended et éléments émissifs, masque réactif activable |
-| [23 — Spatial / temporel](../examples/23-babylon-spatial-temporal/main.ts) | Deux rendus basse résolution, EASU + RCAS sans jitter face au temporel jitteré |
-| [24 — Composition](../examples/24-babylon-compose/main.ts) | Vignette dans une tâche du graphe consommant la sortie de l'upscaler |
-| [25 — Masque dessiné](../examples/25-babylon-reactive-mask/main.ts) | Couverture des meshes transparents, occlusion par la profondeur opaque et affichage du masque |
-| [26 — Canvas transparent](../examples/26-babylon-transparent-canvas/main.ts) | Reconstruction de l'alpha des silhouettes et composition sur le contenu HTML |
-| [27 — Effets écran](../examples/27-babylon-screen-effects/main.ts) | SSAO ou SSR Babylon à basse résolution avant reconstruction |
-| [28 — Effets combinés](../examples/28-babylon-effect-stack/main.ts) | SSAO, SSR et bloom HDR activables séparément |
-| [29 — Guides temporels](../examples/29-babylon-temporal-guides/main.ts) | Disocclusion, profondeur dilatée, mouvement dilaté et sortie finale |
-| [30 — Guides partagés](../examples/30-babylon-guides-compose/main.ts) | Coloration des disocclusions entre production des guides et upscale final |
+| [19 — Hello](https://github.com/bpodwinski/upscaler/blob/main/examples/19-babylon-hello/main.ts) | Scène 3D, animation, réglages de résolution, temporel et bilinéaire |
+| [20 — Aliasing](https://github.com/bpodwinski/upscaler/blob/main/examples/20-babylon-aliasing/main.ts) | Barreaux sous-pixel, fils croisés, damier géométrique, convergence immobile |
+| [21 — Comparaison](https://github.com/bpodwinski/upscaler/blob/main/examples/21-babylon-compare/main.ts) | Référence native sans AA et reconstruction, avec séparateur mobile |
+| [22 — Transparence](https://github.com/bpodwinski/upscaler/blob/main/examples/22-babylon-transparency/main.ts) | Sphère alpha-blended et éléments émissifs, masque réactif activable |
+| [23 — Spatial / temporel](https://github.com/bpodwinski/upscaler/blob/main/examples/23-babylon-spatial-temporal/main.ts) | Deux rendus basse résolution, EASU + RCAS sans jitter face au temporel jitteré |
+| [24 — Composition](https://github.com/bpodwinski/upscaler/blob/main/examples/24-babylon-compose/main.ts) | Vignette dans une tâche du graphe consommant la sortie de l'upscaler |
+| [25 — Masque dessiné](https://github.com/bpodwinski/upscaler/blob/main/examples/25-babylon-reactive-mask/main.ts) | Couverture des meshes transparents, occlusion par la profondeur opaque et affichage du masque |
+| [26 — Canvas transparent](https://github.com/bpodwinski/upscaler/blob/main/examples/26-babylon-transparent-canvas/main.ts) | Reconstruction de l'alpha des silhouettes et composition sur le contenu HTML |
+| [27 — Effets écran](https://github.com/bpodwinski/upscaler/blob/main/examples/27-babylon-screen-effects/main.ts) | SSAO ou SSR Babylon à basse résolution avant reconstruction |
+| [28 — Effets combinés](https://github.com/bpodwinski/upscaler/blob/main/examples/28-babylon-effect-stack/main.ts) | SSAO, SSR et bloom HDR activables séparément |
+| [29 — Guides temporels](https://github.com/bpodwinski/upscaler/blob/main/examples/29-babylon-temporal-guides/main.ts) | Disocclusion, profondeur dilatée, mouvement dilaté et sortie finale |
+| [30 — Guides partagés](https://github.com/bpodwinski/upscaler/blob/main/examples/30-babylon-guides-compose/main.ts) | Coloration des disocclusions entre production des guides et upscale final |
 
 Ces exemples partagent leurs scènes et leur interface dans `examples/shared/babylon`.
 Ils adaptent le but des exemples Three ; ils ne reproduisent pas leurs matériaux
@@ -86,7 +95,7 @@ reste celui des variations d'exposition.
 La comparaison spatiale effectue elle aussi un second rendu, mais à basse
 résolution et sans jitter. Une tâche retourne la couleur vers l'origine en haut
 à gauche avant EASU + RCAS. La tâche
-[`ColorEffectTask`](../examples/shared/babylon/ColorEffectTask.ts) sert également
+[`ColorEffectTask`](https://github.com/bpodwinski/upscaler/blob/main/examples/shared/babylon/ColorEffectTask.ts) sert également
 à la composition : sa sortie possède son propre handle, sa dépendance envers
 l'entrée est explicite, et la vignette conserve l'alpha sans modifier l'historique
 temporel. Avec une force nulle, elle reproduit exactement la couleur d'entrée.
@@ -179,7 +188,8 @@ activée/désactivée passent. La disposition mobile à 390 pixels a été véri
 Le second lot ajoute les contrôles de sortie spatiale, de vignette activée et
 neutre, de masque dessiné atteignant `1`, et d'alpha nul/opaque/fractionnaire.
 Ces contrôles ne constituent ni une mesure de performance, ni une validation
-sur RX 580 ou sur un GPU mobile.
+sur un GPU mobile. Les douze pages ont ensuite été vérifiées sur RX 580 et
+RTX 5080 les 9 et 10 octobre ; voir [les résultats et limites actuels](fork-validation.md).
 
 Le troisième lot ajoute les bascules SSAO/SSR/bloom, la lecture des trois guides
 et la composition avant upscale. Les effets sont comparés sans jitter sur une

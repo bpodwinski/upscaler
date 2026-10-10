@@ -51,6 +51,6 @@ Les options depthMode, exposureMode, correctConditioningExposure et rcasAgeKnee 
 
 Les peers Three et Babylon sont optionnels. Installer uniquement le moteur utilisé. Les déclarations ESM utilisent des imports relatifs avec extension .js. Les types WebGPU sont fournis par @webgpu/types. Pour Babylon et les versions de TypeScript disposant déjà de déclarations WebGPU, utiliser skipLibCheck pour éviter les collisions ambiantes des dépendances ; la vérification du code consommateur reste stricte.
 
-- [WebGPU brut](../examples/17-core-webgpu/main.ts) : allocation par descripteurs, soumission hôte et ping-pong explicite.
-- [Babylon Frame Graph](../examples/18-babylon-framegraph/main.ts) : allocation native, dépendances visibles, expositions GPU et sortie bilinéaire désactivée.
+- [WebGPU brut](https://github.com/bpodwinski/upscaler/blob/main/examples/17-core-webgpu/main.ts) : allocation par descripteurs, soumission hôte et ping-pong explicite.
+- [Babylon Frame Graph](https://github.com/bpodwinski/upscaler/blob/main/examples/18-babylon-framegraph/main.ts) : allocation native, dépendances visibles, expositions GPU et sortie bilinéaire désactivée.
 - [Contrat Babylon](babylon-framegraph.md) et [état des validations](fork-validation.md).
