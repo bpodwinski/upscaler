@@ -22,6 +22,7 @@ The **upscale ratio** is display / render, per axis.
 | `reactiveOpaqueColor` | render | opaque-only color, same domain as `color` | optional, temporal |
 | `exposureTexture` | any (1×1 typical) | red channel of texel (0, 0), any float format | optional, temporal |
 | `preExposureTexture` | any (1×1 typical) | red channel of texel (0, 0) | optional, temporal (raw `Upscaler` only) |
+| `hostPreExposure` | n/a | a number, finite and greater than 0 | optional, temporal (raw `Upscaler` only); the same input as `preExposureTexture`, held on the CPU |
 | `deltaTime` | n/a | seconds | auto-exposure adaptation |
 
 All inputs are ordinary three textures, typically render-target attachments. The
@@ -231,6 +232,25 @@ final brightness**. Three sources, in increasing priority:
    `upscale()` node's `exposureTexture` option. It mirrors FSR3's `exposure`
    resource.
 
+**When the host already meters: `exposureMode: 'provided'`.** In the default mode
+(`'upstream'`) the luminance measurement runs every frame, even when a fixed exposure
+or an `exposureTexture` then overrides its result: 1024 bilinear taps of the color
+input, about 49 µs of the 226 µs the temporal path costs at 1920×1080, ratio 2.
+Configuring `exposureMode: 'provided'` removes it. The exposure pass then only
+publishes the exposure state (about 2 µs):
+
+- the conditioning exposure is the frame's `exposureTexture` when one is passed,
+  else `settings.exposure`. `settings.autoExposure` is ignored: nothing is metered;
+- `preExposureTexture` and `hostPreExposure` work as before;
+- `guides.exposure.g`, the metered average luma, reads 0;
+- the output equals the default mode's with `autoExposure: false` and the same
+  inputs, byte for byte.
+
+It is configuration, not a setting: it selects a different exposure pipeline, so
+changing it means another `configure()`. Use the default mode if anything of yours
+reads `guides.exposure.g`. It is also an option of `upscale()` / `upscaleScene()`
+and of `UpscalePass.configure()`.
+
 The conditioning exposure also sets the **HDR headroom** of the temporal output.
 Values resolve up to about `999 / exposure` in the input's linear domain. Below
 that they lose precision as they approach it, and sub-pixel highlights are
@@ -243,13 +263,16 @@ about 12.5 clips to the same value, so keep app-supplied values near what the
 scene's highlights allow. See issue
 [#49](https://github.com/pmndrs/upscaler/issues/49).
 
-**Host pre-exposure** (`preExposureTexture`, raw `Upscaler` only) is different: it
+**Host pre-exposure** (`preExposureTexture`, or the number `hostPreExposure`; raw
+`Upscaler` only) is different: it
 declares an exposure factor your app has *already baked into* the input color. That
 factor is part of your color domain, so it is **preserved** at output. The upscaler
 tracks its frame-to-frame ratio and corrects reprojected history across a change (FSR3's
 `DeltaPreExposure`), so stepping or ramping your exposure doesn't read as a full-screen
 shading change. Auto-exposure meters with it divided out, so it doesn't chase a step
-you already applied. Omitting it is equivalent to `1`.
+you already applied. Omitting it is equivalent to `1`. An app that holds the factor
+on the CPU passes `hostPreExposure` and skips the 1×1 texture; the texture wins when
+both are passed, and the two give byte-identical output.
 
 Don't pass a host pre-exposure as `exposureTexture`. The upscaler would divide it out
 at output and apply no history correction.

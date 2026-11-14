@@ -8,6 +8,7 @@ export {
     DebugView,
     QualityMode,
     type DepthMode,
+    type ExposureMode,
     type UpscalerConfig,
     type DispatchInputs,
     type GuideDispatchInputs,

@@ -21,7 +21,7 @@ import {
 import { DEBUG_SHADER } from './shaders/debug';
 import { EASU_SHADER } from './shaders/easu';
 import { GENERATE_REACTIVE_SHADER } from './shaders/generateReactive';
-import { LUMINANCE_PYRAMID_SHADER } from './shaders/luminancePyramid';
+import { LUMINANCE_PYRAMID_SHADER, PROVIDED_EXPOSURE_SHADER } from './shaders/luminancePyramid';
 import { RCAS_SHADER, buildRcasAgeKneeShader } from './shaders/rcas';
 import { DEPTH_CLIP_SHADER, RECONSTRUCT_LINEAR_SHADER, RECONSTRUCT_SHADER } from './shaders/reconstruct';
 import { SHADING_CHANGE_SHADER } from './shaders/shadingChange';
@@ -29,6 +29,7 @@ import {
     DebugView,
     QualityMode,
     type DepthMode,
+    type ExposureMode,
     type UpscalerConfig,
     type DispatchInputs,
     type FrameCamera,
@@ -214,6 +215,8 @@ export class UpscalerCore<THandle = GPUTexture> {
     private readonly _reprojectData: (() => Float32Array<ArrayBuffer>) | null;
     private _accumulatePass!: ComputePass;
     private _exposurePass!: ComputePass;
+    // exposureMode: 'provided' — publishes the exposure state, meters nothing.
+    private _providedExposurePass!: ComputePass;
     private _generateReactivePass!: ComputePass;
     private _shadingChangePass!: ComputePass;
     private _debugPass!: ComputePass;
@@ -221,6 +224,7 @@ export class UpscalerCore<THandle = GPUTexture> {
     private _path: UpscalePath = 'temporal';
     private _depthMode: DepthMode = 'hardware';
     private _rcasAgeKnee = 0;
+    private _exposureMode: ExposureMode = 'upstream';
     private _displayWidth = 0;
     private _displayHeight = 0;
     private _renderWidth = 0;
@@ -270,6 +274,11 @@ export class UpscalerCore<THandle = GPUTexture> {
     // 1×1 zero texture bound in place of a reactive mask when the caller
     // doesn't supply one (WebGPU zero-inits it, so reactivity reads 0).
     private _reactiveDummy: GPUTexture | null = null;
+    // 1×1 r32float carrying a CPU-side host pre-exposure (DispatchInputs.
+    // hostPreExposure) to the exposure pass through its texture binding: the
+    // constants block has no field for it. Rewritten only when the value changes.
+    private _hostPreExposureTexture: GPUTexture | null = null;
+    private _hostPreExposureWritten: number | null = null;
     // Render-res target the auto-generated reactive mask is written into when
     // the caller passes an opaque-only color to diff against the final color.
     private _reactiveGenerated: GPUTexture | null = null;
@@ -421,8 +430,9 @@ export class UpscalerCore<THandle = GPUTexture> {
         if (this._path === 'spatial') return ['easu', 'spatialRcas', 'blit'];
         const reconstruct = this._depthMode === 'linear' ? 'reconstructLinear' : 'reconstruct';
         const geometry = this._crossFrameReconstruct ? ['reconstruct'] : [reconstruct, 'depthClip'];
+        const exposure = this._exposureMode === 'provided' ? 'providedExposure' : 'exposure';
         return this._path === 'guides' ? geometry :
-            [...geometry, 'accumulate', 'exposure', 'generateReactive', this._temporalRcasName(), 'blit'];
+            [...geometry, 'accumulate', exposure, 'generateReactive', this._temporalRcasName(), 'blit'];
     }
 
     // Each age knee is its own pipeline, cached under its own name, so
@@ -450,6 +460,7 @@ export class UpscalerCore<THandle = GPUTexture> {
             depthClip: ['depth-clip', this._depthClipShader ?? DEPTH_CLIP_SHADER],
             accumulate: ['accumulate', ACCUMULATE_SHADER],
             exposure: ['exposure', LUMINANCE_PYRAMID_SHADER],
+            providedExposure: ['exposure', PROVIDED_EXPOSURE_SHADER],
             generateReactive: ['gen-reactive', GENERATE_REACTIVE_SHADER],
             shadingChange: ['shading-change', this._shadingChangeShader ?? SHADING_CHANGE_SHADER],
             debug: ['debug', DEBUG_SHADER],
@@ -473,6 +484,7 @@ export class UpscalerCore<THandle = GPUTexture> {
                 case 'depthClip': this._depthClipPass = pass; break;
                 case 'accumulate': this._accumulatePass = pass; break;
                 case 'exposure': this._exposurePass = pass; break;
+                case 'providedExposure': this._providedExposurePass = pass; break;
                 case 'generateReactive': this._generateReactivePass = pass; break;
                 case 'shadingChange': this._shadingChangePass = pass; break;
                 case 'debug': this._debugPass = pass; break;
@@ -544,9 +556,14 @@ export class UpscalerCore<THandle = GPUTexture> {
         if (rcasAgeKnee > 0 && this._rcasOverridden) {
             throw new Error('@pmndrs/upscaler: rcasAgeKnee applies to production RCAS, not to a _rcasShader override.');
         }
+        const exposureMode = config.exposureMode ?? 'upstream';
+        if (exposureMode !== 'upstream' && exposureMode !== 'provided') {
+            throw new Error(`@pmndrs/upscaler: unknown exposureMode '${String(exposureMode)}' (expected 'upstream' or 'provided').`);
+        }
         this._path = config.path ?? 'temporal';
         this._depthMode = depthMode;
         this._rcasAgeKnee = rcasAgeKnee;
+        this._exposureMode = exposureMode;
         this._jitterEnabled = config.jitter ?? true;
         this._displayWidth = Math.max(1, Math.floor(config.displayWidth));
         this._displayHeight = Math.max(1, Math.floor(config.displayHeight));
@@ -1257,25 +1274,41 @@ export class UpscalerCore<THandle = GPUTexture> {
         const externalExposureView = inputs.exposureTexture
             ? inputs.exposureTexture.createView()
             : this._reactiveDummy!.createView();
-        // Host pre-exposure input — the zero dummy publishes as 1.0 (inert).
-        const hostPreExposureView = inputs.preExposureTexture
-            ? inputs.preExposureTexture.createView()
-            : this._reactiveDummy!.createView();
-        const exposureBindGroup = this._exposurePass.createBindGroup([
-            { buffer: this._constantsLate.buffer },
-            colorGPU.createView(),
-            this._linearSampler,
-            exposurePrev.createView(),
-            exposureCur.createView(),
-            externalExposureView,
-            hostPreExposureView,
-        ]);
+        // Host pre-exposure input — the app's texture, else its CPU value
+        // through our own texel, else the zero dummy, which publishes as 1.0
+        // (inert).
+        let hostPreExposureView: GPUTextureView;
+        if (inputs.preExposureTexture) hostPreExposureView = inputs.preExposureTexture.createView();
+        else if (inputs.hostPreExposure !== undefined) hostPreExposureView = this._stageHostPreExposure(inputs.hostPreExposure);
+        else hostPreExposureView = this._reactiveDummy!.createView();
+        // In provided mode the host meters: the pass only publishes the state
+        // (no color read, no previous exposure — nothing adapts).
+        const provided = this._exposureMode === 'provided';
+        const exposureComputePass = provided ? this._providedExposurePass : this._exposurePass;
+        const exposureBindGroup = exposureComputePass.createBindGroup(
+            provided
+                ? [
+                      { buffer: this._constantsLate.buffer },
+                      exposureCur.createView(),
+                      externalExposureView,
+                      hostPreExposureView,
+                  ]
+                : [
+                      { buffer: this._constantsLate.buffer },
+                      colorGPU.createView(),
+                      this._linearSampler,
+                      exposurePrev.createView(),
+                      exposureCur.createView(),
+                      externalExposureView,
+                      hostPreExposureView,
+                  ],
+        );
         const exposurePass = encoder.beginComputePass({
             label: 'upscale-exposure',
             timestampWrites: this._timer?.passDescriptor('exposure'),
         });
         // One workgroup performs the whole reduction (see luminancePyramid.ts).
-        this._exposurePass.dispatch(exposurePass, exposureBindGroup, 8, 8);
+        exposureComputePass.dispatch(exposurePass, exposureBindGroup, 8, 8);
         exposurePass.end();
 
         //* Shading Change — fused multi-scale block-mean detector (skipped
@@ -1392,6 +1425,21 @@ export class UpscalerCore<THandle = GPUTexture> {
                 locksOut.createView(),
             );
         }
+    }
+
+    // Stages a CPU-side host pre-exposure in the 1×1 texel the exposure pass
+    // reads. A queue write, like the constants: it lands before this frame's
+    // passes execute, and only the late stage reads it.
+    private _stageHostPreExposure(value: number): GPUTextureView {
+        if (!Number.isFinite(value) || value <= 0) {
+            throw new Error(`@pmndrs/upscaler: hostPreExposure must be a finite number greater than 0; got ${String(value)}.`);
+        }
+        const texture = this._hostPreExposureTexture!;
+        if (value !== this._hostPreExposureWritten) {
+            this._device.queue.writeTexture({ texture }, new Float32Array([value]), {}, { width: 1, height: 1 });
+            this._hostPreExposureWritten = value;
+        }
+        return texture.createView();
     }
 
     // See _encodeBlit for what `alpha` is bound to on each path.
@@ -1515,7 +1563,8 @@ export class UpscalerCore<THandle = GPUTexture> {
         c.setDepthClipKfov(this._depthClipKfov(camera, perspective));
         if (this._path === 'temporal') flags |= FLAG_INPUT_REINHARD;
         if (this._effectiveSettings.lockThinFeatures) flags |= FLAG_LOCKS;
-        if (this._effectiveSettings.autoExposure) flags |= FLAG_AUTO_EXPOSURE;
+        // Nothing is metered in provided mode, so no pass may act as if it were.
+        if (this._effectiveSettings.autoExposure && this._exposureMode !== 'provided') flags |= FLAG_AUTO_EXPOSURE;
         if (this._effectiveSettings.detectShadingChanges) flags |= FLAG_SHADING_CHANGE;
         if (inputs.reactive || inputs.reactiveOpaqueColor) flags |= FLAG_REACTIVE;
         if (inputs.exposureTexture) flags |= FLAG_EXTERNAL_EXPOSURE;
@@ -1582,6 +1631,17 @@ export class UpscalerCore<THandle = GPUTexture> {
                 format: 'r8unorm',
                 usage: GPUTextureUsage.TEXTURE_BINDING,
             });
+        }
+
+        if (this._path === 'temporal') {
+            // Read with textureLoad only, so the non-filterable format binds.
+            this._hostPreExposureTexture = this._device.createTexture({
+                label: 'upscale-host-pre-exposure',
+                size: { width: 1, height: 1 },
+                format: 'r32float',
+                usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+            });
+            this._hostPreExposureWritten = null;
         }
 
         if (this._path === 'spatial') {
@@ -1749,6 +1809,8 @@ export class UpscalerCore<THandle = GPUTexture> {
         this._shadingSignal = null;
         this._reactiveDummy?.destroy();
         this._reactiveDummy = null;
+        this._hostPreExposureTexture?.destroy();
+        this._hostPreExposureTexture = null;
         if (this._shadingLumaHistory) {
             this._shadingLumaHistory.forEach((texture) => texture.destroy());
             this._shadingLumaHistory = null;

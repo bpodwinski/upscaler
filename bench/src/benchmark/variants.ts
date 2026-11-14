@@ -1,7 +1,9 @@
 import {
     createBaselineResolver,
+    createHostPreExposureCpuResolver,
     createProductionRcasResolver,
     createRcasAgeKneeResolver,
+    createProvidedExposureResolver,
     createRcasExperimentResolver,
     createRcasNumericParityResolver,
     createDepthClipVariantResolver,
@@ -62,6 +64,8 @@ const RESOLVER_FACTORIES = {
     'rcas-age-knee-25-v1': createRcasAgeKneeResolver,
     'rcas-age-knee-12-v1': createRcasAgeKneeResolver,
     'rcas-age-knee-ungated-v1': createRcasAgeKneeResolver,
+    'exposure-provided-v1': createProvidedExposureResolver,
+    'host-pre-exposure-cpu-v1': createHostPreExposureCpuResolver,
 } satisfies Record<BenchmarkVariantId, BenchmarkVariantDefinition['create']>;
 
 /**
@@ -103,6 +107,7 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
     const shadingMemory = id.startsWith('shading-memory-') || id === 'shading-frame-pair-v1';
     const linearDepth = id === 'linear-depth-input-v1';
     const rcasAgeKnee = id.startsWith('rcas-age-knee-');
+    const providedExposure = id === 'exposure-provided-v1';
     const sourceResourceGraph = spdResolver
         ? [
               'scene-color-depth-velocity',
@@ -188,6 +193,10 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
                     ? id === 'rcas-age-knee-ungated-v1'
                         ? 'Production pipeline with an ungated age knee of 0.5 (age alone)'
                         : `Production pipeline with rcasAgeKnee ${id === 'rcas-age-knee-25-v1' ? 0.25 : id === 'rcas-age-knee-12-v1' ? 0.125 : 0.5}`
+                  : providedExposure
+                    ? "Baseline with exposureMode: 'provided' (no luminance metering)"
+                  : id === 'host-pre-exposure-cpu-v1'
+                    ? 'Baseline with the host pre-exposure passed as a number'
                 : rcasDenoise
             ? 'FSR 3.1.5 RCAS limiter + denoise'
             : rcasLimiterParity
@@ -216,6 +225,7 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
                 depthClipVariant ||
                 linearDepth ||
                 rcasAgeKnee ||
+                providedExposure ||
                 id === 'production'
                 ? id
                 : rcasNumericParity
@@ -223,7 +233,7 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
                     ? 'rcas-fsr315-numeric'
                     : 'rcas-fsr315-limiter'
                 : 'local-baseline-5d6a65e',
-            pipelineKey: sourceBundle || reconstructExperiment || linearDepth ? id : 'temporal-baseline',
+            pipelineKey: sourceBundle || reconstructExperiment || linearDepth || providedExposure ? id : 'temporal-baseline',
             assembledChunks: sourceBundle
                 ? [
                       'constants',

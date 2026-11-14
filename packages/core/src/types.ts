@@ -157,10 +157,30 @@ export interface UpscalerConfig {
      * is used unchanged.
      */
     rcasAgeKnee?: number;
+    /**
+     * Who supplies the conditioning exposure (temporal path).
+     *
+     * - `'upstream'` (default) — the upscaler meters the scene each frame
+     *   (`settings.autoExposure`), or publishes the fixed `settings.exposure`
+     *   or an `exposureTexture` over that measurement.
+     * - `'provided'` — the host already meters. The luminance measurement is
+     *   skipped entirely, not run and then overridden. The conditioning
+     *   exposure is the frame's `exposureTexture` when one is passed, else
+     *   `settings.exposure`; `settings.autoExposure` is ignored.
+     *   `guides.exposure.g` (the metered average luma) reads 0.
+     *
+     * Either way the exposure is divided back out before output. It selects
+     * a different exposure pipeline, so it is configuration, not a setting.
+     * See docs/inputs-and-contracts.md → Exposure.
+     */
+    exposureMode?: ExposureMode;
 }
 
 /** How the `depth` input is encoded. See {@link UpscalerConfig.depthMode}. */
 export type DepthMode = 'hardware' | 'linear';
+
+/** Who supplies the conditioning exposure. See {@link UpscalerConfig.exposureMode}. */
+export type ExposureMode = 'upstream' | 'provided';
 
 /**
  * Runtime tuning knobs that can change every frame without a pipeline rebuild.
@@ -278,6 +298,13 @@ export interface DispatchInputs<TTexture = GPUTexture> {
      * equivalent to `1`.
      */
     preExposureTexture?: TTexture;
+    /**
+     * The same host pre-exposure as a number, for apps that hold it on the
+     * CPU: the factor already baked into this frame's input color (finite,
+     * greater than zero). {@link preExposureTexture} wins when both are
+     * passed. Omission is equivalent to `1`.
+     */
+    hostPreExposure?: number;
     /** Drop all history this frame (camera cut, teleport, resize). */
     reset?: boolean;
     /** Seconds since the previous frame. */
@@ -349,7 +376,8 @@ export interface TemporalGuides<TTexture = GPUTexture> {
      * The 1×1 exposure state (rgba16float): r = conditioning pre-exposure,
      * g = metered log-average luma of the beauty input, with host
      * pre-exposure divided out (the wrong space for GI statistics),
-     * b = host pre-exposure. `null` on the `guides` path.
+     * b = host pre-exposure. With `exposureMode: 'provided'` nothing is
+     * metered and g is 0. `null` on the `guides` path.
      */
     readonly exposure: TTexture | null;
     /**
