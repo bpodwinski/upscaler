@@ -9,6 +9,7 @@ export {
     DebugView,
     QualityMode,
     type DepthMode,
+    type ExposureMode,
     type FrameCamera,
     type JitterOffset,
     type RuntimeSettings,

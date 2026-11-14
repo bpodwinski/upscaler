@@ -8,7 +8,7 @@ import { DEBUG_SHADER } from './debug';
 import * as easuModule from './easu';
 import { EASU_SHADER } from './easu';
 import { GENERATE_REACTIVE_SHADER } from './generateReactive';
-import { LUMINANCE_PYRAMID_SHADER } from './luminancePyramid';
+import { LUMINANCE_PYRAMID_SHADER, PROVIDED_EXPOSURE_SHADER } from './luminancePyramid';
 import { MOMENTS_SHADER } from './moments';
 import * as rcasModule from './rcas';
 import {
@@ -41,6 +41,8 @@ const ALL_SHADERS: Record<string, string> = {
     shadingChange: SHADING_CHANGE_SHADER,
     accumulate: ACCUMULATE_SHADER,
     luminancePyramid: LUMINANCE_PYRAMID_SHADER,
+    // exposureMode: 'provided' — publishes the exposure state, meters nothing.
+    providedExposure: PROVIDED_EXPOSURE_SHADER,
     generateReactive: GENERATE_REACTIVE_SHADER,
     debug: DEBUG_SHADER,
     moments: MOMENTS_SHADER,
@@ -60,6 +62,7 @@ const BASELINE_BINDING_COUNTS: Record<string, number> = {
     shadingChange: 11,
     accumulate: 13,
     luminancePyramid: 7,
+    providedExposure: 4,
     // 5 since 2026-07-22: incoming-mask binding for merge-not-overwrite.
     generateReactive: 5,
     debug: 10,
@@ -118,6 +121,8 @@ const BASELINE_FINGERPRINTS: Record<string, string> = {
     // 2026-10-08: 1/16-stop adaptation dead-band, so the jitter-phase wobble of
     // the metered log-average no longer re-conditions history on still scenes.
     luminancePyramid: '464b028f',
+    // Added with exposureMode: 'provided' (upstream issue 98).
+    providedExposure: '197c538e',
     // Updated 2026-07-22: reactive merge-not-overwrite (guides spec M3) — the
     // generator max-merges an incoming mask instead of being suppressed by it.
     generateReactive: 'c45aafb7',
@@ -363,6 +368,38 @@ describe('RCAS age knee (rcasAgeKnee)', () => {
     }`);
         expect(ungated).not.toContain('dilatedMotion');
         expect(withoutKnee(ungated)).toBe(RCAS_SHADER);
+    });
+});
+
+describe("provided exposure (exposureMode: 'provided')", () => {
+    it('meters nothing: no color input, no sampler, no previous exposure', () => {
+        // Past the shared constants block (which names deltaTime for every pass).
+        const own = PROVIDED_EXPOSURE_SHADER.split('fn hasFlag')[1] ?? '';
+        expect(own).not.toBe('');
+        expect(own).not.toMatch(/textureSample|sampler|inputColor|prevExposure|log2|deltaTime/);
+        expect(PROVIDED_EXPOSURE_SHADER).not.toContain('FLAG_AUTO_EXPOSURE)');
+    });
+
+    it('selects the conditioning exposure like the metered pass with auto-exposure off', () => {
+        expect(PROVIDED_EXPOSURE_SHADER).toContain(
+            'let exposure = select(C.exposure, ext, hasFlag(FLAG_EXTERNAL_EXPOSURE));',
+        );
+        // The metered pass ends on the same two selects.
+        expect(LUMINANCE_PYRAMID_SHADER).toContain('exposure = select(C.exposure, exposure, hasFlag(FLAG_AUTO_EXPOSURE));');
+        expect(LUMINANCE_PYRAMID_SHADER).toContain('exposure = select(exposure, ext, hasFlag(FLAG_EXTERNAL_EXPOSURE));');
+    });
+
+    it('publishes host pre-exposure exactly as the metered pass does', () => {
+        for (const line of [
+            'let hostRaw = textureLoad(hostPreExposure, vec2i(0), 0).r;',
+            'let host = select(1.0, hostRaw, hostRaw > 0.0);',
+        ]) {
+            expect(PROVIDED_EXPOSURE_SHADER).toContain(line);
+            expect(LUMINANCE_PYRAMID_SHADER).toContain(line);
+        }
+        // r conditioning, g unmetered, b host pre-exposure: the layout every reader expects.
+        expect(PROVIDED_EXPOSURE_SHADER).toContain('textureStore(exposureOut, vec2i(0), vec4f(exposure, 0.0, host, 0.0));');
+        expect(LUMINANCE_PYRAMID_SHADER).toContain('textureStore(exposureOut, vec2i(0), vec4f(exposure, avgLum, host, 0.0));');
     });
 });
 

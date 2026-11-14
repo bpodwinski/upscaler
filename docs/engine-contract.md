@@ -82,8 +82,8 @@ multisampled input; it can't bind). All render-resolution inputs are exactly
 | `velocity` | float, motion in `.xy` (`rg16float` / `rgba16float`) | See [Motion](#motion). |
 | `reactive` | float, `.r` in `[0, 1]` | Optional. 1 = trust this frame over history. |
 | `reactiveOpaqueColor` | as `color` | Optional. The opaque-only render; the core derives a reactive mask from its difference to `color`. |
-| `exposureTexture` | float, `.r` of texel (0, 0) | Optional. Overrides auto/fixed conditioning exposure. |
-| `preExposureTexture` | float, `.r` of texel (0, 0) | Optional. Exposure already baked into `color`; history is corrected when it changes. |
+| `exposureTexture` | float, `.r` of texel (0, 0) | Optional. Overrides auto/fixed conditioning exposure. With `exposureMode: 'provided'` in the configuration the core meters nothing and uses this, or `settings.exposure` ([Exposure](inputs-and-contracts.md#exposure)). |
+| `preExposureTexture` | float, `.r` of texel (0, 0) | Optional. Exposure already baked into `color`; history is corrected when it changes. `hostPreExposure` is the same input as a number; the texture wins when both are passed. |
 
 `depth` and `velocity` are required on the `temporal` and `guides` paths; `bilinear`
 and `spatial` read only `color`. `deltaTime` (seconds) drives exposure adaptation.

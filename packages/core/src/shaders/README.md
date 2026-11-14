@@ -784,6 +784,15 @@ SPD and coordinated resolver variants, not as a standalone toggle in the local b
 
 #### Luma and exposure analysis (`luminancePyramid.ts`)
 
+`PROVIDED_EXPOSURE_SHADER` (`exposureMode: 'provided'`) is the same pass without the
+measurement, for hosts that meter themselves: it reads the external exposure (or
+`C.exposure`) and the host pre-exposure and writes the 1×1 state, with `.g` = 0. It
+binds four entries instead of seven (no color, sampler or previous exposure). Its
+output equals the metered pass's with `FLAG_AUTO_EXPOSURE` clear, apart from `.g`,
+which no shader reads: Q1 / Q9 / Q11 captures are byte-identical to `autoExposure:
+false`. Measured at 1920×1080 ratio 2, interleaved ABBA: exposure 49.2 → 2.3 µs,
+−21 % of the temporal path's compute.
+
 - **Current status:** Custom scalar replacement; despite its filename, it is not a pyramid.
 - **Local implementation:** Serially samples a fixed 32×32 grid and reduces it to one
   log-average exposure value.
