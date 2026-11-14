@@ -1,6 +1,7 @@
 import {
     createBaselineResolver,
     createProductionRcasResolver,
+    createRcasAgeKneeResolver,
     createRcasExperimentResolver,
     createRcasNumericParityResolver,
     createDepthClipVariantResolver,
@@ -57,6 +58,7 @@ const RESOLVER_FACTORIES = {
     'shading-memory-gated8-k1': createShadingMemoryResolver,
     'shading-memory-gated4': createShadingMemoryResolver,
     'linear-depth-input-v1': createLinearDepthResolver,
+    'rcas-age-knee-v1': createRcasAgeKneeResolver,
 } satisfies Record<BenchmarkVariantId, BenchmarkVariantDefinition['create']>;
 
 /**
@@ -97,6 +99,7 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
     const depthClipVariant = id.startsWith('depth-clip-');
     const shadingMemory = id.startsWith('shading-memory-') || id === 'shading-frame-pair-v1';
     const linearDepth = id === 'linear-depth-input-v1';
+    const rcasAgeKnee = id === 'rcas-age-knee-v1';
     const sourceResourceGraph = spdResolver
         ? [
               'scene-color-depth-velocity',
@@ -178,6 +181,8 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
                     ? 'Production pipeline (production RCAS on every path)'
                   : linearDepth
                     ? "Baseline fed linear view depth (depthMode: 'linear')"
+                  : rcasAgeKnee
+                    ? 'Production pipeline with rcasAgeKnee 0.5'
                 : rcasDenoise
             ? 'FSR 3.1.5 RCAS limiter + denoise'
             : rcasLimiterParity
@@ -205,6 +210,7 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
                 reconstructExperiment ||
                 depthClipVariant ||
                 linearDepth ||
+                rcasAgeKnee ||
                 id === 'production'
                 ? id
                 : rcasNumericParity

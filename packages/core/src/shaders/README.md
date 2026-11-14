@@ -168,6 +168,29 @@ conversion on representative noisy content. Separately benchmark native versus
 approximate-medium final normalization and 8×8 per-pixel dispatch versus quad-remapped
 coverage only if RCAS performance becomes material.
 
+#### RCAS age knee (`rcasAgeKnee`, opt-in)
+
+`buildRcasAgeKneeShader(knee)` is production RCAS with one change on the temporal
+path: the lobe is multiplied by `smoothstep(0, knee, age)`, where age is the history's
+`.a` (accumulated samples over `maxAccumulation`). The age comes from the center tap,
+which is loaded once as a `vec4f` instead of through `rcasLoad`, so there is no extra
+fetch. A knee of 0 returns `RCAS_SHADER` itself. The spatial path is untouched, and
+bindings stay 0–4.
+
+- **Why a build-time constant:** a uniform would be cheaper to change, but `FsrConstants`
+  has no free slot the RCAS pass can name without re-fingerprinting every shader. Fold
+  it into the next UBO change if the knee is ever animated.
+- **Measured at knee 0.5, ratio 2, against a 64 spp reference**
+  (`measure-reference-quality.mjs --modes temporal --variant rcas-age-knee-v1` vs
+  `production`, 1280×720): it does not improve agreement with ground truth. PSNR moves
+  by −0.01 to −0.05 dB and SSIM by −0.0002 to −0.0014 on the Q19 motion segments; Q3
+  PSNR is unchanged. What it lowers is frame-to-frame churn: −0.6 % to −1.4 % on Q19,
+  −2.3 % on Q3, with temporal error −2.8 % on Q3 and within ±0.5 % on Q19. The Q19
+  still window is unchanged. Fresh pixels are 0.2–2.4 % of a Q19 motion frame, so a
+  whole-frame metric barely sees them.
+- **Cost:** +0.44 µs RCAS at 1920×1080 ratio 2 (+1.8 %, 2.3× the noise floor, all six
+  ABBA repetitions positive). Nothing at knee 0.
+
 #### RCAS load domain (temporal path)
 
 - **Current status:** Deliberate divergence, measured (2026-07-21, NEXT-STEPS item 1).

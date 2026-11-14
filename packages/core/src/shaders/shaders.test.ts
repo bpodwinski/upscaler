@@ -17,6 +17,7 @@ import {
     RCAS_PER_TAP_SHADER,
     RCAS_SHADER,
     RCAS_TONEMAP_SPACE_SHADER,
+    buildRcasAgeKneeShader,
 } from './rcas';
 import { DEPTH_CLIP_SHADER, RECONSTRUCT_LINEAR_SHADER, RECONSTRUCT_SHADER } from './reconstruct';
 import {
@@ -295,6 +296,42 @@ describe('RCAS on the temporal path', () => {
             expect(source).not.toContain('ceiling');
             expect(source).not.toContain('maxGain');
         }
+    });
+});
+
+describe('RCAS age knee (rcasAgeKnee)', () => {
+    const knee = buildRcasAgeKneeShader(0.5);
+
+    it('is the production shader itself at a knee of 0', () => {
+        expect(buildRcasAgeKneeShader(0)).toBe(RCAS_SHADER);
+    });
+
+    it('scales the lobe by the history age, on the temporal path only', () => {
+        expect(knee).toContain(`    if (hasFlag(FLAG_INPUT_REINHARD)) {
+        lobe *= smoothstep(0.0, 0.500000000, center.a);
+    }`);
+        // Before the denoise attenuation and the resolve, which both read the lobe.
+        expect(knee.indexOf('//* Age Knee')).toBeGreaterThan(knee.indexOf('var lobe = '));
+        expect(knee.indexOf('//* Age Knee')).toBeLessThan(knee.indexOf('//* Denoise'));
+    });
+
+    it('reads the age from the center tap it already loads', () => {
+        expect(knee).toContain('let center = textureLoad(inputColor, sp, 0);\n    let eIn = center.rgb;');
+        expect(knee).not.toContain('let eIn = rcasLoad(sp);');
+        const loads = (source: string) => (source.match(/rcasLoad\(sp|textureLoad\(inputColor, sp/g) ?? []).length;
+        expect(loads(knee)).toBe(loads(RCAS_SHADER));
+    });
+
+    it('is otherwise production RCAS, with production bindings', () => {
+        const stripped = knee
+            .replace('    let center = textureLoad(inputColor, sp, 0);\n    let eIn = center.rgb;', '    let eIn = rcasLoad(sp);')
+            .replace(/\n {4}\/\/\* Age Knee[\s\S]*?\n {4}}\n(?=\n {4}\/\/\* Denoise)/, '');
+        expect(stripped).toBe(RCAS_SHADER);
+        // _encodeRcas always binds five entries, alpha source included.
+        const bindings = [...knee.matchAll(/@group\(0\) @binding\((\d+)\)/g)].map((match) => Number(match[1]));
+        expect(bindings).toEqual([0, 1, 2, 3, 4]);
+        expect(knee).toContain('@group(0) @binding(4) var alphaSource : texture_2d<f32>;');
+        expect(knee.match(/@compute/g)).toHaveLength(1);
     });
 });
 

@@ -22,7 +22,7 @@ import { DEBUG_SHADER } from './shaders/debug';
 import { EASU_SHADER } from './shaders/easu';
 import { GENERATE_REACTIVE_SHADER } from './shaders/generateReactive';
 import { LUMINANCE_PYRAMID_SHADER } from './shaders/luminancePyramid';
-import { RCAS_SHADER } from './shaders/rcas';
+import { RCAS_SHADER, buildRcasAgeKneeShader } from './shaders/rcas';
 import { DEPTH_CLIP_SHADER, RECONSTRUCT_LINEAR_SHADER, RECONSTRUCT_SHADER } from './shaders/reconstruct';
 import { SHADING_CHANGE_SHADER } from './shaders/shadingChange';
 import {
@@ -180,6 +180,7 @@ export class UpscalerCore<THandle = GPUTexture> {
     private readonly _allocate: TextureAllocator<THandle>;
     private readonly _motionScale: readonly [number, number];
     private readonly _rcasShader: string;
+    private readonly _rcasOverridden: boolean;
     private readonly _spatialRcasShader: string | null;
     private readonly _shadingChangeShader: string | null;
     private readonly _depthClipShader: string | null;
@@ -215,6 +216,7 @@ export class UpscalerCore<THandle = GPUTexture> {
 
     private _path: UpscalePath = 'temporal';
     private _depthMode: DepthMode = 'hardware';
+    private _rcasAgeKnee = 0;
     private _displayWidth = 0;
     private _displayHeight = 0;
     private _renderWidth = 0;
@@ -333,6 +335,7 @@ export class UpscalerCore<THandle = GPUTexture> {
         // Any override must declare RCAS's alpha-source binding (4) — every
         // shader in rcas.ts does — because _encodeRcas always binds it.
         this._rcasShader = options._rcasShader ?? RCAS_SHADER;
+        this._rcasOverridden = options._rcasShader !== undefined;
         this._spatialRcasShader = options._spatialRcasShader ?? null;
         this._shadingChangeShader = options._shadingChangeShader ?? null;
         this._depthClipShader = options._depthClipShader ?? null;
@@ -414,7 +417,13 @@ export class UpscalerCore<THandle = GPUTexture> {
         const reconstruct = this._depthMode === 'linear' ? 'reconstructLinear' : 'reconstruct';
         const geometry = this._crossFrameReconstruct ? ['reconstruct'] : [reconstruct, 'depthClip'];
         return this._path === 'guides' ? geometry :
-            [...geometry, 'accumulate', 'exposure', 'generateReactive', 'rcas', 'blit'];
+            [...geometry, 'accumulate', 'exposure', 'generateReactive', this._temporalRcasName(), 'blit'];
+    }
+
+    // Each age knee is its own pipeline, cached under its own name, so
+    // reconfiguring back to a knee already seen never recompiles.
+    private _temporalRcasName(): string {
+        return this._rcasAgeKnee > 0 ? `rcas@${this._rcasAgeKnee}` : 'rcas';
     }
 
     private _requestPass(name: string, retry: boolean): Promise<void> {
@@ -439,7 +448,9 @@ export class UpscalerCore<THandle = GPUTexture> {
             shadingChange: ['shading-change', this._shadingChangeShader ?? SHADING_CHANGE_SHADER],
             debug: ['debug', DEBUG_SHADER],
         };
-        const [label, code] = shaders[name];
+        const [label, code] = name.startsWith('rcas@')
+            ? ['rcas', buildRcasAgeKneeShader(Number(name.slice('rcas@'.length)))]
+            : shaders[name];
         const generation = this._generation;
         const request = ComputePass.create(this._device, label, code).then(pass => {
             if (generation !== this._generation || this._deviceLost) {
@@ -520,8 +531,16 @@ export class UpscalerCore<THandle = GPUTexture> {
         if (depthMode === 'linear' && this._crossFrameReconstruct) {
             throw new Error('@pmndrs/upscaler: the cross-frame reconstruct identities take hardware depth only.');
         }
+        const rcasAgeKnee = config.rcasAgeKnee ?? 0;
+        if (!Number.isFinite(rcasAgeKnee) || rcasAgeKnee < 0 || rcasAgeKnee > 1) {
+            throw new Error(`@pmndrs/upscaler: rcasAgeKnee must be in [0, 1]; got ${String(config.rcasAgeKnee)}.`);
+        }
+        if (rcasAgeKnee > 0 && this._rcasOverridden) {
+            throw new Error('@pmndrs/upscaler: rcasAgeKnee applies to production RCAS, not to a _rcasShader override.');
+        }
         this._path = config.path ?? 'temporal';
         this._depthMode = depthMode;
+        this._rcasAgeKnee = rcasAgeKnee;
         this._jitterEnabled = config.jitter ?? true;
         this._displayWidth = Math.max(1, Math.floor(config.displayWidth));
         this._displayHeight = Math.max(1, Math.floor(config.displayHeight));
@@ -1376,7 +1395,9 @@ export class UpscalerCore<THandle = GPUTexture> {
         exposure: GPUTextureView,
         alpha: GPUTextureView,
     ): void {
-        const rcasPass = this._path === 'spatial' ? this._spatialRcasPass : this._rcasPass;
+        const rcasPass = this._path === 'spatial'
+            ? this._spatialRcasPass
+            : this._rcasAgeKnee > 0 ? this._passes.get(this._temporalRcasName())! : this._rcasPass;
         const bindGroup = rcasPass.createBindGroup([
             { buffer: this._constantsLate.buffer },
             input,

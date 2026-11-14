@@ -46,6 +46,8 @@ class BenchmarkResolverAdapter implements BenchmarkResolver {
     private readonly _upscaler: Upscaler | CandidateUpscaler;
     // Set by the linear-depth identity: the same scene, handed over as view depth.
     protected _linearDepth: LinearDepthConverter | null = null;
+    // Configuration an identity adds to every configure() (e.g. rcasAgeKnee).
+    protected _extraConfig: { rcasAgeKnee?: number } = {};
 
     constructor(
         upscaler: Upscaler | CandidateUpscaler,
@@ -119,6 +121,7 @@ class BenchmarkResolverAdapter implements BenchmarkResolver {
             customUpscaleRatio: config.ratio,
             path: config.path,
             depthMode: this._linearDepth ? 'linear' : 'hardware',
+            ...this._extraConfig,
         });
         this._linearDepth?.configure(this._upscaler.renderWidth, this._upscaler.renderHeight);
     }
@@ -242,6 +245,15 @@ export class BaselineBenchmarkResolver extends BenchmarkResolverAdapter {
         this._linearDepth = converter;
     }
 
+    /**
+     * Adds configuration to every `configure()`. Call before the first one.
+     * @param config - Extra `UpscalerConfig` fields for this identity
+     */
+    withConfig(config: { rcasAgeKnee?: number }): this {
+        this._extraConfig = config;
+        return this;
+    }
+
     constructor(
         renderer: THREE.WebGPURenderer,
         metadata: BenchmarkVariantMetadata,
@@ -348,6 +360,23 @@ export function createProductionRcasResolver(
         RCAS_SHADER,
         RCAS_SHADER,
     );
+}
+
+/**
+ * Creates `rcas-age-knee-v1`: the `production` identity configured with
+ * `rcasAgeKnee: 0.5`, so temporal RCAS holds back on young history. No RCAS
+ * override is passed (the knee is built from production RCAS by the core).
+ * @param renderer - Initialized three WebGPU renderer
+ * @param metadata - Registry metadata for the identity
+ * @returns One age-knee resolver instance
+ */
+export function createRcasAgeKneeResolver(
+    renderer: unknown,
+    metadata: BenchmarkVariantMetadata,
+): BenchmarkResolver {
+    return new BaselineBenchmarkResolver(renderer as THREE.WebGPURenderer, metadata).withConfig({
+        rcasAgeKnee: 0.5,
+    });
 }
 
 /**
