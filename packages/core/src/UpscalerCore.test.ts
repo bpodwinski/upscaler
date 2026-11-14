@@ -582,6 +582,79 @@ describe('UpscalerCore without an engine', () => {
             expect(() => core.configure({ displayWidth: 64, displayHeight: 32, exposureMode: 'auto' as 'upstream' }))
                 .toThrow(/unknown exposureMode 'auto'/);
         });
+
+        it('keeps the previous configuration when a mode is rejected', async () => {
+            const { device, gpu } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, exposureMode: 'provided' });
+            await core.prepare();
+            expect(() => core.configure({ displayWidth: 128, displayHeight: 64, exposureMode: 'auto' as 'upstream' })).toThrow();
+            expect([core.displayWidth, core.displayHeight]).toEqual([64, 32]);
+            expect(core.isReady).toBe(true);
+            const sizes = bindGroupSizes(device, () =>
+                core.dispatch({ color: gpu('color'), depth: gpu('depth'), velocity: gpu('velocity') }, camera));
+            expect(sizes).not.toContain(7);
+        });
+
+        it('binds constants, the exposure target, the external exposure and the host pre-exposure, in that order', async () => {
+            const { device, gpu } = mockDevice();
+            const createTexture = device.createTexture;
+            device.createTexture = vi.fn((descriptor?: { label?: string }) => ({
+                ...createTexture(descriptor),
+                createView: () => ({ owner: descriptor?.label }),
+            })) as typeof device.createTexture;
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, exposureMode: 'provided' });
+            await core.prepare();
+            const view = (owner: string) => ({ ...gpu(owner), createView: () => ({ owner }) }) as unknown as GPUTexture;
+            const create = vi.fn(device.createBindGroup);
+            device.createBindGroup = create;
+            core.dispatch(
+                { color: gpu('color'), depth: gpu('depth'), velocity: gpu('velocity'), exposureTexture: view('app-exposure'), hostPreExposure: 2 },
+                camera,
+            );
+            const exposure = create.mock.calls
+                .map(([descriptor]) => descriptor as unknown as { label: string; entries: { resource: { owner?: string; buffer?: { label?: string } } }[] })
+                .find((descriptor) => descriptor.label === 'upscale-exposure')!;
+            expect(exposure.entries.map((entry) => entry.resource.owner ?? entry.resource.buffer?.label)).toEqual([
+                'upscale-constants-late',
+                expect.stringMatching(/^upscale-exposure-[01]$/),
+                'app-exposure',
+                'upscale-host-pre-exposure',
+            ]);
+        });
+
+        it('runs no exposure pass on the paths that have none, whatever the mode', async () => {
+            for (const path of ['spatial', 'bilinear'] as const) {
+                const { device, gpu } = mockDevice();
+                const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+                core.configure({ displayWidth: 64, displayHeight: 32, path, exposureMode: 'provided' });
+                await core.prepare();
+                const create = vi.fn(device.createBindGroup);
+                device.createBindGroup = create;
+                expect(() => core.dispatch({ color: gpu('color'), hostPreExposure: 2 }, camera)).not.toThrow();
+                const labels = create.mock.calls.map(([descriptor]) => (descriptor as unknown as { label: string }).label);
+                expect(labels, path).not.toContain('upscale-exposure');
+                // No temporal path, no host pre-exposure texel to stage.
+                expect(device.queue.writeTexture).not.toHaveBeenCalled();
+            }
+        });
+
+        it('finishes a split frame through the provided pass', async () => {
+            const { device, encoder, gpu } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, exposureMode: 'provided' });
+            await core.prepare();
+            const host = encoder as unknown as GPUCommandEncoder;
+            const guides = bindGroupSizes(device, () =>
+                core.encodeGuides(host, { depth: gpu('depth'), velocity: gpu('velocity') }, camera));
+            // The exposure pass belongs to the late stage.
+            expect(guides).toHaveLength(2);
+            const late = bindGroupSizes(device, () => core.encodeUpscale(host, { color: gpu('color') }, camera));
+            expect(late).toContain(4);
+            expect(late).not.toContain(7);
+            expect(core.guidesPending).toBe(false);
+        });
     });
 
     describe('hostPreExposure (CPU-side host pre-exposure)', () => {
@@ -631,6 +704,75 @@ describe('UpscalerCore without an engine', () => {
             expect(hostWrites()).toHaveLength(1);
             core.dispatch({ ...inputs, hostPreExposure: 1.25 }, camera);
             expect(hostWrites()).toHaveLength(2);
+        });
+
+        it('writes the value again after a reconfigure, into the new texel', async () => {
+            const { device, gpu } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            const inputs = { color: gpu('color'), depth: gpu('depth'), velocity: gpu('velocity'), hostPreExposure: 2.5 };
+            const hostWrites = () =>
+                device.queue.writeTexture.mock.calls.filter(
+                    ([target]) => (target as { texture: { label?: string } }).texture.label === 'upscale-host-pre-exposure',
+                );
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2 });
+            await core.prepare();
+            core.dispatch(inputs, camera);
+            core.dispatch(inputs, camera);
+            expect(hostWrites()).toHaveLength(1);
+            const first = (hostWrites()[0][0] as { texture: object }).texture;
+
+            // configure() reallocates: the old texel is destroyed, the cache must not outlive it.
+            core.configure({ displayWidth: 128, displayHeight: 64, customUpscaleRatio: 2 });
+            core.dispatch(inputs, camera);
+            expect(hostWrites()).toHaveLength(2);
+            const second = (hostWrites()[1][0] as { texture: object }).texture;
+            expect(second).not.toBe(first);
+            expect((first as { destroy: ReturnType<typeof vi.fn> }).destroy).toHaveBeenCalledTimes(1);
+        });
+
+        it('stages the value from the late stage of a split frame only', async () => {
+            const { device, encoder, gpu } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2 });
+            await core.prepare();
+            const host = encoder as unknown as GPUCommandEncoder;
+            const hostWrites = () =>
+                device.queue.writeTexture.mock.calls.filter(
+                    ([target]) => (target as { texture: { label?: string } }).texture.label === 'upscale-host-pre-exposure',
+                );
+            core.encodeGuides(host, { depth: gpu('depth'), velocity: gpu('velocity') }, camera);
+            expect(hostWrites()).toHaveLength(0);
+            core.encodeUpscale(host, { color: gpu('color'), hostPreExposure: 3 }, camera);
+            expect(hostWrites()).toHaveLength(1);
+            expect(Array.from(hostWrites()[0][1] as Float32Array)).toEqual([3]);
+        });
+
+        it('frees the texel on dispose', async () => {
+            const { device } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2 });
+            const texel = device.createTexture.mock.results
+                .map((result) => result.value as { label?: string; destroy: ReturnType<typeof vi.fn> })
+                .find((texture) => texture.label === 'upscale-host-pre-exposure')!;
+            expect(texel).toBeDefined();
+            core.dispose();
+            expect(texel.destroy).toHaveBeenCalledTimes(1);
+        });
+
+        it('allocates the texel as a 1×1 r32float the queue can write', () => {
+            const { device } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2 });
+            const descriptor = device.createTexture.mock.calls
+                .map(([value]) => value as unknown as GPUTextureDescriptor)
+                .find((value) => value?.label === 'upscale-host-pre-exposure')!;
+            expect(descriptor).toMatchObject({ size: { width: 1, height: 1 }, format: 'r32float' });
+            // TEXTURE_BINDING | COPY_DST (the stubbed usage bits).
+            expect(descriptor.usage).toBe(4 | 2);
+            // The spatial path never reads it.
+            const spatial = mockDevice();
+            new UpscalerCore({ device: spatial.device as unknown as GPUDevice }).configure({ displayWidth: 64, displayHeight: 32, path: 'spatial' });
+            expect(spatial.device.createTexture.mock.calls.some(([value]) => (value as { label?: string } | undefined)?.label === 'upscale-host-pre-exposure')).toBe(false);
         });
 
         it('lets preExposureTexture win, and rejects values that are not positive and finite', async () => {

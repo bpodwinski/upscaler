@@ -235,7 +235,8 @@ final brightness**. Three sources, in increasing priority:
 **When the host already meters: `exposureMode: 'provided'`.** In the default mode
 (`'upstream'`) the luminance measurement runs every frame, even when a fixed exposure
 or an `exposureTexture` then overrides its result: 1024 bilinear taps of the color
-input, about 49 µs of the 226 µs the temporal path costs at 1920×1080, ratio 2.
+input, about 49 µs of the 226 µs the temporal path costs at 1920×1080, ratio 2 (the
+same 46–48 µs at ratios 1 and 3: it does not scale with resolution).
 Configuring `exposureMode: 'provided'` removes it. The exposure pass then only
 publishes the exposure state (about 2 µs):
 
