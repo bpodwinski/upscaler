@@ -181,13 +181,29 @@ bindings stay 0–4.
   has no free slot the RCAS pass can name without re-fingerprinting every shader. Fold
   it into the next UBO change if the knee is ever animated.
 - **Measured at knee 0.5, ratio 2, against a 64 spp reference**
-  (`measure-reference-quality.mjs --modes temporal --variant rcas-age-knee-v1` vs
-  `production`, 1280×720): it does not improve agreement with ground truth. PSNR moves
-  by −0.01 to −0.05 dB and SSIM by −0.0002 to −0.0014 on the Q19 motion segments; Q3
-  PSNR is unchanged. What it lowers is frame-to-frame churn: −0.6 % to −1.4 % on Q19,
-  −2.3 % on Q3, with temporal error −2.8 % on Q3 and within ±0.5 % on Q19. The Q19
-  still window is unchanged. Fresh pixels are 0.2–2.4 % of a Q19 motion frame, so a
-  whole-frame metric barely sees them.
+  (`measure-reference-quality.mjs --modes temporal --young-age 0.5 --variant
+  rcas-age-knee-v1` vs `production`, 1280×720). `--young-age 0.5` scores the pixels
+  the knee acts on, those whose age is below it; the mask is the same for both
+  variants, since RCAS does not feed back into history.
+  - **Disocclusion trails behind moving objects, still camera (Q3; young pixels are
+    1.5 % of the frame):** this is what the knee fixes. Production's output changes
+    3.15× as much from frame to frame as the true image does there; the knee brings
+    that to 2.51× and cuts temporal error by 20.5 %, for −0.08 dB PSNR and −0.010
+    SSIM on those pixels. Whole frame: temporal error −2.8 %, PSNR −0.003 dB.
+  - **Camera motion (Q19 segments; young pixels are 6–30 % of the frame):** here it
+    costs more than it gives. The young pixels are mostly surfaces sliding into view,
+    whose output already changes less than the true image (0.88–1.02× its churn).
+    The knee softens them: −0.13 to −0.18 dB PSNR and −0.004 to −0.007 SSIM on those
+    pixels, for −0.2 % to −1.9 % temporal error (+1.6 % on the fast dolly). Whole
+    frame: −0.01 to −0.05 dB.
+  - **Against `rcasDenoise`** (same windows): on Q3's trails denoise cuts temporal
+    error by 9.9 %, half the knee's 20.5 %, and it softens converged pixels too
+    (whole-frame PSNR −0.10 dB, against −0.003 dB for the knee). The lobe ceiling
+    (#50) is on in every run above; it bounds overshoot, not flicker.
+  - The Q19 still window is unchanged: no pixel there is young.
+
+  So the knee is worth it for content with objects moving under a mostly still
+  camera, and not for constant camera motion. Only 0.5 is measured.
 - **Cost:** +0.44 µs RCAS at 1920×1080 ratio 2 (+1.8 %, 2.3× the noise floor, all six
   ABBA repetitions positive). Nothing at knee 0.
 

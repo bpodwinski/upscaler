@@ -90,6 +90,15 @@ full ratio-2 jitter cycle (32 frames) after convergence for still scenarios,
 and 16 frames inside each motion segment for Q4 and Q19, so each window holds
 one kind of motion. `--frames name=start:end,…` overrides them.
 
+**Young history.** `--young-age t` also scores the temporal mode over the pixels
+whose accumulation age is below `t` (0–1, of `maxAccumulation`), read back from the
+history texture each frame: disocclusion trails, the strip a camera move brings
+into view, freshly reset pixels. The sums are pooled over a window's frames and
+printed under the mode's row with the share of pixels they cover; `summary.young`
+holds them. Whole-frame numbers hide whatever only happens there (the RCAS age knee,
+shaders README). The mask depends on the history, so it is only the same across two
+runs when what differs between them does not feed back into accumulation.
+
 **The reference's own error.** `--floor-samples 1024` renders the first frame
 again at 1024 spp and scores the 64-spp reference against it. Mode scores
 closer to that floor than a few dB can't be ranked. In the baseline the floor

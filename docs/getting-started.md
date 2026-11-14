@@ -294,8 +294,12 @@ One sharpening control is configuration, not a setting: **`rcasAgeKnee`** in
 `smoothstep(0, knee, age)`, age being the pixel's accumulated sample count over
 `maxAccumulation`, so history that was just reset (a disocclusion trail, a camera
 cut) is sharpened progressively instead of at once. The value is compiled into the
-RCAS pipeline, so changing it means another `configure()`. `0.5` is a reasonable
-start; measured effect in `packages/core/src/shaders/README.md` → *RCAS age knee*.
+RCAS pipeline, so changing it means another `configure()`. It steadies the trails
+moving objects leave under a still camera (temporal error −20 % on those pixels at
+`0.5`) and softens freshly revealed surfaces under camera motion, so it suits the
+first kind of content and not the second; numbers in
+`packages/core/src/shaders/README.md` → *RCAS age knee*. It is also an option of
+`upscale()` / `upscaleScene()` and of `UpscalePass.configure()`.
 
 **Camera cuts:** call `upscaler.resetHistory()`, or pass `reset: true` in that
 frame's dispatch inputs, so the first frame after a teleport doesn't blend against
