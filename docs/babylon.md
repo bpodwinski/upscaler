@@ -109,10 +109,29 @@ packs motion into `[0, 1]` with a cube-root curve, so it can't be fed in as is.
 from `minZ` to `maxZ`, or reversed under `engine.useReverseDepthBuffer`, which
 the adapter reads. Bind the geometry renderer's depth texture (`depth32float`,
 or a depth-stencil format) directly. The view-depth color textures aren't
-depth textures and won't bind in the default mode. Configuring
-`depthMode: 'linear'` takes a positive view-distance `r32float` texture instead
-([Engine contract → Linear view depth](engine-contract.md#linear-view-depth));
-its background must hold a finite positive distance, not a zero clear.
+depth textures and won't bind in the default mode.
+
+**Linear view depth.** Configuring `depthMode: 'linear'` takes a positive
+view-distance `r32float` texture instead
+([Engine contract → Linear view depth](engine-contract.md#linear-view-depth)). The
+geometry renderer's view depth (`PREPASS_DEPTH_TEXTURE_TYPE`, requested as
+`TEXTURETYPE_FLOAT` + `TEXTUREFORMAT_R`, bound from `geometryViewDepthTexture`)
+qualifies only under two conditions:
+
+- **Geometry must cover every pixel.** `FrameGraphGeometryRendererTask` clears that
+  attachment to 0, which is not a valid view depth: it reads as the nearest surface
+  and wins every 3×3 dilation, so silhouettes against the background take the
+  background's motion. A sky box or sky dome fixes it.
+- **Left-handed scenes only.** The attachment holds view-space z, which is negative
+  under `scene.useRightHandedSystem`.
+
+Measured on `examples/babylon/hello` (`node scripts/verify-babylon-linear-depth.mjs`,
+90 animated frames, 1280×720, against hardware depth): with a sky box
+(`?depth=linear&enclosed`) the motion, disocclusion and depth views match within
+8/255 on isolated pixels and the image differs by 0.12/255 on average (0.16 % of
+pixels by more than 8/255); without one, 0.72 % of pixels differ by more than 8/255.
+The upscaler gains no GPU time from linear depth, so on Babylon hardware depth
+remains the simpler input.
 
 **Submission.** Each dispatch calls `engine.flushFramebuffer()` first. That
 submits everything Babylon has recorded so far, which includes the input renders,
