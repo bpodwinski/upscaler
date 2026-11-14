@@ -126,6 +126,9 @@ export interface UpscalerCoreOptions<THandle = GPUTexture> {
  */
 export type UpscalerCoreInternalOptions<THandle = GPUTexture> = UpscalerCoreOptions<THandle> & {
     _rcasShader?: string;
+    // Bench-only: build the rcasAgeKnee pipeline without its still-pixel gate
+    // (the frozen rcas-age-knee-ungated-v1 identity), which binds no motion.
+    _rcasAgeKneeUngated?: boolean;
     // Bench-only: an RCAS for the spatial path that differs from `_rcasShader`
     // (a frozen temporal identity that still runs FSR1 on production RCAS).
     _spatialRcasShader?: string;
@@ -181,6 +184,7 @@ export class UpscalerCore<THandle = GPUTexture> {
     private readonly _motionScale: readonly [number, number];
     private readonly _rcasShader: string;
     private readonly _rcasOverridden: boolean;
+    private readonly _rcasAgeKneeStillGate: boolean;
     private readonly _spatialRcasShader: string | null;
     private readonly _shadingChangeShader: string | null;
     private readonly _depthClipShader: string | null;
@@ -336,6 +340,7 @@ export class UpscalerCore<THandle = GPUTexture> {
         // shader in rcas.ts does — because _encodeRcas always binds it.
         this._rcasShader = options._rcasShader ?? RCAS_SHADER;
         this._rcasOverridden = options._rcasShader !== undefined;
+        this._rcasAgeKneeStillGate = options._rcasAgeKneeUngated !== true;
         this._spatialRcasShader = options._spatialRcasShader ?? null;
         this._shadingChangeShader = options._shadingChangeShader ?? null;
         this._depthClipShader = options._depthClipShader ?? null;
@@ -423,7 +428,8 @@ export class UpscalerCore<THandle = GPUTexture> {
     // Each age knee is its own pipeline, cached under its own name, so
     // reconfiguring back to a knee already seen never recompiles.
     private _temporalRcasName(): string {
-        return this._rcasAgeKnee > 0 ? `rcas@${this._rcasAgeKnee}` : 'rcas';
+        if (!(this._rcasAgeKnee > 0)) return 'rcas';
+        return `rcas@${this._rcasAgeKnee}${this._rcasAgeKneeStillGate ? '' : '@ungated'}`;
     }
 
     private _requestPass(name: string, retry: boolean): Promise<void> {
@@ -449,7 +455,7 @@ export class UpscalerCore<THandle = GPUTexture> {
             debug: ['debug', DEBUG_SHADER],
         };
         const [label, code] = name.startsWith('rcas@')
-            ? ['rcas', buildRcasAgeKneeShader(Number(name.slice('rcas@'.length)))]
+            ? ['rcas', buildRcasAgeKneeShader(Number(name.split('@')[1]), !name.endsWith('@ungated'))]
             : shaders[name];
         const generation = this._generation;
         const request = ComputePass.create(this._device, label, code).then(pass => {
@@ -1398,13 +1404,18 @@ export class UpscalerCore<THandle = GPUTexture> {
         const rcasPass = this._path === 'spatial'
             ? this._spatialRcasPass
             : this._rcasAgeKnee > 0 ? this._passes.get(this._temporalRcasName())! : this._rcasPass;
-        const bindGroup = rcasPass.createBindGroup([
+        const entries: GPUBindingResource[] = [
             { buffer: this._constantsLate.buffer },
             input,
             exposure,
             this._outputView(),
             alpha,
-        ]);
+        ];
+        // The age knee applies to still pixels only: it reads this frame's motion.
+        if (this._path === 'temporal' && this._rcasAgeKnee > 0 && this._rcasAgeKneeStillGate) {
+            entries.push(this._dilatedMotion!.createView());
+        }
+        const bindGroup = rcasPass.createBindGroup(entries);
         const pass = encoder.beginComputePass({
             label: 'upscale-rcas',
             timestampWrites: this._timer?.passDescriptor('rcas'),

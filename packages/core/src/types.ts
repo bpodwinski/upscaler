@@ -142,14 +142,15 @@ export interface UpscalerConfig {
     depthMode?: DepthMode;
     /**
      * Age knee for temporal RCAS, in `[0, 1]`. `0` (default) sharpens every
-     * pixel alike. A positive knee scales the sharpening lobe by
-     * `smoothstep(0, knee, age)`, where age is the pixel's accumulated sample
-     * count over `maxAccumulation`: history that was just reset (disocclusion,
-     * shading change, a camera cut) is not sharpened while it is still one or
-     * two noisy samples, and reaches full sharpening at `knee`. Spatial RCAS
-     * is unchanged. Measured at `0.5`: it steadies the trails moving objects
-     * leave under a still camera, and softens freshly revealed surfaces
-     * under camera motion (packages/core/src/shaders/README.md).
+     * pixel alike. A positive knee scales the sharpening lobe of **still**
+     * pixels by `smoothstep(0, knee, age)`, where age is the pixel's
+     * accumulated sample count over `maxAccumulation`: history that was just
+     * reset (the trail a moving object uncovers, a camera cut) is not
+     * sharpened while it is still one or two noisy samples, and reaches full
+     * sharpening at `knee`. Pixels that move more than about half a render
+     * texel per frame are sharpened as usual, and so is spatial RCAS.
+     * Measured at `0.5`: temporal error on those trails drops by 17 %, with
+     * no cost under camera motion (packages/core/src/shaders/README.md).
      *
      * The value is compiled into the RCAS pipeline, so it is configuration:
      * each distinct knee is its own pipeline. At `0` the production shader

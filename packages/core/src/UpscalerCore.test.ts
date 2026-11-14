@@ -392,7 +392,13 @@ describe('UpscalerCore without an engine', () => {
             await core.prepare();
             expect(kneeShaders(device)).toHaveLength(1);
             expect(kneeShaders(device)[0]).toContain('smoothstep(0.0, 0.500000000, center.a)');
-            expect(() => core.dispatch(inputs, camera)).not.toThrow();
+            // The knee pass binds production's five entries plus the dilated motion.
+            device.createBindGroup.mockClear();
+            core.dispatch(inputs, camera);
+            const rcas = device.createBindGroup.mock.calls
+                .map(([descriptor]) => descriptor as unknown as { label: string; entries: unknown[] })
+                .filter((descriptor) => descriptor.label === 'upscale-rcas');
+            expect(rcas.map((descriptor) => descriptor.entries.length)).toEqual([6]);
 
             // Another value is another pipeline; going back reuses the first.
             configure(0.25);
@@ -401,6 +407,22 @@ describe('UpscalerCore without an engine', () => {
             configure(0.5);
             expect(core.isReady).toBe(true);
             expect(kneeShaders(device)).toHaveLength(2);
+        });
+
+        it('binds five entries without a knee, and for the ungated bench form', async () => {
+            const sizes = async (options: object, rcasAgeKnee?: number) => {
+                const { device, gpu } = mockDevice();
+                const core = new UpscalerCore({ device: device as unknown as GPUDevice, ...options } as never);
+                core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, rcasAgeKnee });
+                await core.prepare();
+                core.dispatch({ color: gpu('color'), depth: gpu('depth'), velocity: gpu('velocity') }, { near: 0.1, far: 100, perspective: true });
+                return device.createBindGroup.mock.calls
+                    .map(([descriptor]) => descriptor as unknown as { label: string; entries: unknown[] })
+                    .filter((descriptor) => descriptor.label === 'upscale-rcas')
+                    .map((descriptor) => descriptor.entries.length);
+            };
+            expect(await sizes({})).toEqual([5]);
+            expect(await sizes({ _rcasAgeKneeUngated: true }, 0.5)).toEqual([5]);
         });
 
         it('leaves the spatial path on plain RCAS', async () => {

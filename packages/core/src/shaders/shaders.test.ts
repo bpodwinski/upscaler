@@ -301,37 +301,68 @@ describe('RCAS on the temporal path', () => {
 
 describe('RCAS age knee (rcasAgeKnee)', () => {
     const knee = buildRcasAgeKneeShader(0.5);
+    const ungated = buildRcasAgeKneeShader(0.5, false);
+    const bindings = (source: string) =>
+        [...source.matchAll(/@group\(0\) @binding\((\d+)\)/g)].map((match) => Number(match[1]));
+    const withoutKnee = (source: string) =>
+        source
+            .replace('    let center = textureLoad(inputColor, sp, 0);\n    let eIn = center.rgb;', '    let eIn = rcasLoad(sp);')
+            .replace(/\n {4}\/\/\* Age Knee[\s\S]*?\n {4}}\n(?=\n {4}\/\/\* Denoise)/, '');
 
     it('is the production shader itself at a knee of 0', () => {
         expect(buildRcasAgeKneeShader(0)).toBe(RCAS_SHADER);
+        expect(buildRcasAgeKneeShader(0, false)).toBe(RCAS_SHADER);
     });
 
-    it('scales the lobe by the history age, on the temporal path only', () => {
-        expect(knee).toContain(`    if (hasFlag(FLAG_INPUT_REINHARD)) {
-        lobe *= smoothstep(0.0, 0.500000000, center.a);
+    it('scales the lobe of still pixels by the history age, on the temporal path only', () => {
+        // Pixels at or past the knee skip the motion fetch.
+        expect(knee).toContain(`    if (hasFlag(FLAG_INPUT_REINHARD) && center.a < 0.500000000) {
+        let renderCoord = min(vec2i((vec2f(sp) + 0.5) * C.displaySizeInv * C.renderSize), vec2i(C.renderSize) - 1);
+        let motionTexels = length(textureLoad(dilatedMotion, renderCoord, 0).xy * C.renderSize);
+        let still = 1.0 - smoothstep(KNEE_MOTION_LO, KNEE_MOTION_HI, motionTexels);
+        lobe *= mix(1.0, smoothstep(0.0, 0.500000000, center.a), still);
     }`);
         // Before the denoise attenuation and the resolve, which both read the lobe.
         expect(knee.indexOf('//* Age Knee')).toBeGreaterThan(knee.indexOf('var lobe = '));
         expect(knee.indexOf('//* Age Knee')).toBeLessThan(knee.indexOf('//* Denoise'));
     });
 
-    it('reads the age from the center tap it already loads', () => {
-        expect(knee).toContain('let center = textureLoad(inputColor, sp, 0);\n    let eIn = center.rgb;');
-        expect(knee).not.toContain('let eIn = rcasLoad(sp);');
-        const loads = (source: string) => (source.match(/rcasLoad\(sp|textureLoad\(inputColor, sp/g) ?? []).length;
-        expect(loads(knee)).toBe(loads(RCAS_SHADER));
+    it('fades the gate over the range of accumulate\'s still-scene relax', () => {
+        const value = (source: string, name: string) => source.match(new RegExp(name + ' : f32 = ([\\d.]+);'))?.[1];
+        expect(value(knee, 'KNEE_MOTION_LO')).toBe(value(ACCUMULATE_SHADER, 'STILL_MOTION_LO'));
+        expect(value(knee, 'KNEE_MOTION_HI')).toBe(value(ACCUMULATE_SHADER, 'STILL_MOTION_HI'));
+        expect(value(knee, 'KNEE_MOTION_LO')).toBeDefined();
     });
 
-    it('is otherwise production RCAS, with production bindings', () => {
-        const stripped = knee
-            .replace('    let center = textureLoad(inputColor, sp, 0);\n    let eIn = center.rgb;', '    let eIn = rcasLoad(sp);')
-            .replace(/\n {4}\/\/\* Age Knee[\s\S]*?\n {4}}\n(?=\n {4}\/\/\* Denoise)/, '');
-        expect(stripped).toBe(RCAS_SHADER);
-        // _encodeRcas always binds five entries, alpha source included.
-        const bindings = [...knee.matchAll(/@group\(0\) @binding\((\d+)\)/g)].map((match) => Number(match[1]));
-        expect(bindings).toEqual([0, 1, 2, 3, 4]);
+    it('reads the age from the center tap it already loads', () => {
+        for (const source of [knee, ungated]) {
+            expect(source).toContain('let center = textureLoad(inputColor, sp, 0);\n    let eIn = center.rgb;');
+            expect(source).not.toContain('let eIn = rcasLoad(sp);');
+            const loads = (text: string) => (text.match(/rcasLoad\(sp|textureLoad\(inputColor, sp/g) ?? []).length;
+            expect(loads(source)).toBe(loads(RCAS_SHADER));
+        }
+    });
+
+    it('is otherwise production RCAS, plus the motion binding', () => {
+        // _encodeRcas binds production's five entries, then the dilated motion.
+        expect(bindings(knee)).toEqual([0, 1, 2, 3, 4, 5]);
         expect(knee).toContain('@group(0) @binding(4) var alphaSource : texture_2d<f32>;');
+        expect(knee).toContain('@group(0) @binding(5) var dilatedMotion : texture_2d<f32>;');
         expect(knee.match(/@compute/g)).toHaveLength(1);
+        const stripped = withoutKnee(knee).replace(
+            /@group\(0\) @binding\(5\) var dilatedMotion : texture_2d<f32>;\n[\s\S]*?const KNEE_MOTION_HI : f32 = [\d.]+;\n/,
+            '',
+        );
+        expect(stripped).toBe(RCAS_SHADER);
+    });
+
+    it('keeps the ungated bench form on production bindings, age alone', () => {
+        expect(bindings(ungated)).toEqual([0, 1, 2, 3, 4]);
+        expect(ungated).toContain(`    if (hasFlag(FLAG_INPUT_REINHARD)) {
+        lobe *= smoothstep(0.0, 0.500000000, center.a);
+    }`);
+        expect(ungated).not.toContain('dilatedMotion');
+        expect(withoutKnee(ungated)).toBe(RCAS_SHADER);
     });
 });
 

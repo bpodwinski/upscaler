@@ -26,7 +26,10 @@ declare type BenchmarkVariantId =
     | 'shading-memory-gated8-k1'
     | 'shading-memory-gated4'
     | 'linear-depth-input-v1'
-    | 'rcas-age-knee-v1';
+    | 'rcas-age-knee-v1'
+    | 'rcas-age-knee-25-v1'
+    | 'rcas-age-knee-12-v1'
+    | 'rcas-age-knee-ungated-v1';
 declare type BenchmarkScenarioId =
     | 'Q0'
     | 'Q1'
