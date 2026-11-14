@@ -344,12 +344,14 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
 /** Options for {@link buildDepthClipVariant} (issue #79). */
 export interface DepthClipVariantOptions {
     /**
-     * `ours`: `1.37e-5 · length(renderSize / 2) · maxDepth` (production).
+     * `half-diagonal`: `1.37e-5 · length(renderSize / 2) · maxDepth`, production
+     * until the FOV term landed: upstream's `fHalfViewportWidth` read literally.
      * `upstream`: `1.37e-5 · Kfov · length(renderSize) · maxDepth`, as
      * ffx_fsr2_depth_clip.h actually computes it — its `fHalfViewportWidth` is
      * the full diagonal, and `Kfov` = |corner| / |center| of the view plane.
+     * Production now computes this, with `Kfov` from the frame's camera.
      */
-    tolerance: 'ours' | 'upstream';
+    tolerance: 'half-diagonal' | 'upstream';
     /** Widen the tolerance by the 3×3 depth relief (production). */
     relief: boolean;
     /**
@@ -372,9 +374,9 @@ export interface DepthClipVariantOptions {
  * best-tap vote) and the tolerance scale toggled one at a time, up to
  * upstream's full formulation. Same bindings as production.
  *
- * `Kfov` needs the camera's vertical FOV, which the constants UBO doesn't
- * carry: it is the pipeline override `TAN_HALF_VFOV` (default: the bench
- * camera's 50°), with the aspect taken from the render size.
+ * `Kfov` is frozen as measured: the pipeline override `TAN_HALF_VFOV`
+ * (default: the bench camera's 50°), with the aspect taken from the render
+ * size. Production reads the frame camera's from `C.depthClipKfov` instead.
  * @param options - Which pieces to take from upstream
  * @returns A WGSL module with `DEPTH_CLIP_SHADER`'s bindings
  */
@@ -485,10 +487,16 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     );
 }
 
-/** The #79 matrix by bench identity: one change at a time, then all of upstream. */
+/**
+ * The #79 matrix by bench identity: one change at a time, then all of upstream.
+ * Frozen as measured, on the half-diagonal tolerance production then used;
+ * `depth-clip-half-diagonal-v1` is that production form, for A/B against the
+ * FOV-scaled tolerance production adopted.
+ */
 export const DEPTH_CLIP_VARIANTS = {
-    'depth-clip-no-relief-v1': { tolerance: 'ours', relief: false, vote: 'best-tap', surfaceCheck: false },
-    'depth-clip-mean-vote-v1': { tolerance: 'ours', relief: true, vote: 'upstream', surfaceCheck: false },
+    'depth-clip-no-relief-v1': { tolerance: 'half-diagonal', relief: false, vote: 'best-tap', surfaceCheck: false },
+    'depth-clip-mean-vote-v1': { tolerance: 'half-diagonal', relief: true, vote: 'upstream', surfaceCheck: false },
     'depth-clip-upstream-tolerance-v1': { tolerance: 'upstream', relief: true, vote: 'best-tap', surfaceCheck: false },
     'depth-clip-upstream-v1': { tolerance: 'upstream', relief: false, vote: 'upstream', surfaceCheck: true },
+    'depth-clip-half-diagonal-v1': { tolerance: 'half-diagonal', relief: true, vote: 'best-tap', surfaceCheck: false },
 } as const satisfies Record<string, DepthClipVariantOptions>;
