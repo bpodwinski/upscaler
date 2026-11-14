@@ -70,3 +70,19 @@ describe('TemporalGuidesNode configuration', () => {
         expect(standalone({}).depthMode).toBeUndefined();
     });
 });
+
+describe('UpscalerNode rcasAgeKnee', () => {
+    it('forwards the knee, and leaves it unset by default', () => {
+        expect(nodeConfiguration({ rcasAgeKnee: 0.5 }).rcasAgeKnee).toBe(0.5);
+        expect(nodeConfiguration({ rcasAgeKnee: 0 }).rcasAgeKnee).toBe(0);
+        expect(nodeConfiguration({}).rcasAgeKnee).toBeUndefined();
+    });
+
+    it('keeps the other options beside it', () => {
+        expect(nodeConfiguration({ rcasAgeKnee: 0.25, depthMode: 'linear', jitter: false })).toMatchObject({
+            rcasAgeKnee: 0.25,
+            depthMode: 'linear',
+            jitter: false,
+        });
+    });
+});
