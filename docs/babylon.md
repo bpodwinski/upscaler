@@ -132,12 +132,19 @@ Measured on `examples/babylon/hello` (`node scripts/verify-babylon-linear-depth.
 (`?depth=linear&enclosed`) the motion, disocclusion and depth views match within
 8/255 on isolated pixels and the image differs by 0.12/255 on average (0.16 % of
 pixels by more than 8/255); without one, 0.72 % of pixels differ by more than 8/255.
-Most of the remaining 0.12 is tie-breaking, not error: under a level camera every
-image row of the flat ground has one view depth, so the 3×3 nearest-depth search
-picks among equal texels, and the two depth sources round differently. Tilting the
-ground 20° (`--query tilt=20`) removes those ties and the difference falls to
-0.03/255 (0.06 % of pixels), with the motion view identical. The color input is
-the same in both setups, and the near plane does not matter.
+That 0.12 is not error in either input. The color input is the same in both setups
+(the bilinear path diffs to exactly 0); the two depth sources just round differently,
+and it shows in two places:
+
+- **Ties.** Under a level camera every image row of the flat ground has one view
+  depth, so the 3×3 nearest-depth search picks among equal texels. Tilting the ground
+  20° (`--query tilt=20`) removes those ties: 0.12 → 0.03/255, motion view identical.
+- **Hardware depth precision.** What is left sits on silhouettes and where surfaces
+  meet, where two depths are nearly equal, and it shrinks as hardware depth gets
+  finer: with the tilt and a sky dome (`--query "tilt=20&sky=sphere"`) it is 0.033
+  at the default near plane of 0.1, 0.008 at `--near 1` and 0.002 at `--near 4`. A
+  sky dome in place of the box changes nothing (0.031 → 0.033), so flat walls are
+  not part of it.
 The upscaler gains no GPU time from linear depth, so on Babylon hardware depth
 remains the simpler input.
 

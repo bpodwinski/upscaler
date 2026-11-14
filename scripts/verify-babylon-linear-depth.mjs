@@ -48,7 +48,7 @@ const USAGE = `Usage: node scripts/verify-babylon-linear-depth.mjs [options]
   --tolerance <x>   largest mean |difference| (0-255) allowed on the enclosed pair (default 0.5)
   --mode <name>     upscale path on every page: temporal (default), spatial, bilinear, native.
                     bilinear shows the color input alone, with no depth or history involved
-  --query <params>  extra URL parameters for every page, e.g. tilt=20 (ground tilt, degrees)
+  --query <params>  extra URL parameters for every page, e.g. tilt=20 (ground tilt, degrees), sky=sphere (a sky dome, not a box)
                     or rh (right-handed scene)
   --near <z>        camera near plane on every page (default 0.1). A farther near plane
                     gives hardware depth more precision at distance
