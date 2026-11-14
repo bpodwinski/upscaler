@@ -48,13 +48,15 @@ const USAGE = `Usage: node scripts/verify-babylon-linear-depth.mjs [options]
   --tolerance <x>   largest mean |difference| (0-255) allowed on the enclosed pair (default 0.5)
   --mode <name>     upscale path on every page: temporal (default), spatial, bilinear, native.
                     bilinear shows the color input alone, with no depth or history involved
+  --query <params>  extra URL parameters for every page, e.g. tilt=20 (ground tilt, degrees)
+                    or rh (right-handed scene)
   --near <z>        camera near plane on every page (default 0.1). A farther near plane
                     gives hardware depth more precision at distance
   --url <origin>    examples origin (default http://127.0.0.1:5300)
   --port <n>        Chrome DevTools (CDP) port (default 9333)
   --chrome <path>   browser executable (default: CHROME_PATH, then a system Chrome/Edge)
   --out <dir>       where to write the PNGs (default bench/results/raw/babylon-linear-depth)`;
-const cli = parseCliOrExit(process.argv.slice(2), ['frames', 'tolerance', 'near', 'mode', 'url', 'port', 'chrome', 'out'], USAGE);
+const cli = parseCliOrExit(process.argv.slice(2), ['frames', 'tolerance', 'near', 'mode', 'query', 'url', 'port', 'chrome', 'out'], USAGE);
 const frames = Number(cli.frames ?? 90);
 const tolerance = Number(cli.tolerance ?? 0.5);
 const server = resolveServerUrl(cli.url, 'http://127.0.0.1:5300');
@@ -62,6 +64,7 @@ const port = parsePort(cli.port, '--port') ?? 9333;
 const out = resolve(typeof cli.out === 'string' ? cli.out : 'bench/results/raw/babylon-linear-depth');
 const near = typeof cli.near === 'string' ? Number(cli.near) : null;
 const mode = typeof cli.mode === 'string' ? cli.mode : null;
+const extraQuery = typeof cli.query === 'string' ? cli.query : null;
 const WIDTH = 1280;
 const HEIGHT = 720;
 // DebugView ids (packages/core/src/types.ts).
@@ -99,7 +102,7 @@ function difference(a, b) {
 
 async function capturePage(client, query) {
     client.events.length = 0;
-    const extra = [near === null ? '' : `near=${near}`, mode === null ? '' : `mode=${mode}`].filter(Boolean).join('&');
+    const extra = [near === null ? '' : `near=${near}`, mode === null ? '' : `mode=${mode}`, extraQuery ?? ''].filter(Boolean).join('&');
     const search = extra ? `${query ? `${query}&` : '?'}${extra}` : query;
     await client.send('Page.navigate', { url: new URL(`/babylon/hello/index.html${search}`, server.origin).href });
     for (let attempt = 0; ; attempt++) {
@@ -212,7 +215,7 @@ async function main() {
         }
 
         console.log(
-            `${frames} frames, ${WIDTH}x${HEIGHT}, ${mode ?? 'temporal'} path, near plane ${near ?? 0.1}; ` +
+            `${frames} frames, ${WIDTH}x${HEIGHT}, ${mode ?? 'temporal'} path, near plane ${near ?? 0.1}${extraQuery ? `, ${extraQuery}` : ''}; ` +
                 'linear vs hardware depth, |difference| on a 0-255 scale',
         );
         console.log('scene     view           mean     max   pixels off by > 8');

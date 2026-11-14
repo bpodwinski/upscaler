@@ -123,13 +123,21 @@ qualifies only under two conditions:
   and wins every 3×3 dilation, so silhouettes against the background take the
   background's motion. A sky box or sky dome fixes it.
 - **Left-handed scenes only.** The attachment holds view-space z, which is negative
-  under `scene.useRightHandedSystem`.
+  under `scene.useRightHandedSystem`. Measured with `--query rh`: every texel of
+  the depth view is wrong and 11.7 % of the image differs from hardware depth by
+  more than 8/255. Hardware depth works in both systems.
 
 Measured on `examples/babylon/hello` (`node scripts/verify-babylon-linear-depth.mjs`,
 90 animated frames, 1280×720, against hardware depth): with a sky box
 (`?depth=linear&enclosed`) the motion, disocclusion and depth views match within
 8/255 on isolated pixels and the image differs by 0.12/255 on average (0.16 % of
 pixels by more than 8/255); without one, 0.72 % of pixels differ by more than 8/255.
+Most of the remaining 0.12 is tie-breaking, not error: under a level camera every
+image row of the flat ground has one view depth, so the 3×3 nearest-depth search
+picks among equal texels, and the two depth sources round differently. Tilting the
+ground 20° (`--query tilt=20`) removes those ties and the difference falls to
+0.03/255 (0.06 % of pixels), with the motion view identical. The color input is
+the same in both setups, and the near plane does not matter.
 The upscaler gains no GPU time from linear depth, so on Babylon hardware depth
 remains the simpler input.
 

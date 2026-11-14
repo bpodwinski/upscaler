@@ -44,6 +44,12 @@ const linearDepth = params.get('depth') === 'linear';
 const enclosed = params.has('enclosed');
 // Near plane override: hardware depth precision away from the camera scales with it.
 const nearPlane = Number(params.get('near') ?? 0.1);
+// Ground tilt in degrees. Flat under a level camera, every image row of the
+// ground is one view depth, so the 3×3 nearest-depth search ties along it; a
+// tilt breaks the ties.
+const tilt = (Number(params.get('tilt') ?? 0) * Math.PI) / 180;
+// Babylon's right-handed mode: view-space z, and so the view-depth texture, turns negative.
+const rightHanded = params.has('rh');
 
 const badge = document.getElementById('badge')!;
 const canvas = document.querySelector('canvas')!;
@@ -61,6 +67,7 @@ engine.setHardwareScalingLevel(1 / Math.min(window.devicePixelRatio, 2));
 
 const scene = new Scene(engine);
 scene.clearColor = new Color4(0.03, 0.045, 0.07, 1);
+scene.useRightHandedSystem = rightHanded;
 
 const camera = new ArcRotateCamera('camera', 0, 1.1, 8, new Vector3(0, 0.4, 0), scene);
 camera.minZ = nearPlane;
@@ -104,6 +111,7 @@ groundMat.diffuseTexture = gridTexture('ground-grid', 8, true);
 (groundMat.diffuseTexture as Texture).uScale = (groundMat.diffuseTexture as Texture).vScale = 5;
 groundMat.specularColor = Color3.Black();
 ground.material = groundMat;
+ground.rotation.z = tilt;
 
 const cubes: Mesh[] = [];
 for (let i = 0; i < 7; i++) {
