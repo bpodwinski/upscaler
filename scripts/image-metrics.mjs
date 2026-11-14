@@ -297,6 +297,82 @@ export function temporalMaps(output, previousOutput, reference, previousReferenc
     return { error, churn, referenceChurn };
 }
 
+//* Young-History Pixels =====================================================
+
+/**
+ * Empty pooled sums for one window's young-history pixels: the pixels whose
+ * accumulation age is below a threshold (disocclusion trails, the strip a
+ * camera move brings into view, freshly reset pixels).
+ * @returns {{pixels: number, total: number, squared: number, ssim: number, ssimPixels: number, temporalPixels: number, error: number, churn: number, referenceChurn: number}} Zeroed sums
+ */
+export const youngSums = () => ({
+    pixels: 0,
+    total: 0,
+    squared: 0,
+    ssim: 0,
+    ssimPixels: 0,
+    temporalPixels: 0,
+    error: 0,
+    churn: 0,
+    referenceChurn: 0,
+});
+
+/**
+ * Adds one frame's young-history pixels to a window's pooled sums.
+ * @param {ReturnType<typeof youngSums>} sums - The window's sums, updated in place
+ * @param {Uint16Array} ageHalves - Accumulation age per pixel as f16 bits (0–1 of maxAccumulation)
+ * @param {number} threshold - Ages strictly below this are young
+ * @param {Float32Array} squared - Per-pixel squared error
+ * @param {Float32Array} ssim - Per-pixel SSIM
+ * @param {{error: Float32Array, churn: Float32Array, referenceChurn: Float32Array} | null} maps - Temporal maps, when there is a previous frame
+ * @param {number} width - Image width
+ * @param {number} height - Image height
+ */
+export function addYoung(sums, ageHalves, threshold, squared, ssim, maps, width, height) {
+    if (ageHalves.length !== width * height) throw new Error('Age map size does not match the image.');
+    sums.total += width * height;
+    for (let y = 0; y < height; y++)
+        for (let x = 0; x < width; x++) {
+            const p = y * width + x;
+            // NaN ages (never written) are not young: the comparison is false.
+            if (!(HALF_TO_FLOAT[ageHalves[p]] < threshold)) continue;
+            sums.pixels++;
+            sums.squared += squared[p];
+            // The SSIM window does not fit at the border, as in regionMean().
+            if (x >= SSIM_BORDER && x < width - SSIM_BORDER && y >= SSIM_BORDER && y < height - SSIM_BORDER) {
+                sums.ssim += ssim[p];
+                sums.ssimPixels++;
+            }
+            if (maps) {
+                sums.temporalPixels++;
+                sums.error += maps.error[p];
+                sums.churn += maps.churn[p];
+                sums.referenceChurn += maps.referenceChurn[p];
+            }
+        }
+}
+
+/**
+ * Pooled metrics over a window's young-history pixels. A metric with no
+ * pixel behind it is `null`, not 0 or Infinity.
+ * @param {ReturnType<typeof youngSums>} sums - The window's sums
+ * @param {number} threshold - The age threshold the sums were built with
+ * @returns {{ageBelow: number, share: number, pixels: number, psnr: number | null, ssim: number | null, temporalError: number | null, churn: number | null, referenceChurn: number | null}} Share of the window's pixels, and the metrics over them (temporal ones on a 0–255 scale)
+ */
+export function summarizeYoung(sums, threshold) {
+    const over = (value, count) => (count ? value / count : null);
+    return {
+        ageBelow: threshold,
+        share: sums.total ? sums.pixels / sums.total : 0,
+        pixels: sums.pixels,
+        psnr: sums.pixels ? psnr(sums.squared / sums.pixels) : null,
+        ssim: over(sums.ssim, sums.ssimPixels),
+        temporalError: over(255 * sums.error, sums.temporalPixels),
+        churn: over(255 * sums.churn, sums.temporalPixels),
+        referenceChurn: over(255 * sums.referenceChurn, sums.temporalPixels),
+    };
+}
+
 //* PNG I/O ===================================================================
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);

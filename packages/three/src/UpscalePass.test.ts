@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { Matrix4 } from 'three';
+import { Matrix4, Texture } from 'three';
 import type * as THREE from 'three/webgpu';
 
 // GPU-free: the Upscaler (device, pipelines, textures) is replaced by a stub, so
@@ -10,6 +10,10 @@ vi.mock('./Upscaler', () => ({
         readonly unjitteredProjectionMatrix = new Matrix4();
         init = vi.fn();
         dispose = vi.fn();
+        configure = vi.fn();
+        renderWidth = 8;
+        renderHeight = 8;
+        outputTexture = new Texture();
     },
 }));
 
@@ -46,5 +50,30 @@ describe('UpscalePass.dispose', () => {
         pass.dispose();
 
         expect(geometryDisposed).not.toHaveBeenCalled();
+    });
+});
+
+describe('UpscalePass.configure', () => {
+    const configured = (config: Parameters<InstanceType<typeof UpscalePass>['configure']>[0]) => {
+        const pass = new UpscalePass({} as THREE.WebGPURenderer, { shareVelocityMatrix: false });
+        pass.configure(config);
+        const configure = pass.upscaler.configure as unknown as ReturnType<typeof vi.fn>;
+        return configure.mock.calls[0][0] as Record<string, unknown>;
+    };
+
+    it('forwards rcasAgeKnee to the upscaler, and leaves it unset by default', () => {
+        expect(configured({ displayWidth: 64, displayHeight: 32, rcasAgeKnee: 0.5 })).toMatchObject({
+            displayWidth: 64,
+            displayHeight: 32,
+            path: 'temporal',
+            rcasAgeKnee: 0.5,
+        });
+        expect(configured({ displayWidth: 64, displayHeight: 32 }).rcasAgeKnee).toBeUndefined();
+    });
+
+    it("rejects the 'guides' path before touching the upscaler", () => {
+        const pass = new UpscalePass({} as THREE.WebGPURenderer, { shareVelocityMatrix: false });
+        expect(() => pass.configure({ displayWidth: 64, displayHeight: 32, path: 'guides' })).toThrow(/guides/);
+        expect(pass.upscaler.configure).not.toHaveBeenCalled();
     });
 });

@@ -57,6 +57,7 @@ import { parseCliOrExit } from './cli-flags.mjs';
 import {
     HALF_TO_FLOAT,
     SSIM_BORDER,
+    addYoung,
     decodePng,
     encodePng,
     present,
@@ -65,7 +66,9 @@ import {
     regionMean,
     squaredErrorMap,
     ssimMap,
+    summarizeYoung,
     temporalMaps,
+    youngSums,
 } from './image-metrics.mjs';
 import {
     DEFAULT_BENCH_URL,
@@ -557,60 +560,6 @@ function summarizeWindow(rows, roiNames) {
     return summary;
 }
 
-/** Empty pooled sums for one window's young-history pixels. */
-const youngSums = () => ({ pixels: 0, total: 0, squared: 0, ssim: 0, ssimPixels: 0, temporalPixels: 0, error: 0, churn: 0, referenceChurn: 0 });
-
-/**
- * Adds one frame's young-history pixels to a window's pooled sums.
- * @param {ReturnType<typeof youngSums>} sums - The window's sums
- * @param {Uint16Array} ageHalves - Accumulation age per pixel (f16 bits)
- * @param {Float32Array} squared - Per-pixel squared error
- * @param {Float32Array} ssim - Per-pixel SSIM
- * @param {{error: Float32Array, churn: Float32Array, referenceChurn: Float32Array} | null} maps - Temporal maps, when there is a previous frame
- * @param {number} w - Image width
- * @param {number} h - Image height
- */
-function addYoung(sums, ageHalves, squared, ssim, maps, w, h) {
-    sums.total += w * h;
-    for (let y = 0; y < h; y++)
-        for (let x = 0; x < w; x++) {
-            const p = y * w + x;
-            if (!(HALF_TO_FLOAT[ageHalves[p]] < youngAge)) continue;
-            sums.pixels++;
-            sums.squared += squared[p];
-            // The SSIM window does not fit at the border, as in regionMean().
-            if (x >= SSIM_BORDER && x < w - SSIM_BORDER && y >= SSIM_BORDER && y < h - SSIM_BORDER) {
-                sums.ssim += ssim[p];
-                sums.ssimPixels++;
-            }
-            if (maps) {
-                sums.temporalPixels++;
-                sums.error += maps.error[p];
-                sums.churn += maps.churn[p];
-                sums.referenceChurn += maps.referenceChurn[p];
-            }
-        }
-}
-
-/**
- * Pooled metrics over a window's young-history pixels.
- * @param {ReturnType<typeof youngSums>} sums - The window's sums
- * @returns {object} Share of the window's pixels, and the metrics over them
- */
-function summarizeYoung(sums) {
-    const over = (value, count) => (count ? value / count : null);
-    return {
-        ageBelow: youngAge,
-        share: sums.pixels / Math.max(sums.total, 1),
-        pixels: sums.pixels,
-        psnr: sums.pixels ? psnr(sums.squared / sums.pixels) : null,
-        ssim: over(sums.ssim, sums.ssimPixels),
-        temporalError: over(255 * sums.error, sums.temporalPixels),
-        churn: over(255 * sums.churn, sums.temporalPixels),
-        referenceChurn: over(255 * sums.referenceChurn, sums.temporalPixels),
-    };
-}
-
 //* Main
 async function main() {
     await rm(outputDirectory, { recursive: true, force: true });
@@ -798,7 +747,7 @@ async function main() {
                             ssim: regionMean(ssim, displayWidth, displayHeight, roi, SSIM_BORDER),
                             temporalError: maps ? 255 * regionMean(maps.error, displayWidth, displayHeight, roi) : null,
                         };
-                    if (ageHalves) addYoung(young, ageHalves, squared, ssim, maps, displayWidth, displayHeight);
+                    if (ageHalves) addYoung(young, ageHalves, youngAge, squared, ssim, maps, displayWidth, displayHeight);
                     rows.push(row);
                     previous = { frame, output, reference };
                     lastPresented = { output, linear };
@@ -809,7 +758,7 @@ async function main() {
                 }
                 perWindow[window.name] = {
                     ...window,
-                    summary: { ...summarizeWindow(rows, roiNames), ...(scoreYoung ? { young: summarizeYoung(young) } : {}) },
+                    summary: { ...summarizeWindow(rows, roiNames), ...(scoreYoung ? { young: summarizeYoung(young, youngAge) } : {}) },
                     perFrame: rows,
                 };
             }
