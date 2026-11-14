@@ -8,6 +8,7 @@ import type {
 export {
     DebugView,
     QualityMode,
+    type DepthMode,
     type JitterOffset,
     type RuntimeSettings,
     type UpscalePath,

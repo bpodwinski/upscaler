@@ -7,6 +7,7 @@ export { TemporalGuidesNode, temporalGuides, type TemporalGuidesNodeOptions } fr
 export {
     DebugView,
     QualityMode,
+    type DepthMode,
     type UpscalerConfig,
     type DispatchInputs,
     type GuideDispatchInputs,

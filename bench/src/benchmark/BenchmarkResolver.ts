@@ -10,6 +10,7 @@ import {
 
 type CrossFrameReconstruct = { shader: string; cameraCompensated: boolean };
 import { CandidateUpscaler } from '../candidates/CandidateUpscaler';
+import { LinearDepthConverter } from './LinearDepthConverter';
 import {
     buildShadingRecurrenceShader,
     SHADING_CHANGE_FRAME_PAIR_SHADER,
@@ -43,6 +44,8 @@ class BenchmarkResolverAdapter implements BenchmarkResolver {
     readonly metadata: BenchmarkVariantMetadata;
 
     private readonly _upscaler: Upscaler | CandidateUpscaler;
+    // Set by the linear-depth identity: the same scene, handed over as view depth.
+    protected _linearDepth: LinearDepthConverter | null = null;
 
     constructor(
         upscaler: Upscaler | CandidateUpscaler,
@@ -115,7 +118,9 @@ class BenchmarkResolverAdapter implements BenchmarkResolver {
             displayHeight: config.displayHeight,
             customUpscaleRatio: config.ratio,
             path: config.path,
+            depthMode: this._linearDepth ? 'linear' : 'hardware',
         });
+        this._linearDepth?.configure(this._upscaler.renderWidth, this._upscaler.renderHeight);
     }
 
     beginFrame(camera: unknown): void {
@@ -128,9 +133,13 @@ class BenchmarkResolverAdapter implements BenchmarkResolver {
 
     dispatch(inputs: BenchmarkResolverDispatch, camera: unknown): void {
         this._timer.setNextFrameTag(inputs.frameTag);
+        const sceneDepth = inputs.depth as THREE.Texture | undefined;
         const dispatchInputs = {
             color: inputs.color as THREE.Texture,
-            depth: inputs.depth as THREE.Texture | undefined,
+            depth:
+                sceneDepth && this._linearDepth
+                    ? this._linearDepth.convert(sceneDepth, camera as THREE.PerspectiveCamera)
+                    : sceneDepth,
             velocity: inputs.velocity as THREE.Texture | undefined,
             reactive: inputs.reactive as THREE.Texture | undefined,
             reactiveOpaqueColor: inputs.reactiveOpaqueColor as THREE.Texture | undefined,
@@ -181,6 +190,7 @@ class BenchmarkResolverAdapter implements BenchmarkResolver {
     }
 
     dispose(): void {
+        this._linearDepth?.dispose();
         this._upscaler.dispose();
     }
 }
@@ -224,6 +234,14 @@ function createCandidateUpscaler(
  * Adapts the production upscaler to the benchmark lifecycle.
  */
 export class BaselineBenchmarkResolver extends BenchmarkResolverAdapter {
+    /**
+     * Switches this resolver to `depthMode: 'linear'`. Call before `configure()`.
+     * @param converter - Produces the view-depth texture each frame
+     */
+    useLinearDepth(converter: LinearDepthConverter): void {
+        this._linearDepth = converter;
+    }
+
     constructor(
         renderer: THREE.WebGPURenderer,
         metadata: BenchmarkVariantMetadata,
@@ -284,6 +302,29 @@ export function createBaselineResolver(
         RCAS_LEGACY_SHADER,
         metadata.id === 'baseline' ? RCAS_SHADER : undefined,
     );
+}
+
+/**
+ * Creates `linear-depth-input-v1`: the `baseline` pipeline configured with
+ * `depthMode: 'linear'` and fed the scene's depth converted to view depth
+ * (LinearDepthConverter), so the two depth modes can be compared on one scene.
+ * The conversion is outside the upscaler's timer.
+ * @param renderer - Initialized three WebGPU renderer
+ * @param metadata - Registry metadata for the identity
+ * @returns One linear-depth resolver instance
+ */
+export function createLinearDepthResolver(
+    renderer: unknown,
+    metadata: BenchmarkVariantMetadata,
+): BenchmarkResolver {
+    const resolver = new BaselineBenchmarkResolver(
+        renderer as THREE.WebGPURenderer,
+        metadata,
+        RCAS_LEGACY_SHADER,
+        RCAS_SHADER,
+    );
+    resolver.useLinearDepth(new LinearDepthConverter(renderer as THREE.WebGPURenderer));
+    return resolver;
 }
 
 /**
