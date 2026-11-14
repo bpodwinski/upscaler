@@ -314,6 +314,47 @@ export const RCAS_PER_TAP_SHADER = createRcasShader(true);
 export const RCAS_SHADER = createRcasShader(true, true);
 
 /**
+ * Production RCAS with an age knee on the temporal path (`rcasAgeKnee`): the
+ * sharpening lobe is scaled by `smoothstep(0, knee, age)`, where age is the
+ * history's `.a`, the accumulated sample count over `maxAccumulation`. A
+ * pixel whose history was just reset (disocclusion, shading change, a cut)
+ * holds one or two jittered samples, so its contrast is aliasing and noise,
+ * not detail; it is sharpened progressively as it converges. The spatial path
+ * has no age and is unchanged. The age comes from the center tap RCAS already
+ * loads, so there is no extra fetch.
+ * @param knee - Normalized age at which sharpening is back to full, in (0, 1]
+ * @returns The assembled WGSL; {@link RCAS_SHADER} itself for a knee of 0
+ */
+export function buildRcasAgeKneeShader(knee: number): string {
+    if (!(knee > 0)) return RCAS_SHADER;
+    const replace = (source: string, from: string, to: string): string => {
+        if (!source.includes(from)) throw new Error('rcas age knee: production RCAS no longer contains ' + from);
+        return source.replace(from, () => to);
+    };
+    // sp is on the dispatch grid, so the center needs no clamp.
+    const centered = replace(
+        RCAS_SHADER,
+        '    let eIn = rcasLoad(sp);',
+        `    let center = textureLoad(inputColor, sp, 0);
+    let eIn = center.rgb;`,
+    );
+    return replace(
+        centered,
+        `
+    //* Denoise (FSR1's FSR_RCAS_DENOISE)`,
+        `
+    //* Age Knee
+    // History .a is the accumulated sample count over maxAccumulation. Young
+    // history is aliased and noisy; sharpening it amplifies both.
+    if (hasFlag(FLAG_INPUT_REINHARD)) {
+        lobe *= smoothstep(0.0, ${knee.toPrecision(9)}, center.a);
+    }
+
+    //* Denoise (FSR1's FSR_RCAS_DENOISE)`,
+    );
+}
+
+/**
  * Benchmark candidate: production math with the exposure load hoisted out of
  * the tap function (one 1×1 load + reciprocal per pixel instead of five
  * loads + divisions). Output is visually identical to {@link RCAS_SHADER}.

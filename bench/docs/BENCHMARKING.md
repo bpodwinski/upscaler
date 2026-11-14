@@ -102,6 +102,7 @@ temporal path and the FSR1 spatial path. Shader names refer to
 | `rcas-hoisted-exposure-v1` / `rcas-tonemap-space-v1` | the experiment shader of the same name | the same shader |
 | `source-*-bundle-v1` (frozen candidates) | `RCAS_PER_TAP_SHADER` | `RCAS_PER_TAP_SHADER` |
 | `linear-depth-input-v1`: `baseline` configured with `depthMode: 'linear'`, fed the scene's depth converted to view depth by a bench-only pass outside the timer | `RCAS_LEGACY_SHADER` | `RCAS_SHADER` (production) |
+| `rcas-age-knee-v1`: `production` configured with `rcasAgeKnee: 0.5` | `buildRcasAgeKneeShader(0.5)` | **`RCAS_SHADER` (production)** |
 
 Native and bilinear modes run no RCAS; they use the blit pass. FSR1 with
 `sharpness` 0 blits too.

@@ -289,6 +289,14 @@ on the next dispatch, with no rebuild:
 
 All except `sharpness` and `rcasDenoise` affect only the temporal path.
 
+One sharpening control is configuration, not a setting: **`rcasAgeKnee`** in
+`configure()` (default `0`, off). A positive knee scales temporal RCAS by
+`smoothstep(0, knee, age)`, age being the pixel's accumulated sample count over
+`maxAccumulation`, so history that was just reset (a disocclusion trail, a camera
+cut) is sharpened progressively instead of at once. The value is compiled into the
+RCAS pipeline, so changing it means another `configure()`. `0.5` is a reasonable
+start; measured effect in `packages/core/src/shaders/README.md` → *RCAS age knee*.
+
 **Camera cuts:** call `upscaler.resetHistory()`, or pass `reset: true` in that
 frame's dispatch inputs, so the first frame after a teleport doesn't blend against
 the old view.

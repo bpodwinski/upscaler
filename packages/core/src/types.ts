@@ -140,6 +140,20 @@ export interface UpscalerConfig {
      * configuration, not a per-frame setting. See docs/engine-contract.md.
      */
     depthMode?: DepthMode;
+    /**
+     * Age knee for temporal RCAS, in `[0, 1]`. `0` (default) sharpens every
+     * pixel alike. A positive knee scales the sharpening lobe by
+     * `smoothstep(0, knee, age)`, where age is the pixel's accumulated sample
+     * count over `maxAccumulation`: history that was just reset (disocclusion,
+     * shading change, a camera cut) is not sharpened while it is still one or
+     * two noisy samples, and reaches full sharpening at `knee`. `0.5` is a
+     * reasonable start. Spatial RCAS is unchanged.
+     *
+     * The value is compiled into the RCAS pipeline, so it is configuration:
+     * each distinct knee is its own pipeline. At `0` the production shader
+     * is used unchanged.
+     */
+    rcasAgeKnee?: number;
 }
 
 /** How the `depth` input is encoded. See {@link UpscalerConfig.depthMode}. */
