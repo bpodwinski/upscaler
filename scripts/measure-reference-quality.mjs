@@ -30,7 +30,12 @@ import { gpuAuditSource } from './gpu-audit.mjs';
  *   can, and the temporal error charges flicker the true image lacks and lag
  *   behind motion the true image makes.
  * Per window (a run of consecutive frames, e.g. one Q19 motion segment), per
- * scenario ROI. --export-png writes every frame as an 8-bit PNG sequence for
+ * scenario ROI. --young-age t also scores the temporal mode over the pixels
+ * whose history is young (accumulation age below t of maxAccumulation, read
+ * back from the history texture each frame): disocclusion trails, the strip a
+ * camera move brings into view, freshly reset pixels. Those are a percent or
+ * two of a frame, so whole-frame numbers cannot show what happens on them.
+ * --export-png writes every frame as an 8-bit PNG sequence for
  * offline LPIPS / FovVideoVDP / ColorVideoVDP (recipe:
  * bench/docs/REFERENCE-QUALITY.md). No Python is needed for anything else.
  *
@@ -123,6 +128,8 @@ const USAGE = `Usage: node scripts/measure-reference-quality.mjs [options]
   --variant <id>         bench variant (default production: production RCAS on every
                          path; 'baseline' runs the frozen legacy RCAS on temporal)
   --settings <json>      capture-setting overrides, e.g. '{"autoExposure":false}'
+  --young-age <t>        also score the temporal mode over pixels whose accumulation
+                         age is below t (0-1, of maxAccumulation), pooled per window
   --label <name>         output folder prefix (default: the variant id)
   --export-png           write every measured frame (reference + each mode) as an
                          8-bit sRGB PNG sequence for offline perceptual metrics
@@ -140,7 +147,7 @@ const cli = parseCliOrExit(
     process.argv.slice(2),
     [
         'scenario', 'ratio', 'modes', 'frames', 'samples', 'scale', 'floor-samples', 'width', 'height', 'variant',
-        'settings', 'label', 'export-png', 'keep-raw', 'url', 'port', 'chrome', 'power-preference',
+        'settings', 'young-age', 'label', 'export-png', 'keep-raw', 'url', 'port', 'chrome', 'power-preference',
         'expected-vendor', 'without-timestamps',
     ],
     USAGE,
@@ -159,6 +166,7 @@ const height = Number(cli.height ?? 720);
 const variant = typeof cli.variant === 'string' ? cli.variant : 'production';
 const settings = typeof cli.settings === 'string' ? JSON.parse(cli.settings) : {};
 const label = String(cli.label ?? variant);
+const youngAge = cli['young-age'] === undefined ? null : Number(cli['young-age']);
 const exportPng = cli['export-png'] === true;
 const keepRaw = cli['keep-raw'] === true;
 const port = parsePort(cli.port, '--port') ?? 9333;
@@ -168,6 +176,7 @@ function fail(message) {
     console.error(`${message}\n\n${USAGE}`);
     process.exit(1);
 }
+if (youngAge !== null && !(youngAge > 0 && youngAge <= 1)) fail('--young-age must be in (0, 1].');
 if (UNSUPPORTED.has(scenario)) fail(`Scenario ${scenario} is not supported by the reference capture.`);
 for (const mode of modes) if (!MODES.includes(mode)) fail(`Unknown mode ${mode}.`);
 if (!Number.isInteger(scale) || scale < 1) fail('--scale must be a positive integer.');
@@ -374,6 +383,32 @@ const PAGE_HELPER = /* js */ `
             return { width: w, height: h, bytes: payload.length };
         },
 
+        // Reads the accumulation age (history .a, 0-1 of maxAccumulation) the
+        // frame just wrote; leaves one half per pixel as the payload.
+        async readAge() {
+            const history = pipeline.resolver._upscaler?.guides?.history;
+            if (!history) throw new Error('This variant publishes no history guide to read the age from.');
+            const texture = renderer.backend.get(history).texture;
+            if (texture.format !== 'rgba16float') throw new Error('Unexpected history format ' + texture.format);
+            const w = texture.width;
+            const h = texture.height;
+            const bytesPerRow = Math.ceil((w * 8) / 256) * 256;
+            const buffer = device.createBuffer({ size: bytesPerRow * h, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+            const encoder = device.createCommandEncoder();
+            encoder.copyTextureToBuffer({ texture, mipLevel: 0 }, { buffer, bytesPerRow }, [w, h]);
+            device.queue.submit([encoder.finish()]);
+            await buffer.mapAsync(GPUMapMode.READ);
+            const halves = new Uint16Array(buffer.getMappedRange());
+            const age = new Uint16Array(w * h);
+            const stride = bytesPerRow / 2;
+            for (let y = 0; y < h; y++)
+                for (let x = 0; x < w; x++) age[y * w + x] = halves[y * stride + x * 4 + 3];
+            buffer.unmap();
+            buffer.destroy();
+            payload = new Uint8Array(age.buffer);
+            return { width: w, height: h, bytes: payload.length };
+        },
+
         chunk(offset, length) {
             const slice = payload.subarray(offset, offset + length);
             if (typeof slice.toBase64 === 'function') return slice.toBase64();
@@ -522,6 +557,60 @@ function summarizeWindow(rows, roiNames) {
     return summary;
 }
 
+/** Empty pooled sums for one window's young-history pixels. */
+const youngSums = () => ({ pixels: 0, total: 0, squared: 0, ssim: 0, ssimPixels: 0, temporalPixels: 0, error: 0, churn: 0, referenceChurn: 0 });
+
+/**
+ * Adds one frame's young-history pixels to a window's pooled sums.
+ * @param {ReturnType<typeof youngSums>} sums - The window's sums
+ * @param {Uint16Array} ageHalves - Accumulation age per pixel (f16 bits)
+ * @param {Float32Array} squared - Per-pixel squared error
+ * @param {Float32Array} ssim - Per-pixel SSIM
+ * @param {{error: Float32Array, churn: Float32Array, referenceChurn: Float32Array} | null} maps - Temporal maps, when there is a previous frame
+ * @param {number} w - Image width
+ * @param {number} h - Image height
+ */
+function addYoung(sums, ageHalves, squared, ssim, maps, w, h) {
+    sums.total += w * h;
+    for (let y = 0; y < h; y++)
+        for (let x = 0; x < w; x++) {
+            const p = y * w + x;
+            if (!(HALF_TO_FLOAT[ageHalves[p]] < youngAge)) continue;
+            sums.pixels++;
+            sums.squared += squared[p];
+            // The SSIM window does not fit at the border, as in regionMean().
+            if (x >= SSIM_BORDER && x < w - SSIM_BORDER && y >= SSIM_BORDER && y < h - SSIM_BORDER) {
+                sums.ssim += ssim[p];
+                sums.ssimPixels++;
+            }
+            if (maps) {
+                sums.temporalPixels++;
+                sums.error += maps.error[p];
+                sums.churn += maps.churn[p];
+                sums.referenceChurn += maps.referenceChurn[p];
+            }
+        }
+}
+
+/**
+ * Pooled metrics over a window's young-history pixels.
+ * @param {ReturnType<typeof youngSums>} sums - The window's sums
+ * @returns {object} Share of the window's pixels, and the metrics over them
+ */
+function summarizeYoung(sums) {
+    const over = (value, count) => (count ? value / count : null);
+    return {
+        ageBelow: youngAge,
+        share: sums.pixels / Math.max(sums.total, 1),
+        pixels: sums.pixels,
+        psnr: sums.pixels ? psnr(sums.squared / sums.pixels) : null,
+        ssim: over(sums.ssim, sums.ssimPixels),
+        temporalError: over(255 * sums.error, sums.temporalPixels),
+        churn: over(255 * sums.churn, sums.temporalPixels),
+        referenceChurn: over(255 * sums.referenceChurn, sums.temporalPixels),
+    };
+}
+
 //* Main
 async function main() {
     await rm(outputDirectory, { recursive: true, force: true });
@@ -654,8 +743,10 @@ async function main() {
             let previous = null;
             let lastPresented = null;
             let nonFinite = 0;
+            const scoreYoung = youngAge !== null && mode === 'temporal';
             for (const [windowIndex, window] of windows.entries()) {
                 const rows = [];
+                const young = youngSums();
                 for (let frame = window.start; frame <= window.end; frame++) {
                     if (windowIndex === 0 && frame === window.start)
                         await evaluate(
@@ -674,6 +765,13 @@ async function main() {
                     }
                     const output = present(linear);
                     const reference = await loadReference(frame);
+                    let ageHalves = null;
+                    if (scoreYoung) {
+                        const age = await evaluate(client, 'window.__referenceQuality.readAge()');
+                        if (age.width !== displayWidth || age.height !== displayHeight)
+                            throw new Error(`history ${age.width}x${age.height}, display ${displayWidth}x${displayHeight}.`);
+                        ageHalves = new Uint16Array(await fetchPayload(client, age.bytes));
+                    }
                     if (exportPng)
                         await writeFile(join(outputDirectory, 'png', mode, `${frameName(frame)}.png`), encodePng(output, displayWidth, displayHeight));
                     else if (frame === window.start)
@@ -700,6 +798,7 @@ async function main() {
                             ssim: regionMean(ssim, displayWidth, displayHeight, roi, SSIM_BORDER),
                             temporalError: maps ? 255 * regionMean(maps.error, displayWidth, displayHeight, roi) : null,
                         };
+                    if (ageHalves) addYoung(young, ageHalves, squared, ssim, maps, displayWidth, displayHeight);
                     rows.push(row);
                     previous = { frame, output, reference };
                     lastPresented = { output, linear };
@@ -708,7 +807,11 @@ async function main() {
                             (row.temporal ? `, tErr ${row.temporal.error.toFixed(3)}` : '') + '        ',
                     );
                 }
-                perWindow[window.name] = { ...window, summary: summarizeWindow(rows, roiNames), perFrame: rows };
+                perWindow[window.name] = {
+                    ...window,
+                    summary: { ...summarizeWindow(rows, roiNames), ...(scoreYoung ? { young: summarizeYoung(young) } : {}) },
+                    perFrame: rows,
+                };
             }
             await evaluate(client, 'new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))');
             const check = presentationCheck(lastPresented.output, lastPresented.linear, await captureCanvas(client), displayWidth, displayHeight);
@@ -728,6 +831,12 @@ async function main() {
                 console.log(
                     `${mode.padEnd(10)} ${pad(s.psnr, 2, 8)} ${pad(s.ssim, 4, 8)} ${pad(s.temporalError, 3, 10)} ${pad(s.churn, 3, 10)} ${pad(s.referenceChurn, 3, 13)}`,
                 );
+                // The same columns over young-history pixels only, pooled over the window.
+                if (s.young)
+                    console.log(
+                        `  age<${s.young.ageBelow} ${pad(s.young.psnr, 2, 8)} ${pad(s.young.ssim, 4, 8)} ${pad(s.young.temporalError, 3, 10)} ` +
+                            `${pad(s.young.churn, 3, 10)} ${pad(s.young.referenceChurn, 3, 13)}   (${(s.young.share * 100).toFixed(2)} % of pixels)`,
+                    );
             }
         }
 

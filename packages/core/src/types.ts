@@ -146,8 +146,10 @@ export interface UpscalerConfig {
      * `smoothstep(0, knee, age)`, where age is the pixel's accumulated sample
      * count over `maxAccumulation`: history that was just reset (disocclusion,
      * shading change, a camera cut) is not sharpened while it is still one or
-     * two noisy samples, and reaches full sharpening at `knee`. `0.5` is a
-     * reasonable start. Spatial RCAS is unchanged.
+     * two noisy samples, and reaches full sharpening at `knee`. Spatial RCAS
+     * is unchanged. Measured at `0.5`: it steadies the trails moving objects
+     * leave under a still camera, and softens freshly revealed surfaces
+     * under camera motion (packages/core/src/shaders/README.md).
      *
      * The value is compiled into the RCAS pipeline, so it is configuration:
      * each distinct knee is its own pipeline. At `0` the production shader
