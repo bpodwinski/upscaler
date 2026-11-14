@@ -425,6 +425,71 @@ describe('UpscalerCore without an engine', () => {
             expect(await sizes({ _rcasAgeKneeUngated: true }, 0.5)).toEqual([5]);
         });
 
+        it('accepts the ends of the range, and treats 0 as off', async () => {
+            const { device } = mockDevice();
+            device.createShaderModule = vi.fn(device.createShaderModule);
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, rcasAgeKnee: 0 });
+            await core.prepare();
+            expect(kneeShaders(device)).toHaveLength(0);
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, rcasAgeKnee: 1 });
+            await core.prepare();
+            expect(kneeShaders(device)).toHaveLength(1);
+            expect(kneeShaders(device)[0]).toContain('center.a < 1.00000000)');
+        });
+
+        it('builds the pipeline for the exact knee configured, whatever its digits', async () => {
+            const { device, gpu } = mockDevice();
+            device.createShaderModule = vi.fn(device.createShaderModule);
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            const knee = 0.1 + 0.2; // 0.30000000000000004: the pipeline name must round-trip it
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, rcasAgeKnee: knee });
+            await core.prepare();
+            expect(kneeShaders(device)).toHaveLength(1);
+            expect(kneeShaders(device)[0]).toContain(`smoothstep(0.0, ${knee.toPrecision(9)}, center.a)`);
+            expect(() => core.dispatch({ color: gpu('color'), depth: gpu('depth'), velocity: gpu('velocity') }, { near: 0.1, far: 100, perspective: true })).not.toThrow();
+        });
+
+        it('keeps the gated and the ungated pipelines apart', async () => {
+            const build = async (options: object) => {
+                const { device } = mockDevice();
+                device.createShaderModule = vi.fn(device.createShaderModule);
+                const core = new UpscalerCore({ device: device as unknown as GPUDevice, ...options } as never);
+                core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, rcasAgeKnee: 0.5 });
+                await core.prepare();
+                return kneeShaders(device)[0];
+            };
+            expect(await build({})).toContain('var dilatedMotion : texture_2d<f32>;');
+            expect(await build({ _rcasAgeKneeUngated: true })).not.toContain('dilatedMotion');
+        });
+
+        it('does not sharpen through the knee pipeline on a debug view or at sharpness 0', async () => {
+            const { device, gpu } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, rcasAgeKnee: 0.5 });
+            await core.prepare();
+            const inputs = { color: gpu('color'), depth: gpu('depth'), velocity: gpu('velocity') };
+            const labels = () => device.createBindGroup.mock.calls.map(([descriptor]) => (descriptor as unknown as { label: string }).label);
+
+            core.settings.sharpness = 0;
+            device.createBindGroup.mockClear();
+            core.dispatch(inputs, { near: 0.1, far: 100, perspective: true });
+            expect(labels()).not.toContain('upscale-rcas');
+            expect(labels()).toContain('upscale-blit');
+        });
+
+        it('keeps the previous configuration when a knee is rejected', async () => {
+            const { device, gpu } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, rcasAgeKnee: 0.5 });
+            await core.prepare();
+            expect(() => core.configure({ displayWidth: 128, displayHeight: 64, customUpscaleRatio: 2, rcasAgeKnee: 2 })).toThrow(/rcasAgeKnee/);
+            // Nothing moved: same sizes, still ready, still dispatching.
+            expect([core.displayWidth, core.displayHeight]).toEqual([64, 32]);
+            expect(core.isReady).toBe(true);
+            expect(() => core.dispatch({ color: gpu('color'), depth: gpu('depth'), velocity: gpu('velocity') }, { near: 0.1, far: 100, perspective: true })).not.toThrow();
+        });
+
         it('leaves the spatial path on plain RCAS', async () => {
             const { device, gpu } = mockDevice();
             device.createShaderModule = vi.fn(device.createShaderModule);

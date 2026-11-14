@@ -204,14 +204,32 @@ and the spatial path is untouched.
   within 0.001 dB and 0.1 %. `rcasDenoise` softens converged pixels too (Q3 whole-frame
   PSNR −0.10 dB). The lobe ceiling (#50) is on in every run; it bounds overshoot, not
   flicker.
+- **The gate's range is measured, not only borrowed.** Knee 0.5, same runs with the
+  two constants edited:
+
+  | `KNEE_MOTION_LO`–`HI` (render texels) | Q3 trails: temporal error | Q19 young pixels: PSNR |
+  | --- | --- | --- |
+  | 0.0125–0.05 | −11.7 % | 0.00 dB |
+  | **0.05–0.5** | −17.3 % | 0.00 to −0.01 dB |
+  | 0.5–2 | −19.8 % | −0.04 to −0.08 dB on four of five segments |
+
+  A tighter range gives up a third of the gain: the dilated motion of a trail texel
+  next to the moving object is the object's, not zero. A wider one starts softening
+  slow camera motion again.
+- **Other motion** (knee 0.5 against production): on Q2's slow dolly, where motion is
+  under a texel and the gate is partly open, young pixels are 0.6 % of the frame and
+  their temporal error drops 7.3 % for −0.13 dB; on Q4's orbit, 3.0 %, −6.2 % and
+  −0.15 dB; on Q4's translate and second orbit nothing changes. Whole frame, every
+  Q2 and Q4 window is within 0.007 dB and 0.3 %.
 - **After a history reset** (Q1, a still scene, `--frames reset=0:23`), knee 0.5:
   temporal error is 30 % lower on frames 1–3 (1.67 → 1.17 on frame 1) and PSNR is
   0.42–0.46 dB lower until about frame 7, when the image is still filling in; from
   frame 11 the two are identical.
 - **Cost:** the motion is fetched only for pixels under the knee, so a converged frame
   pays for one comparison: +0.06 to +0.28 µs RCAS at 1920×1080 ratio 2 (≤ 1.2 %, at the
-  noise floor, two ABBA runs). Fetching it for every pixel cost +4.7 µs (+20 %).
-  Nothing at knee 0.
+  noise floor, two ABBA runs). Fetching it for every pixel cost +4.7 µs (+20 %): that
+  is the bound for a frame where every pixel is young, such as the dozen frames after
+  a camera cut. Nothing at knee 0.
 - **Why a build-time constant:** a uniform would be cheaper to change, but `FsrConstants`
   has no free slot the RCAS pass can name without re-fingerprinting every shader. Fold
   it into the next UBO change if the knee is ever animated.
