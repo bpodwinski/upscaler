@@ -45,6 +45,7 @@ export interface UpscalerOptions {
 // Bench-only knobs, forwarded to the core (see UpscalerCoreInternalOptions).
 type UpscalerInternalOptions = UpscalerOptions & {
     _rcasShader?: string;
+    _rcasAgeKneeUngated?: boolean;
     _spatialRcasShader?: string;
     _shadingChangeShader?: string;
     _depthClipShader?: string;

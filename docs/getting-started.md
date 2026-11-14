@@ -290,15 +290,15 @@ on the next dispatch, with no rebuild:
 All except `sharpness` and `rcasDenoise` affect only the temporal path.
 
 One sharpening control is configuration, not a setting: **`rcasAgeKnee`** in
-`configure()` (default `0`, off). A positive knee scales temporal RCAS by
-`smoothstep(0, knee, age)`, age being the pixel's accumulated sample count over
-`maxAccumulation`, so history that was just reset (a disocclusion trail, a camera
-cut) is sharpened progressively instead of at once. The value is compiled into the
-RCAS pipeline, so changing it means another `configure()`. It steadies the trails
-moving objects leave under a still camera (temporal error −20 % on those pixels at
-`0.5`) and softens freshly revealed surfaces under camera motion, so it suits the
-first kind of content and not the second; numbers in
-`packages/core/src/shaders/README.md` → *RCAS age knee*. It is also an option of
+`configure()` (default `0`, off). On still pixels a positive knee scales temporal
+RCAS by `smoothstep(0, knee, age)`, age being the pixel's accumulated sample count
+over `maxAccumulation`, so history that was just reset (the trail a moving object
+uncovers, a camera cut) is sharpened progressively instead of at once. Pixels that
+are themselves moving are sharpened as usual. The value is compiled into the RCAS
+pipeline, so changing it means another `configure()`. At `0.5` it cuts temporal
+error on those trails by 17 % and costs nothing measurable under camera motion; for
+about a third of a second after a camera cut the image is slightly softer. Numbers
+in `packages/core/src/shaders/README.md` → *RCAS age knee*. It is also an option of
 `upscale()` / `upscaleScene()` and of `UpscalePass.configure()`.
 
 **Camera cuts:** call `upscaler.resetHistory()`, or pass `reset: true` in that

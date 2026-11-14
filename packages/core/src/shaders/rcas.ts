@@ -314,18 +314,28 @@ export const RCAS_PER_TAP_SHADER = createRcasShader(true);
 export const RCAS_SHADER = createRcasShader(true, true);
 
 /**
- * Production RCAS with an age knee on the temporal path (`rcasAgeKnee`): the
- * sharpening lobe is scaled by `smoothstep(0, knee, age)`, where age is the
- * history's `.a`, the accumulated sample count over `maxAccumulation`. A
- * pixel whose history was just reset (disocclusion, shading change, a cut)
- * holds one or two jittered samples, so its contrast is aliasing and noise,
- * not detail; it is sharpened progressively as it converges. The spatial path
- * has no age and is unchanged. The age comes from the center tap RCAS already
- * loads, so there is no extra fetch.
+ * Production RCAS with an age knee on the temporal path (`rcasAgeKnee`): on
+ * still pixels the sharpening lobe is scaled by `smoothstep(0, knee, age)`,
+ * where age is the history's `.a`, the accumulated sample count over
+ * `maxAccumulation`. A pixel whose history was just reset holds one or two
+ * jittered samples, so its contrast is aliasing and noise, not detail; it is
+ * sharpened progressively as it converges. The spatial path has no age and is
+ * unchanged. The age comes from the center tap RCAS already loads.
+ *
+ * The knee applies only where this frame's dilated motion (binding 5) is under
+ * about half a render texel. Young history on a still surface, the trail a
+ * moving object uncovers, is where sharpening shows as flicker: the true
+ * image does not change there. Young history that is itself moving (a surface
+ * sliding into view under camera motion) changes every frame anyway, and
+ * softening it only costs detail: without the gate the knee lost 0.13–0.18 dB
+ * on 6–30 % of a moving frame for under 2 % temporal error (shaders README).
+ * `stillGate = false` is that ungated form, kept for the
+ * `rcas-age-knee-ungated-v1` bench identity; it has production's five bindings.
  * @param knee - Normalized age at which sharpening is back to full, in (0, 1]
+ * @param stillGate - Apply the knee to still pixels only (binding 5: dilated motion)
  * @returns The assembled WGSL; {@link RCAS_SHADER} itself for a knee of 0
  */
-export function buildRcasAgeKneeShader(knee: number): string {
+export function buildRcasAgeKneeShader(knee: number, stillGate = true): string {
     if (!(knee > 0)) return RCAS_SHADER;
     const replace = (source: string, from: string, to: string): string => {
         if (!source.includes(from)) throw new Error('rcas age knee: production RCAS no longer contains ' + from);
@@ -338,11 +348,28 @@ export function buildRcasAgeKneeShader(knee: number): string {
         `    let center = textureLoad(inputColor, sp, 0);
     let eIn = center.rgb;`,
     );
-    return replace(
+    const kneed = replace(
         centered,
         `
     //* Denoise (FSR1's FSR_RCAS_DENOISE)`,
-        `
+        stillGate
+            ? `
+    //* Age Knee (still pixels only)
+    // History .a is the accumulated sample count over maxAccumulation. Young
+    // history is aliased and noisy; on a still surface the true image does not
+    // change, so sharpening it shows as flicker. A pixel that is itself moving
+    // changes every frame anyway, and softening it only costs detail.
+    // Converged pixels, nearly all of a frame, skip the motion fetch: at or
+    // past the knee the factor is 1 whatever the motion.
+    if (hasFlag(FLAG_INPUT_REINHARD) && center.a < ${knee.toPrecision(9)}) {
+        let renderCoord = min(vec2i((vec2f(sp) + 0.5) * C.displaySizeInv * C.renderSize), vec2i(C.renderSize) - 1);
+        let motionTexels = length(textureLoad(dilatedMotion, renderCoord, 0).xy * C.renderSize);
+        let still = 1.0 - smoothstep(KNEE_MOTION_LO, KNEE_MOTION_HI, motionTexels);
+        lobe *= mix(1.0, smoothstep(0.0, ${knee.toPrecision(9)}, center.a), still);
+    }
+
+    //* Denoise (FSR1's FSR_RCAS_DENOISE)`
+            : `
     //* Age Knee
     // History .a is the accumulated sample count over maxAccumulation. Young
     // history is aliased and noisy; sharpening it amplifies both.
@@ -351,6 +378,19 @@ export function buildRcasAgeKneeShader(knee: number): string {
     }
 
     //* Denoise (FSR1's FSR_RCAS_DENOISE)`,
+    );
+    if (!stillGate) return kneed;
+    return replace(
+        kneed,
+        '@group(0) @binding(4) var alphaSource : texture_2d<f32>;\n',
+        `@group(0) @binding(4) var alphaSource : texture_2d<f32>;
+@group(0) @binding(5) var dilatedMotion : texture_2d<f32>;
+
+// Render-texel motion per frame where the knee starts fading, and where it is
+// off (accumulate's still-scene relax fades over the same range).
+const KNEE_MOTION_LO : f32 = 0.05;
+const KNEE_MOTION_HI : f32 = 0.5;
+`,
     );
 }
 
