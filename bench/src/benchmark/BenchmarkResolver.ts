@@ -1,4 +1,4 @@
-import type * as THREE from 'three/webgpu';
+import * as THREE from 'three/webgpu';
 
 import { Upscaler } from '@pmndrs/upscaler';
 import {
@@ -50,6 +50,8 @@ class BenchmarkResolverAdapter implements BenchmarkResolver {
     protected _extraConfig: { rcasAgeKnee?: number; exposureMode?: 'upstream' | 'provided' } = {};
     // Set by host-pre-exposure-cpu-v1: pass the host pre-exposure as a number.
     protected _hostPreExposureAsNumber = false;
+    // Set by the exposure-texture identities: an app-supplied conditioning exposure.
+    protected _exposureTexture: THREE.Texture | null = null;
 
     constructor(
         upscaler: Upscaler | CandidateUpscaler,
@@ -149,6 +151,7 @@ class BenchmarkResolverAdapter implements BenchmarkResolver {
             reactive: inputs.reactive as THREE.Texture | undefined,
             reactiveOpaqueColor: inputs.reactiveOpaqueColor as THREE.Texture | undefined,
             preExposureTexture: inputs.preExposureTexture as THREE.Texture | undefined,
+            exposureTexture: this._exposureTexture ?? undefined,
             deltaTime: inputs.deltaTime,
         } as {
             color: THREE.Texture;
@@ -157,6 +160,7 @@ class BenchmarkResolverAdapter implements BenchmarkResolver {
             reactive?: THREE.Texture;
             reactiveOpaqueColor?: THREE.Texture;
             preExposureTexture?: THREE.Texture;
+            exposureTexture?: THREE.Texture;
             hostPreExposure?: number;
             deltaTime: number;
         };
@@ -210,6 +214,7 @@ class BenchmarkResolverAdapter implements BenchmarkResolver {
     }
 
     dispose(): void {
+        this._exposureTexture?.dispose();
         this._linearDepth?.dispose();
         this._upscaler.dispose();
     }
@@ -270,6 +275,20 @@ export class BaselineBenchmarkResolver extends BenchmarkResolverAdapter {
      */
     withConfig(config: { rcasAgeKnee?: number; exposureMode?: 'upstream' | 'provided' }): this {
         this._extraConfig = config;
+        return this;
+    }
+
+    /**
+     * Supplies a constant conditioning exposure through `exposureTexture`.
+     * @param renderer - Renderer that uploads the 1×1 texture
+     * @param value - The exposure it holds
+     */
+    withExposureTexture(renderer: THREE.WebGPURenderer, value: number): this {
+        const texture = new THREE.DataTexture(new Float32Array([value, 0, 0, 1]), 1, 1, THREE.RGBAFormat, THREE.FloatType);
+        texture.needsUpdate = true;
+        // three only uploads textures its own graph consumes; force it.
+        renderer.initTexture(texture);
+        this._exposureTexture = texture;
         return this;
     }
 
@@ -385,6 +404,33 @@ export function createProvidedExposureResolver(
         RCAS_LEGACY_SHADER,
         RCAS_SHADER,
     ).withConfig({ exposureMode: 'provided' });
+}
+
+/** The exposure the exposure-texture identities supply. */
+const EXPOSURE_TEXTURE_VALUE = 2;
+
+/**
+ * Creates the exposure-texture identities: `baseline` handed an
+ * `exposureTexture` holding 2, in the default mode
+ * (`exposure-texture-v1`: the measurement runs and is overridden) or with
+ * `exposureMode: 'provided'` (`exposure-provided-texture-v1`: nothing is
+ * measured). Both must equal `baseline` with `autoExposure: false` and
+ * `exposure: 2`.
+ * @param renderer - Initialized three WebGPU renderer
+ * @param metadata - Registry metadata for the identity
+ * @returns One resolver instance
+ */
+export function createExposureTextureResolver(
+    renderer: unknown,
+    metadata: BenchmarkVariantMetadata,
+): BenchmarkResolver {
+    const resolver = new BaselineBenchmarkResolver(
+        renderer as THREE.WebGPURenderer,
+        metadata,
+        RCAS_LEGACY_SHADER,
+        RCAS_SHADER,
+    ).withExposureTexture(renderer as THREE.WebGPURenderer, EXPOSURE_TEXTURE_VALUE);
+    return metadata.id === 'exposure-provided-texture-v1' ? resolver.withConfig({ exposureMode: 'provided' }) : resolver;
 }
 
 /**
