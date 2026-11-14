@@ -32,6 +32,8 @@ const VARIANTS = [
     'rcas-age-knee-ungated-v1',
     'exposure-provided-v1',
     'host-pre-exposure-cpu-v1',
+    'exposure-texture-v1',
+    'exposure-provided-texture-v1',
 ] as const;
 const SCENARIOS = [
     'Q0', 'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6', 'Q7', 'Q8', 'Q9', 'Q10', 'Q11', 'Q12', 'Q13', 'Q14', 'Q15',

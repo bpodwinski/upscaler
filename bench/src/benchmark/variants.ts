@@ -7,6 +7,7 @@ import {
     createRcasExperimentResolver,
     createRcasNumericParityResolver,
     createDepthClipVariantResolver,
+    createExposureTextureResolver,
     createLinearDepthResolver,
     createReconstructExperimentResolver,
     createShadingMemoryResolver,
@@ -66,6 +67,8 @@ const RESOLVER_FACTORIES = {
     'rcas-age-knee-ungated-v1': createRcasAgeKneeResolver,
     'exposure-provided-v1': createProvidedExposureResolver,
     'host-pre-exposure-cpu-v1': createHostPreExposureCpuResolver,
+    'exposure-texture-v1': createExposureTextureResolver,
+    'exposure-provided-texture-v1': createExposureTextureResolver,
 } satisfies Record<BenchmarkVariantId, BenchmarkVariantDefinition['create']>;
 
 /**
@@ -197,6 +200,10 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
                     ? "Baseline with exposureMode: 'provided' (no luminance metering)"
                   : id === 'host-pre-exposure-cpu-v1'
                     ? 'Baseline with the host pre-exposure passed as a number'
+                  : id === 'exposure-texture-v1'
+                    ? 'Baseline with an exposureTexture of 2 (metered, then overridden)'
+                  : id === 'exposure-provided-texture-v1'
+                    ? "Baseline with exposureMode: 'provided' and an exposureTexture of 2"
                 : rcasDenoise
             ? 'FSR 3.1.5 RCAS limiter + denoise'
             : rcasLimiterParity
