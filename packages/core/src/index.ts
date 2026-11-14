@@ -12,6 +12,7 @@ export { UpscalerNotReadyError } from './initializationError';
 export {
     DebugView,
     QualityMode,
+    type DepthMode,
     type DispatchInputs,
     type FrameCamera,
     type GuideDispatchInputs,

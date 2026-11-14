@@ -89,6 +89,11 @@ must be exactly what that node produces, rendered into a named MRT attachment:
   that rendered the frame.
 - **Not supported:** logarithmic depth (`logarithmicDepthBuffer`) has no
   linearization path, and multisampled depth won't bind.
+- **Linear view depth instead.** With `depthMode: 'linear'` in the configuration,
+  `depth` is a float texture (`FloatType` + `RedFormat`, i.e. `r32float`) whose red
+  channel holds positive view-space distance, and nothing is linearized. Every texel
+  must be finite and greater than zero, the background included. The rules are in
+  [Engine contract → Linear view depth](engine-contract.md#linear-view-depth).
 
 ## Jitter
 

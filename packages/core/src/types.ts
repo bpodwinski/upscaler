@@ -123,7 +123,27 @@ export interface UpscalerConfig {
      * externally-rendered inputs.
      */
     jitter?: boolean;
+    /**
+     * What the `depth` input holds (temporal and guides paths).
+     *
+     * - `'hardware'` (default) — a depth texture in the camera's device-depth
+     *   convention; the upscaler linearizes it from the frame camera's
+     *   near/far, projection type and `reversedDepth`.
+     * - `'linear'` — a float texture (`r32float` is the intended format)
+     *   whose red channel is **positive view-space distance**, for engines and
+     *   deferred pipelines that already keep linear depth. Every texel must be
+     *   finite and greater than zero, the background included (write the far
+     *   distance there): zero, negative and NaN are invalid. The camera's
+     *   `reversedDepth` is ignored.
+     *
+     * Changing it selects a different reconstruct pipeline, so it is
+     * configuration, not a per-frame setting. See docs/engine-contract.md.
+     */
+    depthMode?: DepthMode;
 }
+
+/** How the `depth` input is encoded. See {@link UpscalerConfig.depthMode}. */
+export type DepthMode = 'hardware' | 'linear';
 
 /**
  * Runtime tuning knobs that can change every frame without a pipeline rebuild.
@@ -186,7 +206,10 @@ export interface RuntimeSettings {
 export interface DispatchInputs<TTexture = GPUTexture> {
     /** Scene color at render resolution (linear HDR, rgba16float). */
     color: TTexture;
-    /** Scene depth at render resolution. Required for the temporal path. */
+    /**
+     * Scene depth at render resolution, in the configured
+     * {@link UpscalerConfig.depthMode}. Required for the temporal path.
+     */
     depth?: TTexture;
     /**
      * Screen-space motion vectors at render resolution (NDC delta,
@@ -249,7 +272,7 @@ export interface DispatchInputs<TTexture = GPUTexture> {
  * stage of a split frame. Needs no color: the guides are signal-agnostic.
  */
 export interface GuideDispatchInputs<TTexture = GPUTexture> {
-    /** Scene depth at render resolution. */
+    /** Scene depth at render resolution, in the configured {@link UpscalerConfig.depthMode}. */
     depth: TTexture;
     /**
      * Screen-space motion vectors at render resolution (NDC delta, as
@@ -361,6 +384,9 @@ export interface FrameCamera {
      * term (warned once per instance), which disoccludes slightly more.
      */
     fovY?: number;
-    /** The depth input is reversed-Z (1 = near). Defaults to `false`. */
+    /**
+     * The depth input is reversed-Z (1 = near). Defaults to `false`. Ignored
+     * with `depthMode: 'linear'`.
+     */
     reversedDepth?: boolean;
 }

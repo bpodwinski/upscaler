@@ -109,7 +109,10 @@ packs motion into `[0, 1]` with a cube-root curve, so it can't be fed in as is.
 from `minZ` to `maxZ`, or reversed under `engine.useReverseDepthBuffer`, which
 the adapter reads. Bind the geometry renderer's depth texture (`depth32float`,
 or a depth-stencil format) directly. The view-depth color textures aren't
-depth textures and won't bind.
+depth textures and won't bind in the default mode. Configuring
+`depthMode: 'linear'` takes a positive view-distance `r32float` texture instead
+([Engine contract → Linear view depth](engine-contract.md#linear-view-depth));
+its background must hold a finite positive distance, not a zero clear.
 
 **Submission.** Each dispatch calls `engine.flushFramebuffer()` first. That
 submits everything Babylon has recorded so far, which includes the input renders,
