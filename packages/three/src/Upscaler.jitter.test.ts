@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PerspectiveCamera } from 'three';
+import { OrthographicCamera, PerspectiveCamera } from 'three';
 import type { WebGPURenderer } from 'three/webgpu';
 
 import { Upscaler } from './Upscaler';
@@ -178,5 +178,63 @@ describe('Upscaler jitter accessors', async () => {
         upscaler.beginFrame(cam);
         expect(upscaler.jitter).toBe(first);
         upscaler.endFrame(cam);
+    });
+});
+
+describe('Upscaler depth clip FOV', () => {
+    beforeEach(() => {
+        vi.stubGlobal('GPUBufferUsage', { MAP_READ: 1, COPY_SRC: 4, COPY_DST: 8, UNIFORM: 64, STORAGE: 128 });
+        vi.stubGlobal('GPUTextureUsage', { TEXTURE_BINDING: 4, STORAGE_BINDING: 8 });
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
+    });
+
+    // FsrConstants.depthClipKfov (byte offset 96) as staged by a guides dispatch.
+    async function stagedKfov(cam: PerspectiveCamera | OrthographicCamera): Promise<number> {
+        const { upscaler, writes } = await configured();
+        upscaler.beginFrame(cam);
+        upscaler.endFrame(cam);
+        writes.length = 0;
+        try {
+            upscaler.dispatchGuides({ depth: {} as never, velocity: {} as never }, cam);
+        } catch {
+            // The mock can't encode passes; the constants were already written.
+        }
+        return writes.find((data) => data.length === 64)![24];
+    }
+
+    // Render 640×360 (1280×720 at ratio 2).
+    const kfov = (fovYDegrees: number) =>
+        Math.sqrt(1 + Math.tan((fovYDegrees * Math.PI) / 360) ** 2 * (1 + (640 / 360) ** 2));
+
+    it('stages the perspective camera FOV', async () => {
+        expect(await stagedKfov(camera())).toBeCloseTo(kfov(50), 5);
+        const wide = new PerspectiveCamera(90, 16 / 9, 0.1, 100);
+        wide.updateMatrixWorld();
+        expect(await stagedKfov(wide)).toBeCloseTo(kfov(90), 5);
+    });
+
+    it('takes zoom into account (the projection, not camera.fov)', async () => {
+        const zoomed = camera();
+        zoomed.zoom = 2;
+        zoomed.updateProjectionMatrix();
+        const fov = (2 * Math.atan(Math.tan((50 * Math.PI) / 360) / 2) * 180) / Math.PI;
+        expect(await stagedKfov(zoomed)).toBeCloseTo(kfov(fov), 5);
+    });
+
+    it('reads a tile of an app view offset as the narrower FOV it renders', async () => {
+        const tile = camera();
+        tile.setViewOffset(2560, 1440, 1280, 0, 1280, 720);
+        const fov = (2 * Math.atan(Math.tan((50 * Math.PI) / 360) / 2) * 180) / Math.PI;
+        expect(await stagedKfov(tile)).toBeCloseTo(kfov(fov), 5);
+    });
+
+    it('stages 1 for an orthographic camera', async () => {
+        const ortho = new OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
+        ortho.updateMatrixWorld();
+        expect(await stagedKfov(ortho)).toBe(1);
     });
 });

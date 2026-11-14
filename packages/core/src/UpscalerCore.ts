@@ -49,6 +49,43 @@ function isPerspective(camera: FrameCamera): boolean {
     throw new Error('@pmndrs/upscaler: FrameCamera needs `perspective` or a `projection` matrix.');
 }
 
+/**
+ * The tangent of half the vertical FOV a perspective camera renders with:
+ * `fovY` when given, else the projection's y scale (`1 / tan(fovY / 2)`),
+ * else `null` (unknown).
+ * @param camera - This frame's camera facts
+ * @returns `tan(fovY / 2)`, or `null` when the camera carries neither field
+ */
+export function tanHalfFovY(camera: FrameCamera): number | null {
+    if (camera.fovY !== undefined) {
+        if (!(camera.fovY > 0 && camera.fovY < Math.PI)) {
+            throw new Error(
+                `@pmndrs/upscaler: FrameCamera.fovY must be in (0, π) radians (got ${camera.fovY}).`,
+            );
+        }
+        return Math.tan(camera.fovY / 2);
+    }
+    if (camera.projection) {
+        const yScale = Math.abs(camera.projection[5]);
+        if (yScale > 0 && Number.isFinite(yScale)) return 1 / yScale;
+    }
+    return null;
+}
+
+/**
+ * FSR2's depth-clip `Kfov`: the view-plane corner's distance from the eye
+ * over the center's, `sqrt(1 + t²·(1 + aspect²))` with `t = tan(fovY / 2)`.
+ * Orthographic rays are parallel, so the ratio is 1.
+ * @param perspective - Perspective projection
+ * @param tanHalfFov - `tan(fovY / 2)`
+ * @param aspect - Render width over height
+ * @returns The tolerance's FOV factor, ≥ 1
+ */
+export function depthClipKfov(perspective: boolean, tanHalfFov: number, aspect: number): number {
+    if (!perspective) return 1;
+    return Math.sqrt(1 + tanHalfFov * tanHalfFov * (1 + aspect * aspect));
+}
+
 /** Construction options for {@link UpscalerCore}. */
 export interface UpscalerCoreOptions<THandle = GPUTexture> {
     /**
@@ -187,6 +224,7 @@ export class UpscalerCore<THandle = GPUTexture> {
     private _frameIndex = 0;
     private _pendingReset = true;
     private _warnedMsaa = false;
+    private _warnedFov = false;
     private _historyIndex = 0;
     private _depthIndex = 0;
     private _initialized = false;
@@ -1321,6 +1359,26 @@ export class UpscalerCore<THandle = GPUTexture> {
         pass.end();
     }
 
+    // The aspect is the render's, the FOV the camera's. Only the depth clip
+    // reads Kfov, so the warning for a camera without a FOV is limited to the
+    // paths that run it (the spatial paths take placeholder cameras).
+    private _depthClipKfov(camera: FrameCamera, perspective: boolean): number {
+        if (!perspective) return 1;
+        const tanHalf = tanHalfFovY(camera);
+        if (tanHalf === null) {
+            if (!this._warnedFov && (this._path === 'temporal' || this._path === 'guides')) {
+                this._warnedFov = true;
+                console.warn(
+                    '@pmndrs/upscaler: the perspective FrameCamera has neither `fovY` nor a `projection` ' +
+                        'matrix, so the depth clip tolerance takes no FOV term (slightly more disocclusion). ' +
+                        'See docs/engine-contract.md#camera-framecamera.',
+                );
+            }
+            return 1;
+        }
+        return depthClipKfov(true, tanHalf, this._renderWidth / this._renderHeight);
+    }
+
     // FSR is itself the anti-aliaser (the temporal path is a TAA-class
     // resolver — that's what Native AA mode is), so it wants an aliased,
     // single-sample, jittered render. A multisampled input can't even bind to
@@ -1386,7 +1444,9 @@ export class UpscalerCore<THandle = GPUTexture> {
             this._pendingReset = true;
             flags |= FLAG_RESET;
         }
-        if (isPerspective(camera)) flags |= FLAG_PERSPECTIVE;
+        const perspective = isPerspective(camera);
+        if (perspective) flags |= FLAG_PERSPECTIVE;
+        c.setDepthClipKfov(this._depthClipKfov(camera, perspective));
         if (this._path === 'temporal') flags |= FLAG_INPUT_REINHARD;
         if (this._effectiveSettings.lockThinFeatures) flags |= FLAG_LOCKS;
         if (this._effectiveSettings.autoExposure) flags |= FLAG_AUTO_EXPOSURE;

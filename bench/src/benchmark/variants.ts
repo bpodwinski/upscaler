@@ -44,6 +44,7 @@ const RESOLVER_FACTORIES = {
     'depth-clip-mean-vote-v1': createDepthClipVariantResolver,
     'depth-clip-upstream-tolerance-v1': createDepthClipVariantResolver,
     'depth-clip-upstream-v1': createDepthClipVariantResolver,
+    'depth-clip-half-diagonal-v1': createDepthClipVariantResolver,
     'source-filter-bundle-v1': createSourceBundleResolver,
     'source-structural-bundle-v1': createSourceBundleResolver,
     'source-spd-resolver-bundle-v1': createSourceBundleResolver,

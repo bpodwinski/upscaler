@@ -60,7 +60,7 @@ storage-buffer atomics.
 dilates and scatters this frame's linear depth into each pixel's previous-position
 footprint (`atomicMin` on the f32 bits, which order like the floats for positive
 depths). The second is the depth clip with AMD's viewport/depth-scaled tolerance
-(`1.37e-5 · halfViewportWidth · maxDepth`, per-bilinear-tap voting from
+(`1.37e-5 · Kfov · length(renderSize) · maxDepth`, per-bilinear-tap voting from
 `ffx_fsr2_depth_clip.h`). Two re-derivations make it cheaper than upstream's three
 stages: the scatter rides in the dilation pass, and the two scatter buffers ping-pong
 so each depth-clip texel empties its own slot of next frame's buffer — no clear pass.
@@ -87,9 +87,9 @@ depth clip removed a 24 µs pass. In return:
 
 **Tolerance and vote, measured against upstream (#79).** Upstream's
 `fHalfViewportWidth` is in fact `length(RenderSize())`, the full diagonal, multiplied by a
-`Kfov` FOV factor, so our tolerance is ≈2.8× tighter than upstream's. Loosening it to
-upstream's measured only 3–6% fewer disoccluded pixels in motion (it needs the FOV in the
-constants buffer, so it waits for the next constants change). Upstream's weighted-mean
+`Kfov` FOV factor, so the port's tolerance was ≈2.8× tighter than upstream's. Upstream's
+form measured 2–6% fewer disoccluded pixels in motion with no regression, and was adopted
+(2026-11-14) once `FsrConstants` gained the camera's `Kfov` (`FrameCamera.fovY`). Upstream's weighted-mean
 vote and `EvaluateSurface` surface check were also measured in place of our best-tap vote
 and relief widening: they ring both sides of every moving silhouette, 2–8× the
 disocclusion, so ours stay (`bench/docs/NEXT-STEPS.md` §15).

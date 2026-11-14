@@ -108,8 +108,8 @@ pixi produces the inputs yet:
 - **Motion vectors:** per-pixel `current − previous` screen motion, jitter-free,
   which needs previous-frame model and view-projection matrices.
 - **Jitter:** the projection offset by `beginFrame()`'s jitter every frame.
-- **Camera facts:** near, far and projection type in a `FrameCamera`, with the
-  depth convention ([Engine contract](engine-contract.md)).
+- **Camera facts:** near, far, projection type and vertical FOV (`fovY`, or the
+  projection matrix) in a `FrameCamera`, with the depth convention ([Engine contract](engine-contract.md)).
 
 A 3D layer that adds these can drive the temporal path through this adapter.
 Without them, the temporal path throws when it gets no camera rather than

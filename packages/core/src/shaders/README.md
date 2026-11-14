@@ -323,7 +323,8 @@ when drawing to the screen; library users may instead continue linear post-proce
   `atomicMin`-scatters this frame's linear depth (u32 bits) into the bilinear
   footprint of each pixel's motion-only previous position. `DEPTH_CLIP_SHADER` gathers
   the same footprint and votes per tap with AMD's viewport/depth-scaled tolerance
-  (`1.37e-5 · halfViewportWidth · max(depth)`), widened by the 3×3 depth relief
+  (`1.37e-5 · Kfov · length(renderSize) · max(depth)`, `Kfov` from the frame camera's
+  vertical FOV in `C.depthClipKfov`), widened by the 3×3 depth relief
   (carried in `dilatedMotion.z`); the best tap wins. Two scatter buffers ping-pong:
   each depth-clip texel writes `+inf` into its own slot of next frame's buffer (before
   the off-screen early return), so there is no clear dispatch; both start at `+inf`.
@@ -335,9 +336,10 @@ when drawing to the screen; library users may instead continue linear post-proce
   Q19 interior disocclusion: dolly-back 1.03% → 0.33%, scene receding 1.31% → 0.24%,
   still 0.029% → 0.000%. Q1/Q12 convergence unchanged; Q3 outlines rotating knots the
   cross-frame form missed; #54's emitter false disocclusion 7–34% → 0% of frames.
-- **Measured divergences (#79):** our tolerance is ≈2.8× tighter than upstream's
-  (upstream's `fHalfViewportWidth` is the full diagonal, times `Kfov`) — loosening it
-  gains 3–6% in motion, deferred to the next constants-buffer change. Upstream's
+- **Measured divergences (#79):** the tolerance was ≈2.8× tighter than upstream's
+  (upstream's `fHalfViewportWidth` is the full diagonal, times `Kfov`). Adopted
+  2026-11-14: Q19 interior disocclusion and flicker −2 to −6% in motion, still scenes
+  unchanged (NEXT-STEPS §15); the old form is `depth-clip-half-diagonal-v1`. Upstream's
   weighted-mean vote + `EvaluateSurface` in place of best-tap + relief rings both sides of
   every moving silhouette (2–8× the disocclusion): rejected. Bench identities
   `depth-clip-*`, built by `buildDepthClipVariant` in `reconstructVariants.ts`.

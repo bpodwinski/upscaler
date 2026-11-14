@@ -24,7 +24,7 @@ import { UpscalerCore, type FrameCamera } from '@pmndrs/upscaler/core';
 const DISPLAY = [128, 96] as const;
 const RENDER = [64, 48] as const;
 const FRAMES = 12;
-const CAMERA: FrameCamera = { near: 0.1, far: 100, perspective: true };
+const CAMERA: FrameCamera = { near: 0.1, far: 100, perspective: true, fovY: (50 * Math.PI) / 180 };
 
 const INPUT_WGSL = /* wgsl */ `
 @group(0) @binding(0) var<uniform> U : vec4f; // x: frame
