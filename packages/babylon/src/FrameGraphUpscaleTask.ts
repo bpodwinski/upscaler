@@ -32,7 +32,11 @@ import type { Upscaler } from './Upscaler';
 export class FrameGraphUpscaleTask extends FrameGraphTask {
     /** Scene color at render resolution (linear HDR, rgba16float). */
     colorTexture?: FrameGraphTextureHandle;
-    /** Scene depth (a depth texture) at render resolution. Temporal path. */
+    /**
+     * Scene depth at render resolution, in the upscaler's configured
+     * `depthMode`: a depth texture by default, or with `'linear'` an
+     * `r32float` texture of positive view-space distance. Temporal path.
+     */
     depthTexture?: FrameGraphTextureHandle;
     /** Linear velocity (`geometryLinearVelocityTexture`) at render resolution. Temporal path. */
     velocityTexture?: FrameGraphTextureHandle;

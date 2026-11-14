@@ -93,7 +93,10 @@ must be exactly what that node produces, rendered into a named MRT attachment:
   `depth` is a float texture (`FloatType` + `RedFormat`, i.e. `r32float`) whose red
   channel holds positive view-space distance, and nothing is linearized. Every texel
   must be finite and greater than zero, the background included. The rules are in
-  [Engine contract → Linear view depth](engine-contract.md#linear-view-depth).
+  [Engine contract → Linear view depth](engine-contract.md#linear-view-depth). On
+  the nodes it is `upscale(color, depth, velocity, camera, { depthMode: 'linear' })`
+  and `temporalGuides(depth, velocity, camera, { depthMode: 'linear' })`.
+  `upscaleScene()` and `UpscalePass` render their own hardware depth.
 
 ## Jitter
 
