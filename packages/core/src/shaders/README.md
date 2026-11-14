@@ -790,8 +790,18 @@ measurement, for hosts that meter themselves: it reads the external exposure (or
 binds four entries instead of seven (no color, sampler or previous exposure). Its
 output equals the metered pass's with `FLAG_AUTO_EXPOSURE` clear, apart from `.g`,
 which no shader reads: Q1 / Q9 / Q11 captures are byte-identical to `autoExposure:
-false`. Measured at 1920×1080 ratio 2, interleaved ABBA: exposure 49.2 → 2.3 µs,
-−21 % of the temporal path's compute.
+false`, and so are Q1 / Q9 with a real `exposureTexture` against a fixed exposure
+of the same value. Measured at 1920×1080, interleaved ABBA: exposure 50.2 → 2.5 µs
+at ratio 1, 49.2 → 2.3 µs at ratio 2, 48.4 → 2.0 µs at ratio 3. The saving is a
+flat 46–48 µs, since the reduction is a fixed 1024 taps: −16 %, −21 % and −22 % of
+the temporal path's compute.
+
+The ~2 µs that remain are the cost of dispatching a one-texel pass. Writing the
+texel from the CPU would remove them when no texture is passed, but the exposure
+state is rgba16float: the CPU would have to round to f16 exactly as the GPU does,
+or provided mode would stop matching `autoExposure: false` bit for bit, and the
+texture case would still need the pass. One path for both cases is worth 1 % of the
+frame.
 
 - **Current status:** Custom scalar replacement; despite its filename, it is not a pyramid.
 - **Local implementation:** Serially samples a fixed 32×32 grid and reduces it to one
