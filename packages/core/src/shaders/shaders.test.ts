@@ -528,6 +528,29 @@ describe("linear view-depth input (depthMode: 'linear')", () => {
             .toBe(head(RECONSTRUCT_SHADER)[0].replace(/\nfn linearizeDepth[\s\S]*?\n}\n/, ''));
     });
 
+    it('loads the red channel of all nine texels, and clamps at the border', () => {
+        const dilate = RECONSTRUCT_LINEAR_SHADER.split('//* Nearest Depth Search (dilate)')[1].split('let uvDelta')[0];
+        // A float texture loads a vec4f: every read takes .r (a depth texture loads an f32).
+        expect(dilate.match(/textureLoad\(sceneDepth, \w+, 0\)\.r;/g)).toHaveLength(2);
+        expect(dilate).not.toMatch(/textureLoad\(sceneDepth, \w+, 0\);/);
+        expect(dilate).toContain('for (var y = -1; y <= 1; y++) {');
+        expect(dilate).toContain('for (var x = -1; x <= 1; x++) {');
+        expect(dilate).toContain('let p = clamp(center + vec2i(x, y), vec2i(0), maxCoord);');
+        // The motion comes from the nearest texel, as in the hardware form.
+        expect(dilate).toContain('bestCoord = p;');
+        expect(RECONSTRUCT_LINEAR_SHADER).toContain('textureLoad(sceneVelocity, bestCoord, 0).xy * C.motionScale');
+        expect(dilate).toContain('farthestDepth = max(farthestDepth, d);');
+    });
+
+    it('writes the same outputs as the hardware form', () => {
+        for (const source of [RECONSTRUCT_SHADER, RECONSTRUCT_LINEAR_SHADER]) {
+            expect(source).toContain('textureStore(dilatedDepth, gid.xy, vec4f(curDepth, 0.0, 0.0, 0.0));');
+            expect(source).toContain('textureStore(dilatedMotion, gid.xy, vec4f(uvDelta, localRelief, 0.0));');
+            // Positive floats order like their bits, which the atomicMin scatter relies on.
+            expect(source).toContain('let encoded = bitcast<u32>(max(curDepth, 0.0));');
+        }
+    });
+
     it('reads view depth as is: nearest is the minimum, no device convention', () => {
         expect(RECONSTRUCT_LINEAR_SHADER).not.toMatch(/linearizeDepth|FLAG_REVERSED_DEPTH\)|depthNearFar\./);
         expect(RECONSTRUCT_LINEAR_SHADER).toContain('if (d < bestDepth) {');

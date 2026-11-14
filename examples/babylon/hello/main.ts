@@ -16,6 +16,7 @@ import { Color3, Color4 } from '@babylonjs/core/Maths/math.color.js';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector.js';
 import { CreateBox } from '@babylonjs/core/Meshes/Builders/boxBuilder.js';
 import { CreateGround } from '@babylonjs/core/Meshes/Builders/groundBuilder.js';
+import { CreateSphere } from '@babylonjs/core/Meshes/Builders/sphereBuilder.js';
 import { Mesh } from '@babylonjs/core/Meshes/mesh.js';
 import { Scene } from '@babylonjs/core/scene.js';
 // Deep imports skip Babylon's side-effect registrations: the WebGPU engine
@@ -42,6 +43,9 @@ type Mode = 'temporal' | 'spatial' | 'bilinear' | 'native';
 const params = new URLSearchParams(location.search);
 const linearDepth = params.get('depth') === 'linear';
 const enclosed = params.has('enclosed');
+// `sky=sphere`: a sky dome in place of the box. Its curved wall has no run of
+// texels at one view depth, unlike the box's flat ones.
+const skySphere = params.get('sky') === 'sphere';
 // Near plane override: hardware depth precision away from the camera scales with it.
 const nearPlane = Number(params.get('near') ?? 0.1);
 // Ground tilt in degrees. Flat under a level camera, every image row of the
@@ -131,7 +135,9 @@ for (let i = 0; i < 7; i++) {
 
 if (enclosed) {
     // An inward-facing box inside the far plane: no pixel is left at the clear value.
-    const skyBox = CreateBox('sky-box', { size: 60, sideOrientation: Mesh.BACKSIDE }, scene);
+    const skyBox = skySphere
+        ? CreateSphere('sky-box', { diameter: 60, segments: 48, sideOrientation: Mesh.BACKSIDE }, scene)
+        : CreateBox('sky-box', { size: 60, sideOrientation: Mesh.BACKSIDE }, scene);
     const skyMat = new StandardMaterial('sky-box', scene);
     skyMat.disableLighting = true;
     skyMat.emissiveColor = new Color3(0.03, 0.045, 0.07);
