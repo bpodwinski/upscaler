@@ -11,6 +11,7 @@ import {
 type CrossFrameReconstruct = { shader: string; cameraCompensated: boolean };
 import { CandidateUpscaler } from '../candidates/CandidateUpscaler';
 import { LinearDepthConverter } from './LinearDepthConverter';
+import { scalarTexture } from '../scalarTexture';
 import {
     buildShadingRecurrenceShader,
     SHADING_CHANGE_FRAME_PAIR_SHADER,
@@ -199,19 +200,9 @@ class BenchmarkResolverAdapter implements BenchmarkResolver {
         this._upscaler.dispatch(dispatchInputs, dispatchCamera);
     }
 
-    // One 1×1 texture per distinct value: three only uploads textures its own
-    // graph consumes, so a texel rewritten in place would never reach the GPU.
     private _exposureTextureFor(frame: number): THREE.Texture | null {
         if (!this._exposureSchedule || !this._scheduleRenderer) return this._exposureTexture;
-        const value = this._exposureSchedule(frame);
-        let texture = this._scheduledExposures.get(value);
-        if (!texture) {
-            texture = new THREE.DataTexture(new Float32Array([value, 0, 0, 1]), 1, 1, THREE.RGBAFormat, THREE.FloatType);
-            texture.needsUpdate = true;
-            this._scheduleRenderer.initTexture(texture);
-            this._scheduledExposures.set(value, texture);
-        }
-        return texture;
+        return scalarTexture(this._scheduleRenderer, this._scheduledExposures, this._exposureSchedule(frame));
     }
 
     reset(): void {
