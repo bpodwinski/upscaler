@@ -179,7 +179,10 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
         (1.0 - fraction.x) * fraction.y,
         fraction.x * fraction.y
     );
-    let halfViewportWidth = length(C.renderSize * 0.5);
+    // Upstream's fHalfViewportWidth is length(RenderSize()), the full
+    // diagonal despite its name, scaled by Kfov, the view plane's
+    // corner/center distance ratio (ffx_fsr2_depth_clip.h).
+    let separationScale = DEPTH_SEPARATION_CONSTANT * C.depthClipKfov * length(C.renderSize);
     var surfaceConfidence = 0.0;
     var sawValidTap = false;
     for (var index = 0; index < 4; index++) {
@@ -200,7 +203,7 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
             // (reference formulation), widened by the neighborhood's own
             // relief so a slope's per-texel depth change is not separation.
             let required = max(
-                DEPTH_SEPARATION_CONSTANT * halfViewportWidth * max(curDepth, tapDepth),
+                separationScale * max(curDepth, tapDepth),
                 localRelief,
             );
             tapConfidence = clamp(required / max(difference, 1.0e-7), 0.0, 1.0);

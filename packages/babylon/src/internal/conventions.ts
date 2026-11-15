@@ -66,6 +66,10 @@ export function toFrameCamera(camera: Camera, reversedDepth: boolean, out: Frame
     out.near = camera.minZ;
     out.far = camera.maxZ;
     out.perspective = camera.mode === PERSPECTIVE_CAMERA;
+    // From the projection, so the fovMode (vertical or horizontal fixed) and
+    // the aspect are already resolved. Jitter goes through a material plugin,
+    // never the camera, so this matrix is unjittered.
+    out.fovY = out.perspective ? 2 * Math.atan(1 / Math.abs(camera.getProjectionMatrix().m[5])) : undefined;
     out.reversedDepth = reversedDepth;
     return out;
 }

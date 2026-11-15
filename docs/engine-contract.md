@@ -93,7 +93,7 @@ and `spatial` read only `color`. `deltaTime` (seconds) drives exposure adaptatio
 Each dispatch takes the camera facts the passes need, as plain data:
 
 ```ts
-{ near: number; far: number; perspective?: boolean; projection?: Mat4; reversedDepth?: boolean }
+{ near: number; far: number; perspective?: boolean; projection?: Mat4; fovY?: number; reversedDepth?: boolean }
 ```
 
 - **`near` / `far`** are positive view-space distances. The core linearizes depth
@@ -102,6 +102,15 @@ Each dispatch takes the camera facts the passes need, as plain data:
 - **`perspective`**: `false` for orthographic. When it's omitted, the projection
   type is read from **`projection`** (the unjittered matrix, column-major: element
   15 is 0 for perspective and 1 for orthographic). One of the two is required.
+- **`fovY`**: the vertical field of view the render used, in radians (FSR's
+  `cameraFovAngleVertical`). The depth clip scales its separation tolerance by
+  `Kfov`, how much farther the view plane's corners are than its center, as
+  upstream does. When it's omitted the FOV is read from `projection`
+  (`2·atan(1 / |element 5|)`, so a Y-flipped matrix works too). A perspective camera
+  with neither gets no FOV term and a one-time warning: the tolerance is then
+  `Kfov` times tighter (1.38× at 50°, 16:9), which disoccludes slightly more in
+  motion. Orthographic cameras ignore it. The adapters fill it from the engine's
+  projection matrix, so zoom and a tiled view offset count.
 - **Depth convention.** WebGPU depth, in `[0, 1]`. Standard: 0 at near, 1 at far
   (`depthCompare: 'less'`, cleared to 1). Reversed (`reversedDepth: true`): 1 at
   near, 0 at far. Logarithmic depth, or depth written to a color texture, is not
@@ -205,14 +214,15 @@ whatever samples the output.
   submits. Encode it after the scene pass and before the pass that samples the
   output, outside any pass, then submit once. `examples/webgpu/hello` sends scene,
   upscale and present in one submit.
-- **One frame in flight per core.** The passes share one constants buffer, which is
-  written with `queue.writeBuffer` at encode time. Submit an `encode*()` call's
-  encoder before the next `encode*()` / `dispatch*()` call on the same core.
+- **One frame in flight per core.** The constants are written with
+  `queue.writeBuffer` at encode time, so they are in place before anything in the
+  encoder runs. Submit a frame's encoder before the next frame's `encode*()` /
+  `dispatch*()` call on the same core.
 - **Split frame.** `dispatchGuides` / `encodeGuides` runs the geometry stage (depth +
   motion → the early guides), and `dispatchUpscale` / `encodeUpscale` finishes with
   color. Effects that want the guides run in between. With the `encode` forms,
-  submit the guides encoder before calling `encodeUpscale`, for the same
-  constants-buffer reason.
+  both stages can go into one encoder and one submit: each stage reads its own
+  constants buffer, so the late stage's write cannot reach the guides passes.
 - **Engines with an open render pass.** The core encodes compute passes, so an
   engine that keeps a render pass open across its frame (Babylon, for one) must
   close it before handing over its encoder, or dispatch on its own encoder after
@@ -231,7 +241,7 @@ object:
 | Submission | `dispatch()` records and submits its own encoder; queue order | same; `encode*()` additionally records into a host encoder |
 | Motion | NDC delta, current − previous (three's `velocity`) | same (`motionScale` for other conventions) |
 | Depth | hardware depth or r32float device depth; `reversedDepth` | hardware depth only; `reversedDepth` |
-| Camera | `FrameCamera` with `view`, `projection`, previous matrices, `jitter`, `near`, `far`, `reversedDepth` | reads `near`, `far`, `reversedDepth` and `perspective`, or derives it from `projection` |
+| Camera | `FrameCamera` with `view`, `projection`, previous matrices, `jitter`, `near`, `far`, `reversedDepth` | reads `near`, `far`, `reversedDepth`, `perspective` and `fovY`, or derives both from `projection` |
 | Output | returned `GPUTexture`, owned by the denoiser | `output` getter, allocated through `TextureAllocator` |
 
 A Denoiser `FrameCamera` passes straight into `UpscalerCore.dispatch()`. Its

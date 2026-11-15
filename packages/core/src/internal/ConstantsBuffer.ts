@@ -2,11 +2,13 @@
  * CPU-side writer for the `FsrConstants` uniform block.
  *
  * The layout here must match `WGSL_CONSTANTS` in `shaders/common.ts` —
- * offsets are documented there. A single 256-byte buffer is shared by every
- * pass (bound at `@group(0) @binding(0)`), written once per frame.
+ * offsets are documented there. Every pass binds one 256-byte buffer at
+ * `@group(0) @binding(0)`. The core keeps one instance per frame stage (early
+ * guides, late upscale), each written once per frame, so both stages of a
+ * split frame can sit in one command encoder.
  */
 export class ConstantsBuffer {
-    /** Uniform block size. 96 bytes of payload, padded to a round 256. */
+    /** Uniform block size. 100 bytes of payload, padded to a round 256. */
     static readonly SIZE = 256;
 
     readonly buffer: GPUBuffer;
@@ -16,12 +18,18 @@ export class ConstantsBuffer {
     private readonly _u32 = new Uint32Array(this._data);
     private readonly _device: GPUDevice;
 
-    constructor(device: GPUDevice) {
+    /**
+     * @param device - The device the buffer lives on
+     * @param label - GPU debug label (also what tells the stage buffers apart)
+     */
+    constructor(device: GPUDevice, label = 'upscale-constants') {
         this._device = device;
         // Fixed 32×32 metering. A uniform loop bound keeps Windows shader compiles small.
         this._u32[23] = 32;
+        // The depth clip's FOV factor; 1 is the orthographic (no-FOV) value.
+        this._f32[24] = 1;
         this.buffer = device.createBuffer({
-            label: 'upscale-constants',
+            label,
             size: ConstantsBuffer.SIZE,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
@@ -86,6 +94,15 @@ export class ConstantsBuffer {
 
     setDebugMode(value: number): void {
         this._u32[22] = value;
+    }
+
+    /**
+     * The depth clip's tolerance FOV factor (FSR2's `Kfov`): how much farther
+     * from the eye the view plane's corner is than its center, at any depth.
+     * @param value - `sqrt(1 + tan²(fovY/2)·(1 + aspect²))`, or 1 (orthographic)
+     */
+    setDepthClipKfov(value: number): void {
+        this._f32[24] = value;
     }
 
     /** Uploads the staged values to the GPU. Call once per frame before dispatch. */

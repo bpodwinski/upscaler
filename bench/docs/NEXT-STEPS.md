@@ -1660,11 +1660,29 @@ motion does.
   has valid history at its reprojected position, so the leading-side ring is false
   rejection: 2–8× the disocclusion and 2–3× the flicker. Upstream's surface check and
   wider tolerance only take a fraction of it back (full upstream ≈ 0.9× the mean vote).
-- **Upstream tolerance scale: measured, not adopted.** 3–6% fewer disoccluded pixels and
-  slightly less flicker on every motion segment, no regression. Adopting it needs the
-  camera's FOV for `Kfov`, which `FsrConstants` doesn't carry (the variant hardcodes the
-  bench's 50° as a pipeline override); a constants change re-fingerprints every shader.
-  Worth folding into the next change that touches the UBO anyway.
+- **Upstream tolerance scale: ADOPTED (2026-11-14).** 3–6% fewer disoccluded pixels and
+  slightly less flicker on every motion segment, no regression. It needed the camera's FOV
+  for `Kfov`: `FsrConstants` gained `depthClipKfov` (offset 96, computed on the CPU from
+  `FrameCamera.fovY` or the projection's element 5; the three and Babylon adapters fill it
+  from the engine's projection matrix), which re-fingerprinted every shader. Re-measured on
+  the RTX 5080 (Q19, ratio 2, 1280×720, `measure-receding-disocclusion.mjs --variants
+  baseline,depth-clip-half-diagonal-v1,depth-clip-upstream-tolerance-v1`): production now
+  reads **every metric of every segment identical** to `depth-clip-upstream-tolerance-v1`
+  (its pipeline-override 50° is the bench camera's FOV), so the CPU `Kfov` and the adapter's
+  FOV are exact. Against the pre-FOV form, now the `depth-clip-half-diagonal-v1` identity:
+
+  | segment | interior v% | flicker% |
+  | --- | --- | --- |
+  | dolly back | 0.318 → 0.306 (−3.7%) | 0.542 → 0.523 |
+  | dolly forward | 0.330 → 0.315 (−4.4%) | 0.555 → 0.531 |
+  | orbit left / right | 1.351 / 1.336 → 1.310 / 1.311 (−3.0 / −1.9%) | 1.841 / 1.832 → 1.780 / 1.794 |
+  | slide | 0.648 → 0.631 (−2.7%) | 1.236 → 1.202 |
+  | scene recedes / approaches | 0.223 / 0.253 → 0.211 / 0.237 (−5.4 / −6.0%) | 0.369 / 0.413 → 0.350 / 0.389 |
+  | fast dolly back / forward | 0.491 / 0.647 → 0.474 / 0.619 (−3.6 / −4.3%) | 0.925 / 1.149 → 0.894 / 1.100 |
+
+  Still and hold segments are unchanged (0.000% interior). Q1 / Q12 convergence (ratio 2)
+  0.1042 / 0.0166, as before. Cost: compute sum 225.3 vs 225.8 µs (ABBA smoke, 1080p ratio
+  2, inside the 3.9 µs noise floor). `verify-split-encoder.mjs` PASS.
 
 *Fast dolly.* Q19 gained `dolly-back-fast` / `dolly-forward-fast` (0.3 u/frame, frames
 960–979 and 1040–1059, after the recorded segments). It reproduces #67's headline case: the

@@ -84,7 +84,8 @@ let targets: SceneTargets | null = null;
 let renderSize = { width: 1, height: 1 };
 let presentBindGroup: GPUBindGroup | null = null;
 let configuring: Promise<void> | null = null;
-const camera: FrameCamera = { near: SCENE_NEAR, far: SCENE_FAR, perspective: true };
+const FOV_Y = (50 * Math.PI) / 180;
+const camera: FrameCamera = { near: SCENE_NEAR, far: SCENE_FAR, perspective: true, fovY: FOV_Y };
 
 /** Resizes the canvas and (re)configures the core and the scene targets for the mode. */
 async function configure(): Promise<void> {
@@ -142,7 +143,7 @@ function frame(now: number): void {
 
     const a = time * 0.15;
     const view = lookAt([Math.cos(a) * 7, 3.2, Math.sin(a) * 7], [0, 0.4, 0], [0, 1, 0]);
-    const proj = perspective((50 * Math.PI) / 180, canvas.width / canvas.height, SCENE_NEAR, SCENE_FAR);
+    const proj = perspective(FOV_Y, canvas.width / canvas.height, SCENE_NEAR, SCENE_FAR);
     scene.update(time, multiply(proj, view), jitter ?? { x: 0, y: 0 }, renderSize.width, renderSize.height);
 
     // 2. One encoder for everything: scene → upscale → present, one submit.

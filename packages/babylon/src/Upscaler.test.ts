@@ -29,7 +29,9 @@ function fakeEngine(log: string[] = []) {
 }
 
 function camera(overrides: Partial<Camera> = {}): Camera {
-    return { minZ: 0.1, maxZ: 100, mode: 0, ignoreCameraMaxZ: false, ...overrides } as Camera;
+    // A 60° vertical FOV: the projection's y scale is 1 / tan(30°).
+    const getProjectionMatrix = () => ({ m: [0, 0, 0, 0, 0, 1 / Math.tan(Math.PI / 6)] });
+    return { minZ: 0.1, maxZ: 100, mode: 0, ignoreCameraMaxZ: false, getProjectionMatrix, ...overrides } as unknown as Camera;
 }
 
 describe('Babylon conventions', () => {
@@ -46,8 +48,13 @@ describe('Babylon conventions', () => {
 
     it('fills FrameCamera from minZ/maxZ, mode and the reverse-depth flag', () => {
         const out = { near: 0, far: 0, perspective: false };
-        expect(toFrameCamera(camera(), true, out)).toEqual({ near: 0.1, far: 100, perspective: true, reversedDepth: true });
-        expect(toFrameCamera(camera({ mode: 1 }), false, out).perspective).toBe(false);
+        const frame = toFrameCamera(camera(), true, out);
+        expect(frame).toMatchObject({ near: 0.1, far: 100, perspective: true, reversedDepth: true });
+        expect(frame.fovY).toBeCloseTo(Math.PI / 3);
+        const ortho = toFrameCamera(camera({ mode: 1 }), false, out);
+        expect(ortho.perspective).toBe(false);
+        // Orthographic rays are parallel: no FOV, so a stale one must not survive.
+        expect(ortho.fovY).toBeUndefined();
     });
 
     it('rejects an infinite far plane', () => {

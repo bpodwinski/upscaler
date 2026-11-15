@@ -461,6 +461,12 @@ export class Upscaler {
         frame.near = camera.near;
         frame.far = camera.far;
         frame.perspective = (camera as PerspectiveCamera).isPerspectiveCamera === true;
+        // From the projection, not `camera.fov`, so zoom and an app's view
+        // offset (a tile renders a narrower FOV) count. Jitter only shifts the
+        // window, so element 5 is the unjittered value.
+        frame.fovY = frame.perspective
+            ? 2 * Math.atan(1 / Math.abs(camera.projectionMatrix.elements[5]))
+            : undefined;
         frame.reversedDepth =
             (this._renderer as unknown as { reversedDepthBuffer?: boolean }).reversedDepthBuffer === true;
         return frame;

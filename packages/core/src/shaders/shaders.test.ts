@@ -64,17 +64,20 @@ const BASELINE_BINDING_COUNTS: Record<string, number> = {
 };
 
 const BASELINE_FINGERPRINTS: Record<string, string> = {
+    // Every shader re-fingerprinted 2026-11-14: FsrConstants gained
+    // depthClipKfov at offset 96 (the depth clip tolerance's FOV term, FSR2's
+    // Kfov). Only the depth clip reads it.
     // Updated 2026-08-25: alpha passthrough (issue #15) — blit/rcas gained the
     // alpha-source binding, easu carries alpha as a fourth kernel channel.
-    blit: 'ef2eec52',
-    easu: '48248d62',
+    blit: '8dc572cc',
+    easu: '963c4328',
     // Updated 2026-07-21: conditioned-space sharpening adopted (NEXT-STEPS item 1);
     // 2026-08-25: alpha passthrough; 2026-10-02: the spatial path conditions its
     // linear/HDR taps the same way (anchored, gain-capped inversion);
     // 2026-10-02: the temporal inversion is gain-capped too (issue #32);
     // 2026-10-03: both caps become the lobe applied in linear space against
     // the ring min (issue #50, HDR plateau overshoot).
-    rcas: 'b0405308',
+    rcas: '66477132',
     // Updated 2026-07-22: depth-clip flicker fix — reference tap-skip semantics
     // (no all-taps veto), jitter-delta-compensated reprojection, and a
     // neighborhood-relief-widened separation tolerance (grazing-angle planes).
@@ -82,9 +85,11 @@ const BASELINE_FINGERPRINTS: Record<string, string> = {
     // border no longer reads disoccluded under jitter).
     // 2026-10-05: reconstructed-previous-depth scatter (issue #67) — the
     // depth clip moved to its own pass; the old fused form is frozen below.
-    reconstruct: '193dec98',
-    depthClip: '800a41f5',
-    reconstructCrossFrame: 'd944fd8f',
+    // 2026-11-14: the depth clip tolerance is upstream's full diagonal times
+    // Kfov (was half the diagonal, no FOV term).
+    reconstruct: '91ec85ce',
+    depthClip: '4ce56aab',
+    reconstructCrossFrame: '8232fe2d',
     // Added 2026-07-21: multi-scale shading-change detector (NEXT-STEPS item 4);
     // 2026-10-03: the contrast floor reads both frames' spread, not just the
     // current frame's (issue #22, NEXT-STEPS §9); 2026-10-03: the compared
@@ -92,7 +97,7 @@ const BASELINE_FINGERPRINTS: Record<string, string> = {
     // 2026-10-05: per-block memory of the last 8 means, jump-gated range test
     // (fine-line aliasing on a still camera, NEXT-STEPS §14); 2026-10-05: an
     // all-zero (empty) memory restarts instead of pushing (NEXT-STEPS §14).
-    shadingChange: 'fba11623',
+    shadingChange: '57a718cd',
     // Updated 2026-07-21: DeltaPreExposure history correction (NEXT-STEPS item 2);
     // 2026-08-25: alpha resolved alongside color into the locks buffer's .a;
     // 2026-10-02: the alpha clamp takes the color path's still-scene relax;
@@ -103,16 +108,16 @@ const BASELINE_FINGERPRINTS: Record<string, string> = {
     // NEXT-STEPS §11);
     // 2026-10-05: pre-exposure read guarded with max(…, 1e-4) like RCAS/blit,
     // so a fixed/external exposure of 0 no longer blacks out accumulation.
-    accumulate: '1505bcb5',
+    accumulate: 'f30fb94f',
     // 2026-10-08: 1/16-stop adaptation dead-band, so the jitter-phase wobble of
     // the metered log-average no longer re-conditions history on still scenes.
-    luminancePyramid: '30144ae9',
+    luminancePyramid: '464b028f',
     // Updated 2026-07-22: reactive merge-not-overwrite (guides spec M3) — the
     // generator max-merges an incoming mask instead of being suppressed by it.
-    generateReactive: '9d0739e5',
-    debug: 'e30ebd6c',
+    generateReactive: 'c45aafb7',
+    debug: 'c9ab66b6',
     // Added 2026-07-22: standalone signal-agnostic moments (guides spec M5).
-    moments: 'ec1952d4',
+    moments: 'd656fefe',
 };
 
 
@@ -522,7 +527,41 @@ describe('depth-clip variants (issue #79)', () => {
     it('reads upstream tolerance as the full diagonal times Kfov', () => {
         const upstream = buildDepthClipVariant(DEPTH_CLIP_VARIANTS['depth-clip-upstream-tolerance-v1']);
         expect(upstream).toContain('kfov() * length(C.renderSize)');
-        const ours = buildDepthClipVariant(DEPTH_CLIP_VARIANTS['depth-clip-no-relief-v1']);
-        expect(ours).toContain('length(C.renderSize * 0.5)');
+        const halfDiagonal = buildDepthClipVariant(DEPTH_CLIP_VARIANTS['depth-clip-no-relief-v1']);
+        expect(halfDiagonal).toContain('length(C.renderSize * 0.5)');
+    });
+
+    it('freezes the pre-FOV production tolerance as depth-clip-half-diagonal-v1', () => {
+        const frozen = buildDepthClipVariant(DEPTH_CLIP_VARIANTS['depth-clip-half-diagonal-v1']);
+        expect(frozen).toContain('max(DEPTH_SEPARATION_CONSTANT * length(C.renderSize * 0.5) * max(curDepth, tapDepth), localRelief)');
+        expect(frozen).not.toContain('C.depthClipKfov');
+        // Production's best-tap vote, no surface check.
+        expect(frozen).toContain('surfaceConfidence = max(surfaceConfidence, tapConfidence)');
+        expect(frozen).not.toContain('reconstructedAt(center + vec2i(0, -1))');
+    });
+});
+
+describe('depth clip tolerance (FSR2 Kfov)', () => {
+    it('scales by the full render diagonal times the camera FOV factor', () => {
+        const body = DEPTH_CLIP_SHADER.split('fn main')[1] ?? '';
+        expect(body).toContain('DEPTH_SEPARATION_CONSTANT * C.depthClipKfov * length(C.renderSize)');
+        expect(body).toContain('separationScale * max(curDepth, tapDepth)');
+        expect(body).not.toContain('C.renderSize * 0.5');
+        // Still widened by the 3×3 relief.
+        expect(body).toMatch(/max\(\s*separationScale \* max\(curDepth, tapDepth\),\s*localRelief,?\s*\)/);
+    });
+
+    it('declares depthClipKfov at byte offset 96, after the last u32 slot', () => {
+        const struct = DEPTH_CLIP_SHADER.match(/struct FsrConstants \{([\s\S]*?)\}/)?.[1] ?? '';
+        const fields = [...struct.matchAll(/^\s*(\w+)\s*:\s*(\w+)\s*,\s*\/\/ offset\s+(\d+)/gm)];
+        const last = fields[fields.length - 1];
+        expect(last?.[1]).toBe('depthClipKfov');
+        expect(last?.[2]).toBe('f32');
+        expect(last?.[3]).toBe('96');
+    });
+
+    it('keeps the field when the exposure pass renames the last u32 slot', () => {
+        expect(LUMINANCE_PYRAMID_SHADER).toContain('exposureTaps    : u32,    // offset 92');
+        expect(LUMINANCE_PYRAMID_SHADER).toContain('depthClipKfov   : f32,    // offset 96');
     });
 });
