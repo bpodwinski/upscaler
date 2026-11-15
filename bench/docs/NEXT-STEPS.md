@@ -1700,8 +1700,13 @@ the conditioning exposure was not ("not planned" below, pending evidence).
 **Change.** `UpscalerConfig.correctConditioningExposure` (default `false`) selects
 `buildAccumulateShader(true)`: the history ratio becomes host delta × this frame's
 `.r` over last frame's `.r`, applied in linear space where the host delta already
-was. A ratio within 1e-3 of 1 is skipped, so frames whose exposure did not move are
-bit-identical to production. `ACCUMULATE_SHADER` is unchanged (same fingerprint).
+was. The locked luma (locks `.g`, conditioned like history) follows the same ratio —
+`y·r / (1 − y + y·r)`, exact for grey — or every exposure change would read as a
+lock-breaking luma jump. The skip is an exact `ratio != 1`: equal f16 texels divide to
+exactly 1, so frames whose exposure did not move are bit-identical to production, while
+a slow ramp's one-ulp steps (2⁻¹⁰ ≈ 9.8e-4 relative, under the 1e-3 threshold the host
+delta uses) are still corrected. `ACCUMULATE_SHADER` is unchanged (same fingerprint).
+Both came out of the code review; the tables below are re-measured with them.
 
 **Evidence** (RTX 5080, ratio 2, 1280×720; bench identities in BENCHMARKING.md).
 
@@ -1711,11 +1716,11 @@ bit-identical to production. `ACCUMULATE_SHADER` is unchanged (same fingerprint)
 
 | frames | uncorrected | corrected |
 | --- | --- | --- |
-| ×4 step up (f120) | **21.53**, then 2.22, 2.13, 1.43 | 0.129, 0.111, 0.114 |
-| f121–179 mean (max) | 0.373 (2.22) | 0.102 (0.114) |
-| ×4 step down (f180) | **23.52**, then 3.98 | 0.111, 0.114 |
-| ×8 ramp over 60 frames, mean (max) | 0.905 (1.17) | 0.117 (0.133) |
-| hold at 8, mean | 0.342 | 0.106 |
+| ×4 step up (f120) | **21.53**, then 2.22, 2.13, 1.43 | 0.128, 0.109, 0.112 |
+| f121–179 mean (max) | 0.373 (2.22) | 0.101 (0.112) |
+| ×4 step down (f180) | **23.52**, then 3.98 | 0.107, 0.109 |
+| ×8 ramp over 60 frames, mean (max) | 0.905 (1.17) | 0.116 (0.132) |
+| hold at 8, mean | 0.342 | 0.104 |
 
 Uncorrected, the drift after a step decays over a full second (0.47 at +10 frames,
 0.13 at +59). Corrected, the output never leaves its resting churn.
@@ -1726,25 +1731,26 @@ Uncorrected, the drift after a step decays over a full second (0.47 at +10 frame
 | Q15 (slow sun ramps ×4) | down ramp + hold | up ramp + hold | all (peak) |
 | --- | --- | --- | --- |
 | production | 3.21 | 3.76 | 3.46 (6.58) |
-| corrected | 5.83 | 5.21 | 5.41 (10.29) |
+| corrected | 5.77 | 5.17 | 5.36 (10.24) |
 | production, auto-exposure off | 5.92 | 4.73 | 5.20 (9.51) |
 
 | Q9 (exposure-transition) | ramp 116–179 (peak) | step at 180 (peak) | after 240 |
 | --- | --- | --- | --- |
 | production | 5.66 (7.97) | 1.68 (3.53) | 0.28 |
-| corrected | 5.78 (11.80) | 2.08 (5.47) | 0.29 |
+| corrected | 5.77 (11.77) | 2.06 (5.44) | 0.29 |
 
 The 30–45 % of drift lag that "auto-exposure masks" (item 8) is this mechanism: when
 lighting dims, auto-exposure rises, and decoding the stale-bright history at the
 higher exposure darkens it toward the new lighting. The correction removes that help,
-and Q15 lands where it reads with auto-exposure off (5.41 vs 5.20). It is an accident,
+and Q15 lands where it reads with auto-exposure off (5.36 vs 5.20). It is an accident,
 not a design: it works only when the exposure change and the lighting change are the
 same change. With auto-exposure off the exposure is constant and the option is
-inert.
+inert (Q15's 66 rows identical with and without it).
 
 *No exposure change* — Q1 convergence identical pair for pair (0.1042); Q11 (host
 pre-exposure step and ramp; auto-exposure meters host-invariantly, so its exposure
-holds) identical over all 150 pairs. Q12 changes slightly for the better (0.0166 →
+holds) within 0.0015/255 on every pair: the exact skip now corrects auto-exposure's
+f16 micro-steps and the host steps move the locked luma too. Q12 changes slightly for the better (0.0166 →
 0.0153 mean, max 0.0233 → 0.0172): its first pairs after settling still see the
 exposure move past the dead-band.
 
@@ -1767,4 +1773,4 @@ would cost every auto-exposure user ~55 % more drift lag on slow lighting change
 - T&C as a distinct softer channel — revisit only on user demand with real content.
 - Conditioning-exposure history correction **as the default** (§16): shipped as the
   opt-in `correctConditioningExposure`. Under auto-exposure the uncorrected decode
-  cancels part of the lighting lag (Q15 3.46 → 5.41 corrected), so the default stays off.
+  cancels part of the lighting lag (Q15 3.46 → 5.36 corrected), so the default stays off.

@@ -655,7 +655,7 @@ resolver variant, with debug visualization for every signal that scales the box.
   (`correctConditioningExposure`, 2026-11-15, NEXT-STEPS §16): `buildAccumulateShader(true)`
   multiplies the host delta by this frame's over last frame's conditioning exposure
   (`.r` of the two texels). Off by default because under auto-exposure the uncorrected
-  decode cancels part of the lighting lag (Q15 3.46 → 5.41/255 corrected); on, a host
+  decode cancels part of the lighting lag (Q15 3.46 → 5.36/255 corrected); on, a host
   exposure step on a still scene no longer moves the output (21.5 → 0.13/255).
 - **Local implementation:** The pyramid publishes the app's `preExposureTexture` value
   in the 1×1 exposure texel's `.b` (1.0 when absent) and meters auto-exposure
