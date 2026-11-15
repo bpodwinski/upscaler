@@ -1,58 +1,9 @@
 import { WGSL_COLOR, WGSL_CONSTANTS, WGSL_TONEMAP } from './common';
 import { assembleShader } from './wgsl';
 
-/**
- * Reproject & accumulate — the core temporal upscaling pass (FSR2/3's
- * "accumulate" stage, with luminance-stability locks, reactive-mask handling,
- * and the shading-change response wired in; per-stage fidelity notes live in
- * the shaders README).
- *
- * Per display pixel:
- * 1. Upsample the current jittered frame with a jitter-aware separable
- *    Lanczos2 kernel over the 3×3 render-texel footprint. Because the
- *    jitter moves the sample grid every frame, integrating these kernels
- *    over time converges to a super-sampled image.
- * 2. Reproject last frame's history through the dilated motion vector with
- *    a Catmull-Rom filter (sharper than bilinear, avoids history blur).
- * 3. Rein in stale history: clip it to the YCoCg variance AABB of the
- *    current neighborhood, and cut its weight by the disocclusion mask.
- * 4. Blend, tracking the accumulated sample count in the alpha channel so
- *    fresh regions converge fast while stable ones stay smooth.
- *
- * Accumulation happens in invertible-tonemap space (see `WGSL_TONEMAP`) so
- * HDR fireflies cannot dominate the running average.
- *
- * The caller's alpha is resolved alongside the color — same Lanczos taps,
- * same blend weight — and stored in the locks buffer's spare `.a`, because
- * the history's own `.a` is the accumulation age. The color history's age
- * therefore keeps its exact Catmull-Rom reprojection; alpha reprojects
- * bilinearly with the locks. An opaque input (alpha 1 everywhere) resolves
- * to exactly 1: every tap, box bound and history value is 1, so the blend
- * cannot move it.
- *
- * Bindings:
- * - 1: scene color, render size (linear HDR)
- * - 2: dilated motion, render size (UV delta in .xy)
- * - 3: masks, render size (r = disocclusion)
- * - 4: history in, display size (rgba16float; rgb tonemapped, a = age)
- * - 5: linear clamp sampler
- * - 6: history out (rgba16float storage, display size)
- * - 7: locks in, display size (rgba16float; r = lifetime, g = locked luma,
- *      a = resolved alpha)
- * - 8: locks out (rgba16float storage, display size)
- * - 9: exposure, 1×1 (rgba16float; r = conditioning pre-exposure for this
- *      frame, b = host pre-exposure)
- * - 10: reactive mask, render size (r = reactivity; 1×1 dummy when absent)
- * - 11: previous frame's exposure, 1×1 (b = last frame's host pre-exposure,
- *       for FSR3-style DeltaPreExposure history correction)
- * - 12: shading-change response, ceil(render/2) (r32float from
- *       shadingChange.ts; 1×1 zero dummy when the detector is off)
- */
-export const ACCUMULATE_SHADER = assembleShader(
-    WGSL_CONSTANTS,
-    WGSL_COLOR,
-    WGSL_TONEMAP,
-    /* wgsl */ `
+// The WGSL body, shared by both forms below. Kept as one string so the
+// production form stays byte-identical to its reviewed fingerprint.
+const ACCUMULATE_BODY = /* wgsl */ `
 @group(0) @binding(1) var inputColor : texture_2d<f32>;
 @group(0) @binding(2) var dilatedMotion : texture_2d<f32>;
 @group(0) @binding(3) var masks : texture_2d<f32>;
@@ -383,5 +334,143 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     // b = shading-change factor (for the debug view); a = resolved alpha.
     textureStore(locksOut, gid.xy, vec4f(lockLife, lockedLuma, shadingChange, resultAlpha));
 }
-`,
+`;
+
+// History is stored as tonemapInvertible(color · conditioning exposure). With
+// the correction on, a change of conditioning exposure between frames is
+// ratio-corrected in linear space with the host pre-exposure delta, so the
+// reprojected history decodes at this frame's exposure (issue 99).
+const HOST_DELTA = /* wgsl */ `    // skipped, leaving the pass bit-identical. Conditioning exposure is
+    // deliberately not corrected here: it adapts smoothly by design.
+    let hostPrev = textureLoad(exposurePrevTex, vec2i(0), 0).b;
+    var hostRatio = 1.0;
+    if (hostPrev > 1.0e-4 && frameInfo.b > 1.0e-4) { hostRatio = frameInfo.b / hostPrev; }
+    if (abs(hostRatio - 1.0) > 1.0e-3) {
+        history = vec4f(tonemapInvertible(tonemapInvert(history.rgb) * hostRatio), history.a);
+    }
+`;
+const HOST_AND_CONDITIONING_DELTA = /* wgsl */ `    // skipped, leaving the pass bit-identical.
+    // Conditioning exposure is corrected too (correctConditioningExposure):
+    // history was stored under last frame's .r, so it is moved to this
+    // frame's with the host delta in one linear-space ratio.
+    let previousInfo = textureLoad(exposurePrevTex, vec2i(0), 0);
+    let hostPrev = previousInfo.b;
+    var hostRatio = 1.0;
+    if (hostPrev > 1.0e-4 && frameInfo.b > 1.0e-4) { hostRatio = frameInfo.b / hostPrev; }
+    // 0 means no previous frame wrote the texel (first frame after allocation).
+    var conditioningRatio = 1.0;
+    if (previousInfo.r > 1.0e-4) { conditioningRatio = exposure / max(previousInfo.r, 1.0e-4); }
+    // Exact test: equal f16 texels divide to exactly 1, which keeps unchanged
+    // frames bit-identical, while a slow ramp's one-ulp steps (~1e-3) are
+    // corrected instead of skipped.
+    let historyRatio = hostRatio * conditioningRatio;
+    var lockRatio = 1.0;
+    if (historyRatio != 1.0) {
+        history = vec4f(tonemapInvertible(tonemapInvert(history.rgb) * historyRatio), history.a);
+        lockRatio = historyRatio;
+    }
+`;
+
+// The locked luma is conditioned like history, so it follows the same ratio,
+// or every exposure change reads as a lock-breaking luma jump. y/(1-y) inverts
+// the tonemap exactly for grey, which is the approximation the lock needs.
+const LOCK_LUMA = /* wgsl */ `        lockedLuma = select(lockPrev.g, curY, lockPrev.r < 0.05);
+`;
+const LOCK_LUMA_CORRECTED = /* wgsl */ `        var previousLockLuma = lockPrev.g;
+        if (lockRatio != 1.0) {
+            previousLockLuma = previousLockLuma * lockRatio /
+                max(1.0 - previousLockLuma + previousLockLuma * lockRatio, 1.0e-6);
+        }
+        lockedLuma = select(previousLockLuma, curY, lockPrev.r < 0.05);
+`;
+
+// String.replace is a silent no-op on a missing pattern; a drifted snippet
+// must fail loudly, not ship production under the corrected name.
+function replaceOnce(source: string, from: string, to: string): string {
+    const index = source.indexOf(from);
+    if (index < 0 || source.indexOf(from, index + 1) >= 0) {
+        throw new Error('@pmndrs/upscaler: accumulate variant snippet not found exactly once.');
+    }
+    return source.slice(0, index) + to + source.slice(index + from.length);
+}
+
+/**
+ * Builds the accumulate pass.
+ * @param correctConditioningExposure - Also ratio-correct the reprojected
+ *   history for a change of conditioning exposure since last frame
+ *   (`UpscalerConfig.correctConditioningExposure`). `false` returns
+ *   {@link ACCUMULATE_SHADER} itself.
+ * @returns The assembled WGSL module
+ */
+export function buildAccumulateShader(correctConditioningExposure: boolean): string {
+    if (!correctConditioningExposure) return ACCUMULATE_SHADER;
+    conditionedShader ??= assembleShader(
+        WGSL_CONSTANTS,
+        WGSL_COLOR,
+        WGSL_TONEMAP,
+        replaceOnce(
+            replaceOnce(ACCUMULATE_BODY, HOST_DELTA, HOST_AND_CONDITIONING_DELTA),
+            LOCK_LUMA,
+            LOCK_LUMA_CORRECTED,
+        ),
+    );
+    return conditionedShader;
+}
+
+// Built on first use, then reused: most configurations never ask for it.
+let conditionedShader: string | null = null;
+
+/**
+ * Reproject & accumulate — the core temporal upscaling pass (FSR2/3's
+ * "accumulate" stage, with luminance-stability locks, reactive-mask handling,
+ * and the shading-change response wired in; per-stage fidelity notes live in
+ * the shaders README).
+ *
+ * Per display pixel:
+ * 1. Upsample the current jittered frame with a jitter-aware separable
+ *    Lanczos2 kernel over the 3×3 render-texel footprint. Because the
+ *    jitter moves the sample grid every frame, integrating these kernels
+ *    over time converges to a super-sampled image.
+ * 2. Reproject last frame's history through the dilated motion vector with
+ *    a Catmull-Rom filter (sharper than bilinear, avoids history blur).
+ * 3. Rein in stale history: clip it to the YCoCg variance AABB of the
+ *    current neighborhood, and cut its weight by the disocclusion mask.
+ * 4. Blend, tracking the accumulated sample count in the alpha channel so
+ *    fresh regions converge fast while stable ones stay smooth.
+ *
+ * Accumulation happens in invertible-tonemap space (see `WGSL_TONEMAP`) so
+ * HDR fireflies cannot dominate the running average.
+ *
+ * The caller's alpha is resolved alongside the color — same Lanczos taps,
+ * same blend weight — and stored in the locks buffer's spare `.a`, because
+ * the history's own `.a` is the accumulation age. The color history's age
+ * therefore keeps its exact Catmull-Rom reprojection; alpha reprojects
+ * bilinearly with the locks. An opaque input (alpha 1 everywhere) resolves
+ * to exactly 1: every tap, box bound and history value is 1, so the blend
+ * cannot move it.
+ *
+ * Bindings:
+ * - 1: scene color, render size (linear HDR)
+ * - 2: dilated motion, render size (UV delta in .xy)
+ * - 3: masks, render size (r = disocclusion)
+ * - 4: history in, display size (rgba16float; rgb tonemapped, a = age)
+ * - 5: linear clamp sampler
+ * - 6: history out (rgba16float storage, display size)
+ * - 7: locks in, display size (rgba16float; r = lifetime, g = locked luma,
+ *      a = resolved alpha)
+ * - 8: locks out (rgba16float storage, display size)
+ * - 9: exposure, 1×1 (rgba16float; r = conditioning pre-exposure for this
+ *      frame, b = host pre-exposure)
+ * - 10: reactive mask, render size (r = reactivity; 1×1 dummy when absent)
+ * - 11: previous frame's exposure, 1×1 (b = last frame's host pre-exposure,
+ *       for FSR3-style DeltaPreExposure history correction; r = last frame's
+ *       conditioning exposure, read by the corrected form only)
+ * - 12: shading-change response, ceil(render/2) (r32float from
+ *       shadingChange.ts; 1×1 zero dummy when the detector is off)
+ */
+export const ACCUMULATE_SHADER = assembleShader(
+    WGSL_CONSTANTS,
+    WGSL_COLOR,
+    WGSL_TONEMAP,
+    ACCUMULATE_BODY,
 );

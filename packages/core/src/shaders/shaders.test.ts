@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import * as accumulateModule from './accumulate';
-import { ACCUMULATE_SHADER } from './accumulate';
+import { ACCUMULATE_SHADER, buildAccumulateShader } from './accumulate';
 import * as blitModule from './blit';
 import { BLIT_SHADER } from './blit';
 import { DEBUG_SHADER } from './debug';
@@ -719,5 +719,94 @@ describe('depth clip tolerance (FSR2 Kfov)', () => {
     it('keeps the field when the exposure pass renames the last u32 slot', () => {
         expect(LUMINANCE_PYRAMID_SHADER).toContain('exposureTaps    : u32,    // offset 92');
         expect(LUMINANCE_PYRAMID_SHADER).toContain('depthClipKfov   : f32,    // offset 96');
+    });
+});
+
+describe('accumulate conditioning-exposure correction (upstream issue 99)', () => {
+    const corrected = buildAccumulateShader(true);
+
+    it('returns the production shader itself when off', () => {
+        expect(buildAccumulateShader(false)).toBe(ACCUMULATE_SHADER);
+        expect(ACCUMULATE_SHADER).not.toContain('conditioningRatio');
+    });
+
+    it("multiplies the host delta by this frame's over last frame's conditioning exposure", () => {
+        const body = corrected.split('fn main')[1] ?? '';
+        expect(body).toContain('let previousInfo = textureLoad(exposurePrevTex, vec2i(0), 0);');
+        expect(body).toContain('if (previousInfo.r > 1.0e-4) { conditioningRatio = exposure / max(previousInfo.r, 1.0e-4); }');
+        expect(body).toContain('let historyRatio = hostRatio * conditioningRatio;');
+        expect(body).toContain('tonemapInvertible(tonemapInvert(history.rgb) * historyRatio)');
+        // Exact: equal texels divide to exactly 1 (bit-identical frames), and a
+        // slow ramp's one-f16-ulp steps (~1e-3) are still corrected.
+        expect(body).toContain('if (historyRatio != 1.0) {');
+        expect(body).not.toContain('abs(historyRatio - 1.0)');
+        expect(body).not.toContain('* hostRatio), history.a)');
+        // The production comment that says the opposite is gone.
+        expect(body).not.toContain('deliberately not corrected here');
+    });
+
+    it('moves the locked luma by the same ratio, only when it is not 1', () => {
+        const body = corrected.split('fn main')[1] ?? '';
+        expect(body).toContain('lockRatio = historyRatio;');
+        expect(body).toContain('if (lockRatio != 1.0) {');
+        // y/(1-y) inverts the tonemap for grey: y' = y·r / (1 − y + y·r).
+        expect(body).toContain(
+            'previousLockLuma = previousLockLuma * lockRatio /\n                max(1.0 - previousLockLuma + previousLockLuma * lockRatio, 1.0e-6);',
+        );
+        expect(body).toContain('lockedLuma = select(previousLockLuma, curY, lockPrev.r < 0.05);');
+        expect(ACCUMULATE_SHADER).toContain('lockedLuma = select(lockPrev.g, curY, lockPrev.r < 0.05);');
+        // Corrected after the history ratio exists.
+        expect(body.indexOf('previousLockLuma')).toBeGreaterThan(body.indexOf('let historyRatio'));
+    });
+
+    it('recovers a grey value exactly through the lock-luma formula', () => {
+        // The WGSL expression, evaluated on the CPU: the conditioned luma of
+        // x·r from the conditioned luma of x, for grey x.
+        const condition = (x: number) => x / (1 + x);
+        const moved = (y: number, r: number) => (y * r) / Math.max(1 - y + y * r, 1e-6);
+        for (const x of [0, 0.05, 0.5, 1, 4, 30]) {
+            for (const r of [0.25, 0.9995, 1.001, 4]) {
+                expect(moved(condition(x), r)).toBeCloseTo(condition(x * r), 12);
+            }
+        }
+    });
+
+    it('builds once and reuses the module', () => {
+        expect(buildAccumulateShader(true)).toBe(corrected);
+    });
+
+    it('corrects after reprojection and before the age is read', () => {
+        const body = corrected.split('fn main')[1] ?? '';
+        const reproject = body.indexOf('var history = sampleHistoryCatmullRom(prevUV);');
+        const correct = body.indexOf('* historyRatio), history.a)');
+        const age = body.indexOf('var sampleCount = history.a * C.maxAccumulation;');
+        expect(reproject).toBeGreaterThan(0);
+        expect(correct).toBeGreaterThan(reproject);
+        expect(age).toBeGreaterThan(correct);
+    });
+
+    it('keeps the production bindings and is otherwise identical', () => {
+        const bindings = (source: string) =>
+            [...source.matchAll(/@group\(0\) @binding\((\d+)\) var (\w+)/g)].map((m) => `${m[1]}:${m[2]}`);
+        expect(bindings(corrected)).toEqual(bindings(ACCUMULATE_SHADER));
+        // Cut the two replaced regions: the history delta, and the locked luma.
+        const cut = (source: string, from: number, to: number) => source.slice(0, from) + source.slice(to);
+        const strip = (source: string) => {
+            const delta = source.indexOf('    // skipped, leaving the pass bit-identical.');
+            const deltaEnd = source.indexOf('    var sampleCount');
+            let out = cut(source, delta, deltaEnd);
+            const lockStart = out.includes('        var previousLockLuma')
+                ? out.indexOf('        var previousLockLuma')
+                : out.indexOf('        lockedLuma = select(');
+            const lockEnd = out.indexOf('\n', out.indexOf('        lockedLuma = select(')) + 1;
+            out = cut(out, lockStart, lockEnd);
+            return out;
+        };
+        expect(strip(corrected)).toBe(strip(ACCUMULATE_SHADER));
+    });
+
+    it('has one entry point and one constants block', () => {
+        expect(corrected.match(/@compute/g)).toHaveLength(1);
+        expect(corrected.match(/struct FsrConstants/g)).toHaveLength(1);
     });
 });

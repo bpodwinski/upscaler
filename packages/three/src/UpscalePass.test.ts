@@ -92,3 +92,16 @@ describe('UpscalePass.configure exposureMode', () => {
         expect(configure({ displayWidth: 64, displayHeight: 32 }).exposureMode).toBeUndefined();
     });
 });
+
+describe('UpscalePass.configure correctConditioningExposure', () => {
+    it('forwards the flag beside the exposure mode, and leaves it unset by default', () => {
+        const configure = (config: Parameters<InstanceType<typeof UpscalePass>['configure']>[0]) => {
+            const pass = new UpscalePass({} as THREE.WebGPURenderer, { shareVelocityMatrix: false });
+            pass.configure(config);
+            return (pass.upscaler.configure as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as Record<string, unknown>;
+        };
+        expect(configure({ displayWidth: 64, displayHeight: 32, correctConditioningExposure: true, exposureMode: 'provided' }))
+            .toMatchObject({ correctConditioningExposure: true, exposureMode: 'provided' });
+        expect(configure({ displayWidth: 64, displayHeight: 32 }).correctConditioningExposure).toBeUndefined();
+    });
+});

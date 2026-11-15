@@ -301,6 +301,11 @@ about a third of a second after a camera cut the image is slightly softer. Numbe
 in `packages/core/src/shaders/README.md` → *RCAS age knee*. It is also an option of
 `upscale()` / `upscaleScene()` and of `UpscalePass.configure()`.
 
+**`correctConditioningExposure`** (configuration, default `false`) corrects history when
+the conditioning exposure changes between frames. Turn it on when you move the
+exposure yourself (a fixed `exposure` or an `exposureTexture` you change); leave it off
+with auto-exposure. See [Inputs and contracts](inputs-and-contracts.md) → Exposure.
+
 **Camera cuts:** call `upscaler.resetHistory()`, or pass `reset: true` in that
 frame's dispatch inputs, so the first frame after a teleport doesn't blend against
 the old view.
