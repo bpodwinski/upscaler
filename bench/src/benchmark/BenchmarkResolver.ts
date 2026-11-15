@@ -37,6 +37,13 @@ interface BenchmarkTimerBridge {
     }>;
 }
 
+/** Configuration an identity adds to every `configure()`. */
+type BenchmarkExtraConfig = {
+    rcasAgeKnee?: number;
+    exposureMode?: 'upstream' | 'provided';
+    correctConditioningExposure?: boolean;
+};
+
 /**
  * Adapts the unchanged production upscaler to the benchmark lifecycle.
  */
@@ -47,11 +54,15 @@ class BenchmarkResolverAdapter implements BenchmarkResolver {
     // Set by the linear-depth identity: the same scene, handed over as view depth.
     protected _linearDepth: LinearDepthConverter | null = null;
     // Configuration an identity adds to every configure() (e.g. rcasAgeKnee, exposureMode).
-    protected _extraConfig: { rcasAgeKnee?: number; exposureMode?: 'upstream' | 'provided' } = {};
+    protected _extraConfig: BenchmarkExtraConfig = {};
     // Set by host-pre-exposure-cpu-v1: pass the host pre-exposure as a number.
     protected _hostPreExposureAsNumber = false;
     // Set by the exposure-texture identities: an app-supplied conditioning exposure.
     protected _exposureTexture: THREE.Texture | null = null;
+    // Set by the exposure-step identities: the exposure for a scenario frame.
+    protected _exposureSchedule: ((frame: number) => number) | null = null;
+    protected _scheduleRenderer: THREE.WebGPURenderer | null = null;
+    private readonly _scheduledExposures = new Map<number, THREE.DataTexture>();
 
     constructor(
         upscaler: Upscaler | CandidateUpscaler,
@@ -151,7 +162,7 @@ class BenchmarkResolverAdapter implements BenchmarkResolver {
             reactive: inputs.reactive as THREE.Texture | undefined,
             reactiveOpaqueColor: inputs.reactiveOpaqueColor as THREE.Texture | undefined,
             preExposureTexture: inputs.preExposureTexture as THREE.Texture | undefined,
-            exposureTexture: this._exposureTexture ?? undefined,
+            exposureTexture: this._exposureTextureFor(inputs.frameTag) ?? undefined,
             deltaTime: inputs.deltaTime,
         } as {
             color: THREE.Texture;
@@ -188,6 +199,21 @@ class BenchmarkResolverAdapter implements BenchmarkResolver {
         this._upscaler.dispatch(dispatchInputs, dispatchCamera);
     }
 
+    // One 1×1 texture per distinct value: three only uploads textures its own
+    // graph consumes, so a texel rewritten in place would never reach the GPU.
+    private _exposureTextureFor(frame: number): THREE.Texture | null {
+        if (!this._exposureSchedule || !this._scheduleRenderer) return this._exposureTexture;
+        const value = this._exposureSchedule(frame);
+        let texture = this._scheduledExposures.get(value);
+        if (!texture) {
+            texture = new THREE.DataTexture(new Float32Array([value, 0, 0, 1]), 1, 1, THREE.RGBAFormat, THREE.FloatType);
+            texture.needsUpdate = true;
+            this._scheduleRenderer.initTexture(texture);
+            this._scheduledExposures.set(value, texture);
+        }
+        return texture;
+    }
+
     reset(): void {
         this._upscaler.resetHistory();
         this._timer.reset();
@@ -215,6 +241,8 @@ class BenchmarkResolverAdapter implements BenchmarkResolver {
 
     dispose(): void {
         this._exposureTexture?.dispose();
+        for (const texture of this._scheduledExposures.values()) texture.dispose();
+        this._scheduledExposures.clear();
         this._linearDepth?.dispose();
         this._upscaler.dispose();
     }
@@ -273,7 +301,7 @@ export class BaselineBenchmarkResolver extends BenchmarkResolverAdapter {
      * Adds configuration to every `configure()`. Call before the first one.
      * @param config - Extra `UpscalerConfig` fields for this identity
      */
-    withConfig(config: { rcasAgeKnee?: number; exposureMode?: 'upstream' | 'provided' }): this {
+    withConfig(config: BenchmarkExtraConfig): this {
         this._extraConfig = config;
         return this;
     }
@@ -289,6 +317,18 @@ export class BaselineBenchmarkResolver extends BenchmarkResolverAdapter {
         // three only uploads textures its own graph consumes; force it.
         renderer.initTexture(texture);
         this._exposureTexture = texture;
+        return this;
+    }
+
+    /**
+     * Supplies a conditioning exposure per scenario frame through
+     * `exposureTexture` (the dispatch's frame tag is the scenario frame).
+     * @param renderer - Renderer that uploads the 1×1 textures
+     * @param schedule - The exposure for a frame
+     */
+    withExposureSchedule(renderer: THREE.WebGPURenderer, schedule: (frame: number) => number): this {
+        this._scheduleRenderer = renderer;
+        this._exposureSchedule = schedule;
         return this;
     }
 
@@ -404,6 +444,50 @@ export function createProvidedExposureResolver(
         RCAS_LEGACY_SHADER,
         RCAS_SHADER,
     ).withConfig({ exposureMode: 'provided' });
+}
+
+/**
+ * The conditioning exposure of the exposure-step identities, per scenario
+ * frame: 1, a ×4 step up at 120, back down at 180, then a ×8 exponential ramp
+ * over 240–299 (3.5 % per frame) held from 300. A still scenario converges
+ * before 120, so every change after it is the exposure's alone.
+ * @param frame - Scenario frame
+ * @returns The exposure for that frame
+ */
+export function exposureStepSchedule(frame: number): number {
+    if (frame < 120) return 1;
+    if (frame < 180) return 4;
+    if (frame < 240) return 1;
+    if (frame < 300) return 8 ** ((frame - 240) / 60);
+    return 8;
+}
+
+/**
+ * Creates the conditioning-exposure identities (upstream issue 99):
+ * - `conditioning-exposure-corrected-v1`: `baseline` with
+ *   `correctConditioningExposure`, for the auto-exposure scenarios (Q9, Q11, Q15)
+ * - `exposure-step-v1` / `exposure-step-corrected-v1`: `baseline` handed
+ *   {@link exposureStepSchedule} as `exposureTexture`, without and with the
+ *   correction
+ * @param renderer - Initialized three WebGPU renderer
+ * @param metadata - Registry metadata for the identity
+ * @returns One resolver instance
+ */
+export function createConditioningExposureResolver(
+    renderer: unknown,
+    metadata: BenchmarkVariantMetadata,
+): BenchmarkResolver {
+    const resolver = new BaselineBenchmarkResolver(
+        renderer as THREE.WebGPURenderer,
+        metadata,
+        RCAS_LEGACY_SHADER,
+        RCAS_SHADER,
+    );
+    if (metadata.id !== 'exposure-step-v1') resolver.withConfig({ correctConditioningExposure: true });
+    if (metadata.id.startsWith('exposure-step-')) {
+        resolver.withExposureSchedule(renderer as THREE.WebGPURenderer, exposureStepSchedule);
+    }
+    return resolver;
 }
 
 /** The exposure the exposure-texture identities supply. */
