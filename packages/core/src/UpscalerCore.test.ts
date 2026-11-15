@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { UpscalerCore, depthClipKfov, tanHalfFovY } from './UpscalerCore';
 import { FLAG_AUTO_EXPOSURE, FLAG_EXTERNAL_EXPOSURE, FLAG_PERSPECTIVE, FLAG_RESET, FLAG_REVERSED_DEPTH } from './shaders/common';
+import { ACCUMULATE_SHADER, buildAccumulateShader } from './shaders/accumulate';
 import type { CoreTexture, CoreTextureDescriptor } from './textures';
+import type { UpscalerConfig } from './types';
 
 //* Mock Device — answers every create* call with a stub so the core runs
 // end to end without a GPU or an engine (raw GPUTexture inputs only).
@@ -930,5 +932,126 @@ describe('depth clip FOV factor', () => {
     it('rejects an invalid fovY at dispatch', async () => {
         const { core, inputs } = await temporalCore();
         expect(() => core.dispatch(inputs, { near: 0.1, far: 100, perspective: true, fovY: 0 })).toThrow(/fovY/);
+    });
+});
+
+//* Conditioning-Exposure History Correction (upstream issue 99)
+
+describe('correctConditioningExposure', () => {
+    beforeEach(() => {
+        vi.stubGlobal('GPUBufferUsage', { MAP_READ: 1, COPY_SRC: 4, COPY_DST: 8, UNIFORM: 64, STORAGE: 128 });
+        vi.stubGlobal('GPUTextureUsage', { COPY_SRC: 1, COPY_DST: 2, TEXTURE_BINDING: 4, STORAGE_BINDING: 8 });
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
+    });
+
+    const camera = { near: 0.1, far: 100, perspective: true, fovY: 1 };
+    const compiled = (device: ReturnType<typeof mockDevice>['device']) =>
+        (device.createShaderModule as ReturnType<typeof vi.fn>).mock.calls.map(
+            ([descriptor]) => (descriptor as { code: string }).code,
+        );
+    const CORRECTED = buildAccumulateShader(true);
+    // The accumulate bind group a dispatch creates, by its pipeline's shader.
+    const accumulateLayoutOwner = (device: ReturnType<typeof mockDevice>['device'], run: () => void) => {
+        const create = vi.fn(device.createBindGroup);
+        device.createBindGroup = create;
+        run();
+        return create.mock.calls
+            .map(([descriptor]) => descriptor as unknown as { label: string; layout: { owner?: string } })
+            .filter((descriptor) => descriptor.label === 'upscale-accumulate')
+            .map((descriptor) => descriptor.layout.owner);
+    };
+
+    async function core(config: Partial<UpscalerConfig> = {}) {
+        const mock = mockDevice();
+        // Tag each pipeline's layout with the shader it was compiled from.
+        const createPipeline = mock.device.createComputePipelineAsync;
+        mock.device.createComputePipelineAsync = vi.fn(async (descriptor: { compute: { module: { code?: string } } }) => {
+            const pipeline = await createPipeline();
+            const code = descriptor.compute.module.code;
+            const owner = code === CORRECTED ? 'corrected' : code === ACCUMULATE_SHADER ? 'production' : 'other';
+            return { ...pipeline, getBindGroupLayout: () => ({ owner }) };
+        }) as unknown as typeof createPipeline;
+        mock.device.createShaderModule = vi.fn((descriptor: { code: string }) => ({ code: descriptor.code })) as never;
+        const upscaler = new UpscalerCore({ device: mock.device as unknown as GPUDevice });
+        upscaler.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, ...config });
+        await upscaler.prepare();
+        const inputs = { color: mock.gpu('color'), depth: mock.gpu('depth'), velocity: mock.gpu('velocity') };
+        return { ...mock, upscaler, inputs };
+    }
+
+    it('compiles only the production accumulate by default', async () => {
+        const { device } = await core();
+        expect(compiled(device)).toContain(ACCUMULATE_SHADER);
+        expect(compiled(device)).not.toContain(CORRECTED);
+    });
+
+    it('compiles and dispatches the corrected accumulate when on', async () => {
+        const { device, upscaler, inputs } = await core({ correctConditioningExposure: true });
+        expect(compiled(device)).toContain(CORRECTED);
+        expect(compiled(device)).not.toContain(ACCUMULATE_SHADER);
+        expect(accumulateLayoutOwner(device, () => upscaler.dispatch(inputs, camera))).toEqual(['corrected']);
+    });
+
+    it('dispatches production when off, including explicitly false', async () => {
+        const { device, upscaler, inputs } = await core({ correctConditioningExposure: false });
+        expect(accumulateLayoutOwner(device, () => upscaler.dispatch(inputs, camera))).toEqual(['production']);
+    });
+
+    it('switches pipeline when reconfigured, in both directions', async () => {
+        const { device, upscaler, inputs } = await core({ correctConditioningExposure: true });
+        upscaler.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2 });
+        await upscaler.prepare();
+        expect(accumulateLayoutOwner(device, () => upscaler.dispatch(inputs, camera))).toEqual(['production']);
+        upscaler.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, correctConditioningExposure: true });
+        // Already compiled: ready without another compile.
+        const before = compiled(device).length;
+        await upscaler.prepare();
+        expect(compiled(device).length).toBe(before);
+        expect(accumulateLayoutOwner(device, () => upscaler.dispatch(inputs, camera))).toEqual(['corrected']);
+    });
+
+    it('finishes a split frame through the corrected accumulate', async () => {
+        const { device, encoder, upscaler, inputs } = await core({ correctConditioningExposure: true });
+        const host = encoder as unknown as GPUCommandEncoder;
+        upscaler.encodeGuides(host, { depth: inputs.depth, velocity: inputs.velocity }, camera);
+        expect(accumulateLayoutOwner(device, () => upscaler.encodeUpscale(host, { color: inputs.color }, camera)))
+            .toEqual(['corrected']);
+    });
+
+    it('combines with the provided exposure mode', async () => {
+        const { device, upscaler, inputs } = await core({ correctConditioningExposure: true, exposureMode: 'provided' });
+        expect(compiled(device).some((code) => code.includes('EXPOSURE_TAPS'))).toBe(false);
+        expect(accumulateLayoutOwner(device, () => upscaler.dispatch(inputs, camera))).toEqual(['corrected']);
+    });
+
+    it('is ignored on the paths without an accumulate pass', async () => {
+        for (const path of ['spatial', 'bilinear', 'guides'] as const) {
+            const { device, upscaler, gpu } = await core({ correctConditioningExposure: true, path });
+            expect(compiled(device), path).not.toContain(CORRECTED);
+            const owners = accumulateLayoutOwner(device, () =>
+                path === 'guides'
+                    ? upscaler.dispatchGuides({ depth: gpu('depth'), velocity: gpu('velocity') }, camera)
+                    : upscaler.dispatch({ color: gpu('color') }, camera),
+            );
+            expect(owners, path).toEqual([]);
+        }
+    });
+
+    it.each([1, 'yes', 0])('rejects %s and keeps the previous configuration', async (value) => {
+        const { device, upscaler, inputs } = await core({ correctConditioningExposure: true });
+        expect(() =>
+            upscaler.configure({
+                displayWidth: 128,
+                displayHeight: 64,
+                correctConditioningExposure: value as unknown as boolean,
+            }),
+        ).toThrow(/correctConditioningExposure must be a boolean/);
+        expect([upscaler.displayWidth, upscaler.displayHeight]).toEqual([64, 32]);
+        expect(upscaler.isReady).toBe(true);
+        expect(accumulateLayoutOwner(device, () => upscaler.dispatch(inputs, camera))).toEqual(['corrected']);
     });
 });

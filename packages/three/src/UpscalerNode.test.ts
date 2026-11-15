@@ -102,3 +102,16 @@ describe('UpscalerNode exposureMode', () => {
         });
     });
 });
+
+describe('UpscalerNode correctConditioningExposure', () => {
+    it('forwards the flag, and leaves it unset by default', () => {
+        expect(nodeConfiguration({ correctConditioningExposure: true }).correctConditioningExposure).toBe(true);
+        expect(nodeConfiguration({ correctConditioningExposure: false }).correctConditioningExposure).toBe(false);
+        expect(nodeConfiguration({}).correctConditioningExposure).toBeUndefined();
+    });
+
+    it('keeps the other options beside it', () => {
+        expect(nodeConfiguration({ correctConditioningExposure: true, exposureMode: 'provided', rcasAgeKnee: 0.5 }))
+            .toMatchObject({ correctConditioningExposure: true, exposureMode: 'provided', rcasAgeKnee: 0.5 });
+    });
+});
