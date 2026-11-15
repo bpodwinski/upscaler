@@ -213,8 +213,6 @@ export class UpscalerCore<THandle = GPUTexture> {
     // Bench-only `camera` identity state (unused in production).
     private _reprojectBuffer: GPUBuffer | null = null;
     private readonly _reprojectData: (() => Float32Array<ArrayBuffer>) | null;
-    private _accumulatePass!: ComputePass;
-    private _accumulateConditionedPass!: ComputePass;
     private _exposurePass!: ComputePass;
     // exposureMode: 'provided' — publishes the exposure state, meters nothing.
     private _providedExposurePass!: ComputePass;
@@ -434,7 +432,7 @@ export class UpscalerCore<THandle = GPUTexture> {
         const geometry = this._crossFrameReconstruct ? ['reconstruct'] : [reconstruct, 'depthClip'];
         const exposure = this._exposureMode === 'provided' ? 'providedExposure' : 'exposure';
         return this._path === 'guides' ? geometry :
-            [...geometry, this._correctConditioningExposure ? 'accumulateConditioned' : 'accumulate', exposure, 'generateReactive', this._temporalRcasName(), 'blit'];
+            [...geometry, this._accumulateName(), exposure, 'generateReactive', this._temporalRcasName(), 'blit'];
     }
 
     // Each age knee is its own pipeline, cached under its own name, so
@@ -442,6 +440,12 @@ export class UpscalerCore<THandle = GPUTexture> {
     private _temporalRcasName(): string {
         if (!(this._rcasAgeKnee > 0)) return 'rcas';
         return `rcas@${this._rcasAgeKnee}${this._rcasAgeKneeStillGate ? '' : '@ungated'}`;
+    }
+
+    // One name per accumulate form, so the pass list and the encoder cannot
+    // disagree on which pipeline runs.
+    private _accumulateName(): string {
+        return this._correctConditioningExposure ? 'accumulateConditioned' : 'accumulate';
     }
 
     private _requestPass(name: string, retry: boolean): Promise<void> {
@@ -461,14 +465,15 @@ export class UpscalerCore<THandle = GPUTexture> {
             reconstructLinear: ['reconstruct', RECONSTRUCT_LINEAR_SHADER],
             depthClip: ['depth-clip', this._depthClipShader ?? DEPTH_CLIP_SHADER],
             accumulate: ['accumulate', ACCUMULATE_SHADER],
-            accumulateConditioned: ['accumulate', buildAccumulateShader(true)],
             exposure: ['exposure', LUMINANCE_PYRAMID_SHADER],
             providedExposure: ['exposure', PROVIDED_EXPOSURE_SHADER],
             generateReactive: ['gen-reactive', GENERATE_REACTIVE_SHADER],
             shadingChange: ['shading-change', this._shadingChangeShader ?? SHADING_CHANGE_SHADER],
             debug: ['debug', DEBUG_SHADER],
         };
-        const [label, code] = name.startsWith('rcas@')
+        const [label, code] = name === 'accumulateConditioned'
+            ? ['accumulate', buildAccumulateShader(true)]
+            : name.startsWith('rcas@')
             ? ['rcas', buildRcasAgeKneeShader(Number(name.split('@')[1]), !name.endsWith('@ungated'))]
             : shaders[name];
         const generation = this._generation;
@@ -485,8 +490,6 @@ export class UpscalerCore<THandle = GPUTexture> {
                 case 'reconstruct': this._reconstructPass = pass; break;
                 case 'reconstructLinear': this._reconstructLinearPass = pass; break;
                 case 'depthClip': this._depthClipPass = pass; break;
-                case 'accumulate': this._accumulatePass = pass; break;
-                case 'accumulateConditioned': this._accumulateConditionedPass = pass; break;
                 case 'exposure': this._exposurePass = pass; break;
                 case 'providedExposure': this._providedExposurePass = pass; break;
                 case 'generateReactive': this._generateReactivePass = pass; break;
@@ -1370,7 +1373,7 @@ export class UpscalerCore<THandle = GPUTexture> {
 
         //* Accumulate — jittered upsample + history reprojection/rectification
         // Same bindings in both forms; only the history correction differs.
-        const accumulate = this._correctConditioningExposure ? this._accumulateConditionedPass : this._accumulatePass;
+        const accumulate = this._passes.get(this._accumulateName())!;
         const accumulateBindGroup = accumulate.createBindGroup([
             { buffer: this._constantsLate.buffer },
             colorGPU.createView(),
