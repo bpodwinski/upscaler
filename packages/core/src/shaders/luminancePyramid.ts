@@ -138,3 +138,48 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
 }
 `,
 );
+
+/**
+ * Provided exposure (`exposureMode: 'provided'`) — the exposure pass for hosts
+ * that already meter: it publishes the same 1×1 exposure state as
+ * {@link LUMINANCE_PYRAMID_SHADER} without the luminance reduction (1024
+ * bilinear taps of the color input every frame). Nothing is measured and
+ * nothing adapts, so it reads neither the color nor the previous exposure.
+ *
+ * The conditioning exposure is the app's texture when one is passed, else the
+ * fixed `settings.exposure`; `autoExposure` has no meaning here. Host
+ * pre-exposure publishes exactly as in the metered pass. The metered average
+ * luma (.g) publishes as 0: no shader reads it, and there is no measurement.
+ *
+ * Bindings:
+ * - 1: exposure out (rgba16float storage, 1×1)
+ * - 2: external exposure (r = exposure; read when FLAG_EXTERNAL_EXPOSURE is
+ *      set, else a 1×1 dummy)
+ * - 3: host pre-exposure (r = the pre-exposure baked into the input color; a
+ *      zero dummy publishes 1.0)
+ */
+export const PROVIDED_EXPOSURE_SHADER = assembleShader(
+    WGSL_CONSTANTS,
+    /* wgsl */ `
+@group(0) @binding(1) var exposureOut : texture_storage_2d<rgba16float, write>;
+@group(0) @binding(2) var externalExposure : texture_2d<f32>;
+@group(0) @binding(3) var hostPreExposure : texture_2d<f32>;
+
+@compute @workgroup_size(8, 8)
+fn main(@builtin(global_invocation_id) gid : vec3u) {
+    if (any(vec2f(gid.xy) >= C.displaySize)) { return; }
+    // One texel to write — the other 63 lanes of the lone workgroup idle.
+    if (any(gid.xy != vec2u(0u))) { return; }
+
+    let ext = textureLoad(externalExposure, vec2i(0), 0).r;
+    let exposure = select(C.exposure, ext, hasFlag(FLAG_EXTERNAL_EXPOSURE));
+
+    // 0 (the dummy) means "not supplied" and publishes as 1.0, as in the
+    // metered pass, so accumulate's ratio correction stays inert.
+    let hostRaw = textureLoad(hostPreExposure, vec2i(0), 0).r;
+    let host = select(1.0, hostRaw, hostRaw > 0.0);
+
+    textureStore(exposureOut, vec2i(0), vec4f(exposure, 0.0, host, 0.0));
+}
+`,
+);

@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'vitest';
 
 import {
+    HALF_TO_FLOAT,
     SSIM_BORDER,
+    addYoung,
     decodePng,
     encodePng,
     present,
@@ -10,7 +12,9 @@ import {
     regionMean,
     squaredErrorMap,
     ssimMap,
+    summarizeYoung,
     temporalMaps,
+    youngSums,
 } from './image-metrics.mjs';
 
 const FULL = [0, 0, 1, 1];
@@ -107,5 +111,85 @@ describe('PNG I/O', () => {
         const decoded = decodePng(encodePng(rgb, w, h));
         expect([decoded.width, decoded.height, decoded.bytesPerPixel]).toEqual([w, h, 3]);
         expect([...decoded.raw]).toEqual([...rgb].map((v) => Math.round(v * 255)));
+    });
+});
+
+describe('young-history sums', () => {
+    // f16 bits of a value, found in the decode table the script itself uses.
+    const half = (value) => {
+        const bits = HALF_TO_FLOAT.findIndex((decoded) => decoded === value);
+        if (bits < 0) throw new Error(`${value} is not exactly representable in f16`);
+        return bits;
+    };
+    const W = 16;
+    const H = 14;
+    const flat = (value) => new Float32Array(W * H).fill(value);
+
+    test('pools only the pixels strictly below the age threshold', () => {
+        const age = new Uint16Array(W * H).fill(half(1));
+        // Young: one interior pixel, one on the border, and one exactly at the threshold (not young).
+        const interior = 7 * W + 8;
+        const border = 0;
+        const atThreshold = 6 * W + 6;
+        age[interior] = half(0.25);
+        age[border] = half(0);
+        age[atThreshold] = half(0.5);
+        const squared = flat(0);
+        squared[interior] = 0.04;
+        squared[border] = 0.02;
+        squared[atThreshold] = 1;
+        const ssim = flat(1);
+        ssim[interior] = 0.5;
+        ssim[border] = 0.1;
+
+        const sums = youngSums();
+        addYoung(sums, age, 0.5, squared, ssim, null, W, H);
+        expect(sums).toMatchObject({ pixels: 2, total: W * H, ssimPixels: 1, temporalPixels: 0 });
+        expect(sums.squared).toBeCloseTo(0.06, 6);
+
+        const summary = summarizeYoung(sums, 0.5);
+        expect(summary.ageBelow).toBe(0.5);
+        expect(summary.share).toBeCloseTo(2 / (W * H), 12);
+        expect(summary.psnr).toBeCloseTo(psnr(0.03), 5);
+        // The border pixel has no full SSIM window, exactly as in regionMean().
+        expect(summary.ssim).toBeCloseTo(0.5, 6);
+        expect(summary.temporalError).toBeNull();
+        expect(summary.churn).toBeNull();
+    });
+
+    test('pools across frames, and reports temporal metrics on a 0-255 scale', () => {
+        const sums = youngSums();
+        const young = new Uint16Array(W * H).fill(half(0.125));
+        const old = new Uint16Array(W * H).fill(half(1));
+        const maps = { error: flat(0.01), churn: flat(0.02), referenceChurn: flat(0.04) };
+        addYoung(sums, young, 0.5, flat(0.01), flat(0.9), null, W, H); // first frame: no previous
+        addYoung(sums, young, 0.5, flat(0.03), flat(0.7), maps, W, H);
+        addYoung(sums, old, 0.5, flat(1), flat(0), maps, W, H); // nothing young: adds only to the total
+
+        const summary = summarizeYoung(sums, 0.5);
+        expect(summary.pixels).toBe(2 * W * H);
+        expect(summary.share).toBeCloseTo(2 / 3, 12);
+        expect(summary.psnr).toBeCloseTo(psnr(0.02), 4);
+        expect(summary.ssim).toBeCloseTo(0.8, 5);
+        // Temporal sums only cover the frame that had a previous one.
+        expect(sums.temporalPixels).toBe(W * H);
+        expect(summary.temporalError).toBeCloseTo(2.55, 4);
+        expect(summary.churn).toBeCloseTo(5.1, 4);
+        expect(summary.referenceChurn).toBeCloseTo(10.2, 4);
+    });
+
+    test('reports nulls, not Infinity or NaN, when no pixel is young', () => {
+        const sums = youngSums();
+        expect(summarizeYoung(sums, 0.5)).toMatchObject({ share: 0, pixels: 0, psnr: null, ssim: null, temporalError: null });
+        addYoung(sums, new Uint16Array(W * H).fill(half(1)), 0.5, flat(0), flat(1), null, W, H);
+        expect(summarizeYoung(sums, 0.5)).toMatchObject({ share: 0, pixels: 0, psnr: null, ssim: null, churn: null });
+    });
+
+    test('does not count NaN ages as young, and rejects a mismatched age map', () => {
+        const nan = HALF_TO_FLOAT.findIndex((decoded) => Number.isNaN(decoded));
+        const sums = youngSums();
+        addYoung(sums, new Uint16Array(W * H).fill(nan), 0.5, flat(0), flat(1), null, W, H);
+        expect(sums.pixels).toBe(0);
+        expect(() => addYoung(sums, new Uint16Array(4), 0.5, flat(0), flat(1), null, W, H)).toThrow(/size/);
     });
 });

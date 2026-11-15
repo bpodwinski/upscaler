@@ -1,60 +1,9 @@
 import { WGSL_CONSTANTS, WGSL_DEPTH } from './common';
 import { assembleShader } from './wgsl';
 
-/**
- * Reconstruct pass — FSR2/3's "reconstruct & dilate" stage: dilation plus the
- * reconstructed-previous-depth scatter. Its partner {@link DEPTH_CLIP_SHADER}
- * consumes the scatter after a pass boundary (the scatter must complete for
- * every pixel before any pixel reads it).
- *
- * Per render-resolution pixel:
- * 1. Dilate — find the nearest (closest-to-camera) depth in the 3×3
- *    neighborhood and take that texel's motion vector, so thin foreground
- *    silhouettes drag their motion and don't smear background history.
- * 2. Scatter — write this frame's dilated linear depth into the bilinear
- *    footprint of the pixel's previous-frame position, keeping the nearest
- *    (atomicMin on the u32 bits: positive floats order like their bits).
- *
- * The depth clip then compares each pixel against the nearest CURRENT-frame
- * depth that reprojects onto its previous position. Both sides are
- * same-frame depths, so camera and object motion along the view axis cancel —
- * the cross-frame form this replaced compared depths measured from two camera
- * positions and disoccluded every surface a camera moved away from (issue
- * #67: a frontal wall lost 97% of its history to a 0.3-unit dolly-out).
- *
- * The scatter buffer is a plain storage buffer (WebGPU has no float texture
- * atomics) and is ping-ponged: the depth clip empties each pixel's slot of
- * the buffer the next frame scatters into, so there is no clear dispatch.
- *
- * Bindings:
- * - 1: scene depth (depth texture, render size)
- * - 2: velocity (rgba16float, NDC delta in .xy, render size)
- * - 3: dilated view depth output (r32float storage)
- * - 4: dilated motion output (rgba16float storage, UV delta in .xy; .z
- *      carries the 3×3 depth relief to the depth clip — a reserved channel)
- * - 5: reconstructed previous depth (storage buffer, u32 = f32 bits)
- */
-export const RECONSTRUCT_SHADER = assembleShader(
-    WGSL_CONSTANTS,
-    WGSL_DEPTH,
-    /* wgsl */ `
-@group(0) @binding(1) var sceneDepth : texture_depth_2d;
-@group(0) @binding(2) var sceneVelocity : texture_2d<f32>;
-@group(0) @binding(3) var dilatedDepth : texture_storage_2d<r32float, write>;
-@group(0) @binding(4) var dilatedMotion : texture_storage_2d<rgba16float, write>;
-@group(0) @binding(5) var<storage, read_write> reconstructedDepth : array<atomic<u32>>;
-
-// Bilinear taps lighter than this neither scatter nor vote (matches the
-// reference; the depth clip uses the same floor so the footprints agree).
-const DEPTH_TAP_WEIGHT_FLOOR : f32 = 6.1e-4;
-
-@compute @workgroup_size(8, 8)
-fn main(@builtin(global_invocation_id) gid : vec3u) {
-    if (any(vec2f(gid.xy) >= C.renderSize)) { return; }
-    let center = vec2i(gid.xy);
-    let maxCoord = vec2i(C.renderSize) - 1;
-
-    //* Nearest Depth Search (dilate)
+// The two dilation bodies. Each leaves `bestCoord`, `curDepth` (positive view
+// depth of the nearest texel in the 3×3) and `localRelief` for the shared tail.
+const HARDWARE_DILATE = /* wgsl */ `    //* Nearest Depth Search (dilate)
     // With a reversed depth buffer larger values are nearer; otherwise smaller.
     let reversed = hasFlag(FLAG_REVERSED_DEPTH);
     var bestDepth = textureLoad(sceneDepth, center, 0);
@@ -83,7 +32,91 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     // overlapping footprints, so a tap can legitimately read a depth up to
     // this much nearer without being a different surface.
     let localRelief = max(linearizeDepth(farthestDepth) - curDepth, 0.0);
-    let uvDelta = textureLoad(sceneVelocity, bestCoord, 0).xy * C.motionScale;
+`;
+
+const LINEAR_DILATE = /* wgsl */ `    //* Nearest Depth Search (dilate)
+    // The input is already positive view depth: the nearest texel is the
+    // minimum, and the relief needs no linearization.
+    var bestDepth = textureLoad(sceneDepth, center, 0).r;
+    var farthestDepth = bestDepth;
+    var bestCoord = center;
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            if (x == 0 && y == 0) { continue; }
+            let p = clamp(center + vec2i(x, y), vec2i(0), maxCoord);
+            let d = textureLoad(sceneDepth, p, 0).r;
+            if (d < bestDepth) {
+                bestDepth = d;
+                bestCoord = p;
+            }
+            farthestDepth = max(farthestDepth, d);
+        }
+    }
+
+    let curDepth = bestDepth;
+    // The 3×3 depth relief in view units (see the hardware form).
+    let localRelief = max(farthestDepth - curDepth, 0.0);
+`;
+
+/**
+ * Reconstruct pass — FSR2/3's "reconstruct & dilate" stage: dilation plus the
+ * reconstructed-previous-depth scatter. Its partner {@link DEPTH_CLIP_SHADER}
+ * consumes the scatter after a pass boundary (the scatter must complete for
+ * every pixel before any pixel reads it).
+ *
+ * Per render-resolution pixel:
+ * 1. Dilate — find the nearest (closest-to-camera) depth in the 3×3
+ *    neighborhood and take that texel's motion vector, so thin foreground
+ *    silhouettes drag their motion and don't smear background history.
+ * 2. Scatter — write this frame's dilated linear depth into the bilinear
+ *    footprint of the pixel's previous-frame position, keeping the nearest
+ *    (atomicMin on the u32 bits: positive floats order like their bits).
+ *
+ * The depth clip then compares each pixel against the nearest CURRENT-frame
+ * depth that reprojects onto its previous position. Both sides are
+ * same-frame depths, so camera and object motion along the view axis cancel —
+ * the cross-frame form this replaced compared depths measured from two camera
+ * positions and disoccluded every surface a camera moved away from (issue
+ * #67: a frontal wall lost 97% of its history to a 0.3-unit dolly-out).
+ *
+ * The scatter buffer is a plain storage buffer (WebGPU has no float texture
+ * atomics) and is ping-ponged: the depth clip empties each pixel's slot of
+ * the buffer the next frame scatters into, so there is no clear dispatch.
+ *
+ * Bindings:
+ * - 1: scene depth (depth texture, render size; with `linearDepth`, positive
+ *      linear view depth in the red channel of a float texture)
+ * - 2: velocity (rgba16float, NDC delta in .xy, render size)
+ * - 3: dilated view depth output (r32float storage)
+ * - 4: dilated motion output (rgba16float storage, UV delta in .xy; .z
+ *      carries the 3×3 depth relief to the depth clip — a reserved channel)
+ * - 5: reconstructed previous depth (storage buffer, u32 = f32 bits)
+ * @param linearDepth - Build the `depthMode: 'linear'` form: binding 1 already
+ *   holds view depth, so the nearest texel is the minimum and nothing is linearized
+ * @returns The assembled WGSL
+ */
+function buildReconstructShader(linearDepth: boolean): string {
+    return assembleShader(
+        WGSL_CONSTANTS,
+        ...(linearDepth ? [] : [WGSL_DEPTH]),
+        /* wgsl */ `
+@group(0) @binding(1) var sceneDepth : ${linearDepth ? 'texture_2d<f32>' : 'texture_depth_2d'};
+@group(0) @binding(2) var sceneVelocity : texture_2d<f32>;
+@group(0) @binding(3) var dilatedDepth : texture_storage_2d<r32float, write>;
+@group(0) @binding(4) var dilatedMotion : texture_storage_2d<rgba16float, write>;
+@group(0) @binding(5) var<storage, read_write> reconstructedDepth : array<atomic<u32>>;
+
+// Bilinear taps lighter than this neither scatter nor vote (matches the
+// reference; the depth clip uses the same floor so the footprints agree).
+const DEPTH_TAP_WEIGHT_FLOOR : f32 = 6.1e-4;
+
+@compute @workgroup_size(8, 8)
+fn main(@builtin(global_invocation_id) gid : vec3u) {
+    if (any(vec2f(gid.xy) >= C.renderSize)) { return; }
+    let center = vec2i(gid.xy);
+    let maxCoord = vec2i(C.renderSize) - 1;
+
+${linearDepth ? LINEAR_DILATE : HARDWARE_DILATE}    let uvDelta = textureLoad(sceneVelocity, bestCoord, 0).xy * C.motionScale;
     textureStore(dilatedDepth, gid.xy, vec4f(curDepth, 0.0, 0.0, 0.0));
     textureStore(dilatedMotion, gid.xy, vec4f(uvDelta, localRelief, 0.0));
 
@@ -111,7 +144,19 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     }
 }
 `,
-);
+    );
+}
+
+/** Reconstruct for a hardware depth input (`depthMode: 'hardware'`, the default). */
+export const RECONSTRUCT_SHADER = buildReconstructShader(false);
+
+/**
+ * Reconstruct for a linear view-depth input (`depthMode: 'linear'`): binding 1
+ * is a float texture whose red channel is positive view-space distance. Its
+ * outputs and scatter are the hardware form's, so the depth clip and every
+ * later pass are shared.
+ */
+export const RECONSTRUCT_LINEAR_SHADER = buildReconstructShader(true);
 
 /**
  * Depth-clip pass — FSR2/3's disocclusion test against the reconstructed

@@ -3,7 +3,7 @@ import { mix, mrt, output, texture, uniform, velocity } from 'three/tsl';
 
 import { Upscaler } from './Upscaler';
 import { getQualityModeRatio } from '@pmndrs/upscaler-core/math/resolution';
-import { DebugView, QualityMode, type RuntimeSettings, type UpscalePath } from './types';
+import { DebugView, QualityMode, type ExposureMode, type RuntimeSettings, type UpscalePath } from './types';
 
 /** Options for {@link UpscalePass.configure}. */
 export interface UpscalePassConfig {
@@ -16,6 +16,12 @@ export interface UpscalePassConfig {
     quality?: QualityMode;
     /** Explicit upscale ratio (overrides `quality`). `1` = render at display res. */
     ratio?: number;
+    /** Age knee for temporal RCAS, in `[0, 1]` — see `UpscalerConfig.rcasAgeKnee`. `0` (default) is off. */
+    rcasAgeKnee?: number;
+    /** Who supplies the conditioning exposure — see `UpscalerConfig.exposureMode`. */
+    exposureMode?: ExposureMode;
+    /** Correct history for conditioning-exposure changes — see `UpscalerConfig.correctConditioningExposure`. */
+    correctConditioningExposure?: boolean;
 }
 
 /**
@@ -121,6 +127,9 @@ export class UpscalePass {
             displayHeight: config.displayHeight,
             customUpscaleRatio: ratio,
             path: this._path,
+            rcasAgeKnee: config.rcasAgeKnee,
+            exposureMode: config.exposureMode,
+            correctConditioningExposure: config.correctConditioningExposure,
         });
 
         const rw = this.upscaler.renderWidth;

@@ -123,7 +123,88 @@ export interface UpscalerConfig {
      * externally-rendered inputs.
      */
     jitter?: boolean;
+    /**
+     * What the `depth` input holds (temporal and guides paths).
+     *
+     * - `'hardware'` (default) — a depth texture in the camera's device-depth
+     *   convention; the upscaler linearizes it from the frame camera's
+     *   near/far, projection type and `reversedDepth`.
+     * - `'linear'` — a float texture (`r32float` is the intended format)
+     *   whose red channel is **positive view-space distance**, for engines and
+     *   deferred pipelines that already keep linear depth. Every texel must be
+     *   finite and greater than zero, the background included (write the far
+     *   distance there): zero, negative and NaN are invalid. The camera's
+     *   `reversedDepth` is ignored.
+     *
+     * Changing it selects a different reconstruct pipeline, so it is
+     * configuration, not a per-frame setting. See docs/engine-contract.md.
+     */
+    depthMode?: DepthMode;
+    /**
+     * Age knee for temporal RCAS, in `[0, 1]`. `0` (default) sharpens every
+     * pixel alike. A positive knee scales the sharpening lobe of **still**
+     * pixels by `smoothstep(0, knee, age)`, where age is the pixel's
+     * accumulated sample count over `maxAccumulation`: history that was just
+     * reset (the trail a moving object uncovers, a camera cut) is not
+     * sharpened while it is still one or two noisy samples, and reaches full
+     * sharpening at `knee`. Pixels that move more than about half a render
+     * texel per frame are sharpened as usual, and so is spatial RCAS.
+     * Measured at `0.5`: temporal error on those trails drops by 17 %, with
+     * no cost under camera motion (packages/core/src/shaders/README.md).
+     *
+     * The value is compiled into the RCAS pipeline, so it is configuration:
+     * each distinct knee is its own pipeline. At `0` the production shader
+     * is used unchanged.
+     */
+    rcasAgeKnee?: number;
+    /**
+     * Who supplies the conditioning exposure (temporal path).
+     *
+     * - `'upstream'` (default) — the upscaler meters the scene each frame
+     *   (`settings.autoExposure`), or publishes the fixed `settings.exposure`
+     *   or an `exposureTexture` over that measurement.
+     * - `'provided'` — the host already meters. The luminance measurement is
+     *   skipped entirely, not run and then overridden. The conditioning
+     *   exposure is the frame's `exposureTexture` when one is passed, else
+     *   `settings.exposure`; `settings.autoExposure` is ignored.
+     *   `guides.exposure.g` (the metered average luma) reads 0.
+     *
+     * Either way the exposure is divided back out before output. It selects
+     * a different exposure pipeline, so it is configuration, not a setting.
+     * See docs/inputs-and-contracts.md → Exposure.
+     */
+    exposureMode?: ExposureMode;
+    /**
+     * Correct the reprojected history when the conditioning exposure changes
+     * between frames (temporal path). Default `false`.
+     *
+     * History is stored in invertible-tonemap space of the color times the
+     * conditioning exposure. When that exposure moves (auto-exposure adapting
+     * after a lighting change, a fixed `settings.exposure` or an
+     * `exposureTexture` the host steps), last frame's history decodes at the
+     * new exposure, so the output brightness is off by their ratio until the
+     * history re-converges. On, the history is ratio-corrected in linear
+     * space with the host pre-exposure delta, so the output does not move.
+     *
+     * Turn it on when the exposure moves without the scene changing (a manual
+     * exposure, an `exposureTexture` the host steps or smooths). Leave it off
+     * with auto-exposure or a host meter that follows the lighting: there the
+     * uncorrected decode cancels part of the history's lag behind a lighting
+     * change, and correcting it measured ~55 % more drift lag on slow ramps.
+     * Frames whose exposure is unchanged — every still frame inside the
+     * auto-exposure dead-band — are bit-identical either way.
+     *
+     * It selects a different accumulate pipeline, so it is configuration.
+     * See docs/inputs-and-contracts.md → Exposure.
+     */
+    correctConditioningExposure?: boolean;
 }
+
+/** How the `depth` input is encoded. See {@link UpscalerConfig.depthMode}. */
+export type DepthMode = 'hardware' | 'linear';
+
+/** Who supplies the conditioning exposure. See {@link UpscalerConfig.exposureMode}. */
+export type ExposureMode = 'upstream' | 'provided';
 
 /**
  * Runtime tuning knobs that can change every frame without a pipeline rebuild.
@@ -186,7 +267,10 @@ export interface RuntimeSettings {
 export interface DispatchInputs<TTexture = GPUTexture> {
     /** Scene color at render resolution (linear HDR, rgba16float). */
     color: TTexture;
-    /** Scene depth at render resolution. Required for the temporal path. */
+    /**
+     * Scene depth at render resolution, in the configured
+     * {@link UpscalerConfig.depthMode}. Required for the temporal path.
+     */
     depth?: TTexture;
     /**
      * Screen-space motion vectors at render resolution (NDC delta,
@@ -238,6 +322,13 @@ export interface DispatchInputs<TTexture = GPUTexture> {
      * equivalent to `1`.
      */
     preExposureTexture?: TTexture;
+    /**
+     * The same host pre-exposure as a number, for apps that hold it on the
+     * CPU: the factor already baked into this frame's input color (finite,
+     * greater than zero). {@link preExposureTexture} wins when both are
+     * passed. Omission is equivalent to `1`.
+     */
+    hostPreExposure?: number;
     /** Drop all history this frame (camera cut, teleport, resize). */
     reset?: boolean;
     /** Seconds since the previous frame. */
@@ -249,7 +340,7 @@ export interface DispatchInputs<TTexture = GPUTexture> {
  * stage of a split frame. Needs no color: the guides are signal-agnostic.
  */
 export interface GuideDispatchInputs<TTexture = GPUTexture> {
-    /** Scene depth at render resolution. */
+    /** Scene depth at render resolution, in the configured {@link UpscalerConfig.depthMode}. */
     depth: TTexture;
     /**
      * Screen-space motion vectors at render resolution (NDC delta, as
@@ -309,7 +400,8 @@ export interface TemporalGuides<TTexture = GPUTexture> {
      * The 1×1 exposure state (rgba16float): r = conditioning pre-exposure,
      * g = metered log-average luma of the beauty input, with host
      * pre-exposure divided out (the wrong space for GI statistics),
-     * b = host pre-exposure. `null` on the `guides` path.
+     * b = host pre-exposure. With `exposureMode: 'provided'` nothing is
+     * metered and g is 0. `null` on the `guides` path.
      */
     readonly exposure: TTexture | null;
     /**
@@ -361,6 +453,9 @@ export interface FrameCamera {
      * term (warned once per instance), which disoccludes slightly more.
      */
     fovY?: number;
-    /** The depth input is reversed-Z (1 = near). Defaults to `false`. */
+    /**
+     * The depth input is reversed-Z (1 = near). Defaults to `false`. Ignored
+     * with `depthMode: 'linear'`.
+     */
     reversedDepth?: boolean;
 }

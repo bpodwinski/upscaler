@@ -1,4 +1,4 @@
-import type * as THREE from 'three/webgpu';
+import * as THREE from 'three/webgpu';
 
 import { Upscaler } from '@pmndrs/upscaler';
 import {
@@ -10,6 +10,8 @@ import {
 
 type CrossFrameReconstruct = { shader: string; cameraCompensated: boolean };
 import { CandidateUpscaler } from '../candidates/CandidateUpscaler';
+import { LinearDepthConverter } from './LinearDepthConverter';
+import { scalarTexture } from '../scalarTexture';
 import {
     buildShadingRecurrenceShader,
     SHADING_CHANGE_FRAME_PAIR_SHADER,
@@ -36,6 +38,13 @@ interface BenchmarkTimerBridge {
     }>;
 }
 
+/** Configuration an identity adds to every `configure()`. */
+type BenchmarkExtraConfig = {
+    rcasAgeKnee?: number;
+    exposureMode?: 'upstream' | 'provided';
+    correctConditioningExposure?: boolean;
+};
+
 /**
  * Adapts the unchanged production upscaler to the benchmark lifecycle.
  */
@@ -43,6 +52,18 @@ class BenchmarkResolverAdapter implements BenchmarkResolver {
     readonly metadata: BenchmarkVariantMetadata;
 
     private readonly _upscaler: Upscaler | CandidateUpscaler;
+    // Set by the linear-depth identity: the same scene, handed over as view depth.
+    protected _linearDepth: LinearDepthConverter | null = null;
+    // Configuration an identity adds to every configure() (e.g. rcasAgeKnee, exposureMode).
+    protected _extraConfig: BenchmarkExtraConfig = {};
+    // Set by host-pre-exposure-cpu-v1: pass the host pre-exposure as a number.
+    protected _hostPreExposureAsNumber = false;
+    // Set by the exposure-texture identities: an app-supplied conditioning exposure.
+    protected _exposureTexture: THREE.Texture | null = null;
+    // Set by the exposure-step identities: the exposure for a scenario frame.
+    protected _exposureSchedule: ((frame: number) => number) | null = null;
+    protected _scheduleRenderer: THREE.WebGPURenderer | null = null;
+    private readonly _scheduledExposures = new Map<number, THREE.DataTexture>();
 
     constructor(
         upscaler: Upscaler | CandidateUpscaler,
@@ -115,7 +136,10 @@ class BenchmarkResolverAdapter implements BenchmarkResolver {
             displayHeight: config.displayHeight,
             customUpscaleRatio: config.ratio,
             path: config.path,
+            depthMode: this._linearDepth ? 'linear' : 'hardware',
+            ...this._extraConfig,
         });
+        this._linearDepth?.configure(this._upscaler.renderWidth, this._upscaler.renderHeight);
     }
 
     beginFrame(camera: unknown): void {
@@ -128,15 +152,36 @@ class BenchmarkResolverAdapter implements BenchmarkResolver {
 
     dispatch(inputs: BenchmarkResolverDispatch, camera: unknown): void {
         this._timer.setNextFrameTag(inputs.frameTag);
+        const sceneDepth = inputs.depth as THREE.Texture | undefined;
         const dispatchInputs = {
             color: inputs.color as THREE.Texture,
-            depth: inputs.depth as THREE.Texture | undefined,
+            depth:
+                sceneDepth && this._linearDepth
+                    ? this._linearDepth.convert(sceneDepth, camera as THREE.PerspectiveCamera)
+                    : sceneDepth,
             velocity: inputs.velocity as THREE.Texture | undefined,
             reactive: inputs.reactive as THREE.Texture | undefined,
             reactiveOpaqueColor: inputs.reactiveOpaqueColor as THREE.Texture | undefined,
             preExposureTexture: inputs.preExposureTexture as THREE.Texture | undefined,
+            exposureTexture: this._exposureTextureFor(inputs.frameTag) ?? undefined,
             deltaTime: inputs.deltaTime,
+        } as {
+            color: THREE.Texture;
+            depth?: THREE.Texture;
+            velocity?: THREE.Texture;
+            reactive?: THREE.Texture;
+            reactiveOpaqueColor?: THREE.Texture;
+            preExposureTexture?: THREE.Texture;
+            exposureTexture?: THREE.Texture;
+            hostPreExposure?: number;
+            deltaTime: number;
         };
+        if (this._hostPreExposureAsNumber && dispatchInputs.preExposureTexture) {
+            // The bench's 1×1 DataTexture keeps its value on the CPU.
+            const data = (dispatchInputs.preExposureTexture as THREE.DataTexture).image.data as Float32Array;
+            dispatchInputs.hostPreExposure = data[0];
+            dispatchInputs.preExposureTexture = undefined;
+        }
         const dispatchCamera = camera as THREE.PerspectiveCamera;
 
         if (this._upscaler instanceof CandidateUpscaler) {
@@ -153,6 +198,11 @@ class BenchmarkResolverAdapter implements BenchmarkResolver {
         }
 
         this._upscaler.dispatch(dispatchInputs, dispatchCamera);
+    }
+
+    private _exposureTextureFor(frame: number): THREE.Texture | null {
+        if (!this._exposureSchedule || !this._scheduleRenderer) return this._exposureTexture;
+        return scalarTexture(this._scheduleRenderer, this._scheduledExposures, this._exposureSchedule(frame));
     }
 
     reset(): void {
@@ -181,6 +231,10 @@ class BenchmarkResolverAdapter implements BenchmarkResolver {
     }
 
     dispose(): void {
+        this._exposureTexture?.dispose();
+        for (const texture of this._scheduledExposures.values()) texture.dispose();
+        this._scheduledExposures.clear();
+        this._linearDepth?.dispose();
         this._upscaler.dispose();
     }
 }
@@ -192,6 +246,7 @@ function createProductionUpscaler(
     shadingChangeShader?: string,
     crossFrameReconstruct?: CrossFrameReconstruct,
     depthClipShader?: string,
+    rcasAgeKneeUngated?: boolean,
 ): Upscaler {
     // The bench always times: its HUD and the benchmark protocol read the timer.
     const options = {
@@ -202,6 +257,7 @@ function createProductionUpscaler(
         _shadingChangeShader: shadingChangeShader,
         _crossFrameReconstruct: crossFrameReconstruct,
         _depthClipShader: depthClipShader,
+        _rcasAgeKneeUngated: rcasAgeKneeUngated,
     };
     return new Upscaler(options);
 }
@@ -224,6 +280,55 @@ function createCandidateUpscaler(
  * Adapts the production upscaler to the benchmark lifecycle.
  */
 export class BaselineBenchmarkResolver extends BenchmarkResolverAdapter {
+    /**
+     * Switches this resolver to `depthMode: 'linear'`. Call before `configure()`.
+     * @param converter - Produces the view-depth texture each frame
+     */
+    useLinearDepth(converter: LinearDepthConverter): void {
+        this._linearDepth = converter;
+    }
+
+    /**
+     * Adds configuration to every `configure()`. Call before the first one.
+     * @param config - Extra `UpscalerConfig` fields for this identity
+     */
+    withConfig(config: BenchmarkExtraConfig): this {
+        this._extraConfig = config;
+        return this;
+    }
+
+    /**
+     * Supplies a constant conditioning exposure through `exposureTexture`.
+     * @param renderer - Renderer that uploads the 1×1 texture
+     * @param value - The exposure it holds
+     */
+    withExposureTexture(renderer: THREE.WebGPURenderer, value: number): this {
+        const texture = new THREE.DataTexture(new Float32Array([value, 0, 0, 1]), 1, 1, THREE.RGBAFormat, THREE.FloatType);
+        texture.needsUpdate = true;
+        // three only uploads textures its own graph consumes; force it.
+        renderer.initTexture(texture);
+        this._exposureTexture = texture;
+        return this;
+    }
+
+    /**
+     * Supplies a conditioning exposure per scenario frame through
+     * `exposureTexture` (the dispatch's frame tag is the scenario frame).
+     * @param renderer - Renderer that uploads the 1×1 textures
+     * @param schedule - The exposure for a frame
+     */
+    withExposureSchedule(renderer: THREE.WebGPURenderer, schedule: (frame: number) => number): this {
+        this._scheduleRenderer = renderer;
+        this._exposureSchedule = schedule;
+        return this;
+    }
+
+    /** Hands the host pre-exposure over as `hostPreExposure`, not as a texture. */
+    withHostPreExposureAsNumber(): this {
+        this._hostPreExposureAsNumber = true;
+        return this;
+    }
+
     constructor(
         renderer: THREE.WebGPURenderer,
         metadata: BenchmarkVariantMetadata,
@@ -232,6 +337,7 @@ export class BaselineBenchmarkResolver extends BenchmarkResolverAdapter {
         shadingChangeShader?: string,
         crossFrameReconstruct?: CrossFrameReconstruct,
         depthClipShader?: string,
+        rcasAgeKneeUngated?: boolean,
     ) {
         super(
             createProductionUpscaler(
@@ -241,6 +347,7 @@ export class BaselineBenchmarkResolver extends BenchmarkResolverAdapter {
                 shadingChangeShader,
                 crossFrameReconstruct,
                 depthClipShader,
+                rcasAgeKneeUngated,
             ),
             metadata,
         );
@@ -287,6 +394,141 @@ export function createBaselineResolver(
 }
 
 /**
+ * Creates `linear-depth-input-v1`: the `baseline` pipeline configured with
+ * `depthMode: 'linear'` and fed the scene's depth converted to view depth
+ * (LinearDepthConverter), so the two depth modes can be compared on one scene.
+ * The conversion is outside the upscaler's timer.
+ * @param renderer - Initialized three WebGPU renderer
+ * @param metadata - Registry metadata for the identity
+ * @returns One linear-depth resolver instance
+ */
+export function createLinearDepthResolver(
+    renderer: unknown,
+    metadata: BenchmarkVariantMetadata,
+): BenchmarkResolver {
+    const resolver = new BaselineBenchmarkResolver(
+        renderer as THREE.WebGPURenderer,
+        metadata,
+        RCAS_LEGACY_SHADER,
+        RCAS_SHADER,
+    );
+    resolver.useLinearDepth(new LinearDepthConverter(renderer as THREE.WebGPURenderer));
+    return resolver;
+}
+
+/**
+ * Creates `exposure-provided-v1`: the `baseline` pipeline configured with
+ * `exposureMode: 'provided'`, so the luminance measurement never runs and the
+ * conditioning exposure is the fixed `settings.exposure`. Its output equals
+ * `baseline` with `autoExposure: false`.
+ * @param renderer - Initialized three WebGPU renderer
+ * @param metadata - Registry metadata for the identity
+ * @returns One provided-exposure resolver instance
+ */
+export function createProvidedExposureResolver(
+    renderer: unknown,
+    metadata: BenchmarkVariantMetadata,
+): BenchmarkResolver {
+    return new BaselineBenchmarkResolver(
+        renderer as THREE.WebGPURenderer,
+        metadata,
+        RCAS_LEGACY_SHADER,
+        RCAS_SHADER,
+    ).withConfig({ exposureMode: 'provided' });
+}
+
+/**
+ * The conditioning exposure of the exposure-step identities, per scenario
+ * frame: 1, a ×4 step up at 120, back down at 180, then a ×8 exponential ramp
+ * over 240–299 (3.5 % per frame) held from 300. A still scenario converges
+ * before 120, so every change after it is the exposure's alone.
+ * @param frame - Scenario frame
+ * @returns The exposure for that frame
+ */
+export function exposureStepSchedule(frame: number): number {
+    if (frame < 120) return 1;
+    if (frame < 180) return 4;
+    if (frame < 240) return 1;
+    if (frame < 300) return 8 ** ((frame - 240) / 60);
+    return 8;
+}
+
+/**
+ * Creates the conditioning-exposure identities (upstream issue 99):
+ * - `conditioning-exposure-corrected-v1`: `baseline` with
+ *   `correctConditioningExposure`, for the auto-exposure scenarios (Q9, Q11, Q15)
+ * - `exposure-step-v1` / `exposure-step-corrected-v1`: `baseline` handed
+ *   {@link exposureStepSchedule} as `exposureTexture`, without and with the
+ *   correction
+ * @param renderer - Initialized three WebGPU renderer
+ * @param metadata - Registry metadata for the identity
+ * @returns One resolver instance
+ */
+export function createConditioningExposureResolver(
+    renderer: unknown,
+    metadata: BenchmarkVariantMetadata,
+): BenchmarkResolver {
+    const resolver = new BaselineBenchmarkResolver(
+        renderer as THREE.WebGPURenderer,
+        metadata,
+        RCAS_LEGACY_SHADER,
+        RCAS_SHADER,
+    );
+    if (metadata.id !== 'exposure-step-v1') resolver.withConfig({ correctConditioningExposure: true });
+    if (metadata.id.startsWith('exposure-step-')) {
+        resolver.withExposureSchedule(renderer as THREE.WebGPURenderer, exposureStepSchedule);
+    }
+    return resolver;
+}
+
+/** The exposure the exposure-texture identities supply. */
+const EXPOSURE_TEXTURE_VALUE = 2;
+
+/**
+ * Creates the exposure-texture identities: `baseline` handed an
+ * `exposureTexture` holding 2, in the default mode
+ * (`exposure-texture-v1`: the measurement runs and is overridden) or with
+ * `exposureMode: 'provided'` (`exposure-provided-texture-v1`: nothing is
+ * measured). Both must equal `baseline` with `autoExposure: false` and
+ * `exposure: 2`.
+ * @param renderer - Initialized three WebGPU renderer
+ * @param metadata - Registry metadata for the identity
+ * @returns One resolver instance
+ */
+export function createExposureTextureResolver(
+    renderer: unknown,
+    metadata: BenchmarkVariantMetadata,
+): BenchmarkResolver {
+    const resolver = new BaselineBenchmarkResolver(
+        renderer as THREE.WebGPURenderer,
+        metadata,
+        RCAS_LEGACY_SHADER,
+        RCAS_SHADER,
+    ).withExposureTexture(renderer as THREE.WebGPURenderer, EXPOSURE_TEXTURE_VALUE);
+    return metadata.id === 'exposure-provided-texture-v1' ? resolver.withConfig({ exposureMode: 'provided' }) : resolver;
+}
+
+/**
+ * Creates `host-pre-exposure-cpu-v1`: `baseline`, with the host pre-exposure
+ * passed as the `hostPreExposure` number instead of `preExposureTexture`.
+ * Its output must equal `baseline`'s (Q11 is the scenario that sets one).
+ * @param renderer - Initialized three WebGPU renderer
+ * @param metadata - Registry metadata for the identity
+ * @returns One resolver instance
+ */
+export function createHostPreExposureCpuResolver(
+    renderer: unknown,
+    metadata: BenchmarkVariantMetadata,
+): BenchmarkResolver {
+    return new BaselineBenchmarkResolver(
+        renderer as THREE.WebGPURenderer,
+        metadata,
+        RCAS_LEGACY_SHADER,
+        RCAS_SHADER,
+    ).withHostPreExposureAsNumber();
+}
+
+/**
  * Creates the `production` identity: the shipping pipeline with production
  * `RCAS_SHADER` on both the temporal and the FSR1 spatial path, i.e. what a
  * consumer gets with no bench override. `baseline` keeps the frozen legacy
@@ -307,6 +549,34 @@ export function createProductionRcasResolver(
         RCAS_SHADER,
         RCAS_SHADER,
     );
+}
+
+/**
+ * Creates the age-knee identities: `production` configured with an
+ * `rcasAgeKnee`, so temporal RCAS holds back on young history. No RCAS
+ * override is passed (the knee is built from production RCAS by the core).
+ * `rcas-age-knee-v1` is 0.5, `-25-` 0.25 and `-12-` 0.125; `-ungated-` is 0.5
+ * without the still-pixel gate (age alone, the form first measured).
+ * @param renderer - Initialized three WebGPU renderer
+ * @param metadata - Registry metadata for the identity
+ * @returns One age-knee resolver instance
+ */
+export function createRcasAgeKneeResolver(
+    renderer: unknown,
+    metadata: BenchmarkVariantMetadata,
+): BenchmarkResolver {
+    const ungated = metadata.id === 'rcas-age-knee-ungated-v1';
+    const knee = metadata.id === 'rcas-age-knee-25-v1' ? 0.25 : metadata.id === 'rcas-age-knee-12-v1' ? 0.125 : 0.5;
+    return new BaselineBenchmarkResolver(
+        renderer as THREE.WebGPURenderer,
+        metadata,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        ungated,
+    ).withConfig({ rcasAgeKnee: knee });
 }
 
 /**

@@ -16,7 +16,8 @@ import { Color3, Color4 } from '@babylonjs/core/Maths/math.color.js';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector.js';
 import { CreateBox } from '@babylonjs/core/Meshes/Builders/boxBuilder.js';
 import { CreateGround } from '@babylonjs/core/Meshes/Builders/groundBuilder.js';
-import type { Mesh } from '@babylonjs/core/Meshes/mesh.js';
+import { CreateSphere } from '@babylonjs/core/Meshes/Builders/sphereBuilder.js';
+import { Mesh } from '@babylonjs/core/Meshes/mesh.js';
 import { Scene } from '@babylonjs/core/scene.js';
 // Deep imports skip Babylon's side-effect registrations: the WebGPU engine
 // extensions (render targets, multi-render for the geometry renderer) load here.
@@ -30,9 +31,29 @@ import { DebugView, FrameGraphUpscaleTask, QualityMode, Upscaler, type UpscalePa
  * runs the core on Babylon's device, and image processing presents the
  * output. The jitter goes through Babylon's TAAMaterialManager, so the
  * velocity buffer stays jitter-free. Contract: docs/babylon.md.
+ *
+ * `?depth=linear` feeds the geometry renderer's view-depth texture with
+ * `depthMode: 'linear'` instead of hardware depth. Babylon clears that
+ * texture to 0, which is not a valid view depth, so it is only correct where
+ * geometry covers every pixel: `?enclosed` adds a sky box that does.
  */
 
 type Mode = 'temporal' | 'spatial' | 'bilinear' | 'native';
+
+const params = new URLSearchParams(location.search);
+const linearDepth = params.get('depth') === 'linear';
+const enclosed = params.has('enclosed');
+// `sky=sphere`: a sky dome in place of the box. Its curved wall has no run of
+// texels at one view depth, unlike the box's flat ones.
+const skySphere = params.get('sky') === 'sphere';
+// Near plane override: hardware depth precision away from the camera scales with it.
+const nearPlane = Number(params.get('near') ?? 0.1);
+// Ground tilt in degrees. Flat under a level camera, every image row of the
+// ground is one view depth, so the 3×3 nearest-depth search ties along it; a
+// tilt breaks the ties.
+const tilt = (Number(params.get('tilt') ?? 0) * Math.PI) / 180;
+// Babylon's right-handed mode: view-space z, and so the view-depth texture, turns negative.
+const rightHanded = params.has('rh');
 
 const badge = document.getElementById('badge')!;
 const canvas = document.querySelector('canvas')!;
@@ -50,9 +71,10 @@ engine.setHardwareScalingLevel(1 / Math.min(window.devicePixelRatio, 2));
 
 const scene = new Scene(engine);
 scene.clearColor = new Color4(0.03, 0.045, 0.07, 1);
+scene.useRightHandedSystem = rightHanded;
 
 const camera = new ArcRotateCamera('camera', 0, 1.1, 8, new Vector3(0, 0.4, 0), scene);
-camera.minZ = 0.1;
+camera.minZ = nearPlane;
 camera.maxZ = 100;
 
 const sky = new HemisphericLight('sky', new Vector3(0, 1, 0), scene);
@@ -93,6 +115,7 @@ groundMat.diffuseTexture = gridTexture('ground-grid', 8, true);
 (groundMat.diffuseTexture as Texture).uScale = (groundMat.diffuseTexture as Texture).vScale = 5;
 groundMat.specularColor = Color3.Black();
 ground.material = groundMat;
+ground.rotation.z = tilt;
 
 const cubes: Mesh[] = [];
 for (let i = 0; i < 7; i++) {
@@ -110,10 +133,23 @@ for (let i = 0; i < 7; i++) {
     cubes.push(cube);
 }
 
+if (enclosed) {
+    // An inward-facing box inside the far plane: no pixel is left at the clear value.
+    const skyBox = skySphere
+        ? CreateSphere('sky-box', { diameter: 60, segments: 48, sideOrientation: Mesh.BACKSIDE }, scene)
+        : CreateBox('sky-box', { size: 60, sideOrientation: Mesh.BACKSIDE }, scene);
+    const skyMat = new StandardMaterial('sky-box', scene);
+    skyMat.disableLighting = true;
+    skyMat.emissiveColor = new Color3(0.03, 0.045, 0.07);
+    skyBox.material = skyMat;
+}
+
 //* Upscaler + Frame Graph
 
 const upscaler = new Upscaler({ engine, scene });
-const state = { mode: 'temporal' as Mode, paused: false, debugView: DebugView.None, frames: 0, time: 0 };
+const MODE_NAMES: readonly Mode[] = ['temporal', 'spatial', 'bilinear', 'native'];
+const initialMode = MODE_NAMES.find((mode) => mode === params.get('mode')) ?? 'temporal';
+const state = { mode: initialMode, paused: false, debugView: DebugView.None, frames: 0, time: 0 };
 let graph: FrameGraph | null = null;
 let building: Promise<void> | null = null;
 
@@ -128,6 +164,7 @@ async function build(): Promise<void> {
         displayWidth: width,
         displayHeight: height,
         path,
+        depthMode: linearDepth ? 'linear' : 'hardware',
         ...(native ? { customUpscaleRatio: 1 } : { qualityMode: QualityMode.Performance }),
     });
     await upscaler.init();
@@ -175,13 +212,24 @@ async function build(): Promise<void> {
             textureType: Constants.TEXTURETYPE_HALF_FLOAT,
             textureFormat: Constants.TEXTUREFORMAT_RGBA,
         },
+        // View depth (camera-space z, positive in Babylon's default
+        // left-handed system) as r32float, for depthMode: 'linear'.
+        ...(linearDepth
+            ? [
+                  {
+                      type: Constants.PREPASS_DEPTH_TEXTURE_TYPE,
+                      textureType: Constants.TEXTURETYPE_FLOAT,
+                      textureFormat: Constants.TEXTUREFORMAT_R,
+                  },
+              ]
+            : []),
     ];
     graph.addTask(geometry);
 
     const upscale = new FrameGraphUpscaleTask('upscale', graph, upscaler);
     upscale.camera = camera;
     upscale.colorTexture = geometry.outputTexture;
-    upscale.depthTexture = geometry.outputDepthTexture;
+    upscale.depthTexture = linearDepth ? geometry.geometryViewDepthTexture : geometry.outputDepthTexture;
     upscale.velocityTexture = geometry.geometryLinearVelocityTexture;
     graph.addTask(upscale);
 
@@ -230,6 +278,7 @@ engine.runRenderLoop(() => {
         `render   ${upscaler.renderWidth}×${upscaler.renderHeight}\n` +
         `display  ${upscaler.displayWidth}×${upscaler.displayHeight}\n` +
         (state.mode === 'temporal' ? `jitter   phase ${upscaler.jitterPhase}/${upscaler.jitterPhaseCount}\n` : '') +
+        (linearDepth ? `depth    linear view depth${enclosed ? '' : ' (background invalid)'}\n` : '') +
         (state.debugView !== DebugView.None ? `debug    ${DebugView[state.debugView]}\n` : '') +
         `\n[1] temporal [2] spatial [3] bilinear [4] native\n[d] debug view  [space] pause`;
 });
@@ -263,6 +312,19 @@ Object.assign(window, {
         setMode(m: Mode) {
             state.mode = m;
             rebuild();
+        },
+        /** Renders one frame at a fixed scene time, for deterministic captures. */
+        step(time: number): boolean {
+            if (building || !graph) return false;
+            state.paused = true;
+            state.time = time;
+            // What the engine's render loop wraps around its callbacks: without
+            // it the frame would draw into last frame's canvas texture.
+            engine.beginFrame();
+            scene.render();
+            engine.endFrame();
+            state.frames++;
+            return true;
         },
     },
 });

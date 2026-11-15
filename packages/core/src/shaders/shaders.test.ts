@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import * as accumulateModule from './accumulate';
-import { ACCUMULATE_SHADER } from './accumulate';
+import { ACCUMULATE_SHADER, buildAccumulateShader } from './accumulate';
 import * as blitModule from './blit';
 import { BLIT_SHADER } from './blit';
 import { DEBUG_SHADER } from './debug';
 import * as easuModule from './easu';
 import { EASU_SHADER } from './easu';
 import { GENERATE_REACTIVE_SHADER } from './generateReactive';
-import { LUMINANCE_PYRAMID_SHADER } from './luminancePyramid';
+import { LUMINANCE_PYRAMID_SHADER, PROVIDED_EXPOSURE_SHADER } from './luminancePyramid';
 import { MOMENTS_SHADER } from './moments';
 import * as rcasModule from './rcas';
 import {
@@ -17,8 +17,9 @@ import {
     RCAS_PER_TAP_SHADER,
     RCAS_SHADER,
     RCAS_TONEMAP_SPACE_SHADER,
+    buildRcasAgeKneeShader,
 } from './rcas';
-import { DEPTH_CLIP_SHADER, RECONSTRUCT_SHADER } from './reconstruct';
+import { DEPTH_CLIP_SHADER, RECONSTRUCT_LINEAR_SHADER, RECONSTRUCT_SHADER } from './reconstruct';
 import {
     DEPTH_CLIP_VARIANTS,
     RECONSTRUCT_CROSS_FRAME_SHADER,
@@ -32,12 +33,16 @@ const ALL_SHADERS: Record<string, string> = {
     easu: EASU_SHADER,
     rcas: RCAS_SHADER,
     reconstruct: RECONSTRUCT_SHADER,
+    // depthMode: 'linear' — the same pass reading view depth from a float texture.
+    reconstructLinear: RECONSTRUCT_LINEAR_SHADER,
     depthClip: DEPTH_CLIP_SHADER,
     // Frozen bench identity (reconstruct-cross-frame-v1), pre-#67 production.
     reconstructCrossFrame: RECONSTRUCT_CROSS_FRAME_SHADER,
     shadingChange: SHADING_CHANGE_SHADER,
     accumulate: ACCUMULATE_SHADER,
     luminancePyramid: LUMINANCE_PYRAMID_SHADER,
+    // exposureMode: 'provided' — publishes the exposure state, meters nothing.
+    providedExposure: PROVIDED_EXPOSURE_SHADER,
     generateReactive: GENERATE_REACTIVE_SHADER,
     debug: DEBUG_SHADER,
     moments: MOMENTS_SHADER,
@@ -50,12 +55,14 @@ const BASELINE_BINDING_COUNTS: Record<string, number> = {
     rcas: 5,
     // 6 since 2026-10-05: dilate + scatter, depth clip split out (issue #67).
     reconstruct: 6,
+    reconstructLinear: 6,
     depthClip: 6,
     reconstructCrossFrame: 7,
     // 11 since 2026-10-05: per-block memory in/out (NEXT-STEPS §14).
     shadingChange: 11,
     accumulate: 13,
     luminancePyramid: 7,
+    providedExposure: 4,
     // 5 since 2026-07-22: incoming-mask binding for merge-not-overwrite.
     generateReactive: 5,
     debug: 10,
@@ -88,6 +95,8 @@ const BASELINE_FINGERPRINTS: Record<string, string> = {
     // 2026-11-14: the depth clip tolerance is upstream's full diagonal times
     // Kfov (was half the diagonal, no FOV term).
     reconstruct: '91ec85ce',
+    // Added with depthMode: 'linear' (upstream issue 97).
+    reconstructLinear: '9b7ba90b',
     depthClip: '4ce56aab',
     reconstructCrossFrame: '8232fe2d',
     // Added 2026-07-21: multi-scale shading-change detector (NEXT-STEPS item 4);
@@ -112,6 +121,8 @@ const BASELINE_FINGERPRINTS: Record<string, string> = {
     // 2026-10-08: 1/16-stop adaptation dead-band, so the jitter-phase wobble of
     // the metered log-average no longer re-conditions history on still scenes.
     luminancePyramid: '464b028f',
+    // Added with exposureMode: 'provided' (upstream issue 98).
+    providedExposure: '197c538e',
     // Updated 2026-07-22: reactive merge-not-overwrite (guides spec M3) — the
     // generator max-merges an incoming mask instead of being suppressed by it.
     generateReactive: 'c45aafb7',
@@ -290,6 +301,105 @@ describe('RCAS on the temporal path', () => {
             expect(source).not.toContain('ceiling');
             expect(source).not.toContain('maxGain');
         }
+    });
+});
+
+describe('RCAS age knee (rcasAgeKnee)', () => {
+    const knee = buildRcasAgeKneeShader(0.5);
+    const ungated = buildRcasAgeKneeShader(0.5, false);
+    const bindings = (source: string) =>
+        [...source.matchAll(/@group\(0\) @binding\((\d+)\)/g)].map((match) => Number(match[1]));
+    const withoutKnee = (source: string) =>
+        source
+            .replace('    let center = textureLoad(inputColor, sp, 0);\n    let eIn = center.rgb;', '    let eIn = rcasLoad(sp);')
+            .replace(/\n {4}\/\/\* Age Knee[\s\S]*?\n {4}}\n(?=\n {4}\/\/\* Denoise)/, '');
+
+    it('is the production shader itself at a knee of 0', () => {
+        expect(buildRcasAgeKneeShader(0)).toBe(RCAS_SHADER);
+        expect(buildRcasAgeKneeShader(0, false)).toBe(RCAS_SHADER);
+    });
+
+    it('scales the lobe of still pixels by the history age, on the temporal path only', () => {
+        // Pixels at or past the knee skip the motion fetch.
+        expect(knee).toContain(`    if (hasFlag(FLAG_INPUT_REINHARD) && center.a < 0.500000000) {
+        let renderCoord = min(vec2i((vec2f(sp) + 0.5) * C.displaySizeInv * C.renderSize), vec2i(C.renderSize) - 1);
+        let motionTexels = length(textureLoad(dilatedMotion, renderCoord, 0).xy * C.renderSize);
+        let still = 1.0 - smoothstep(KNEE_MOTION_LO, KNEE_MOTION_HI, motionTexels);
+        lobe *= mix(1.0, smoothstep(0.0, 0.500000000, center.a), still);
+    }`);
+        // Before the denoise attenuation and the resolve, which both read the lobe.
+        expect(knee.indexOf('//* Age Knee')).toBeGreaterThan(knee.indexOf('var lobe = '));
+        expect(knee.indexOf('//* Age Knee')).toBeLessThan(knee.indexOf('//* Denoise'));
+    });
+
+    it('fades the gate over the range of accumulate\'s still-scene relax', () => {
+        const value = (source: string, name: string) => source.match(new RegExp(name + ' : f32 = ([\\d.]+);'))?.[1];
+        expect(value(knee, 'KNEE_MOTION_LO')).toBe(value(ACCUMULATE_SHADER, 'STILL_MOTION_LO'));
+        expect(value(knee, 'KNEE_MOTION_HI')).toBe(value(ACCUMULATE_SHADER, 'STILL_MOTION_HI'));
+        expect(value(knee, 'KNEE_MOTION_LO')).toBeDefined();
+    });
+
+    it('reads the age from the center tap it already loads', () => {
+        for (const source of [knee, ungated]) {
+            expect(source).toContain('let center = textureLoad(inputColor, sp, 0);\n    let eIn = center.rgb;');
+            expect(source).not.toContain('let eIn = rcasLoad(sp);');
+            const loads = (text: string) => (text.match(/rcasLoad\(sp|textureLoad\(inputColor, sp/g) ?? []).length;
+            expect(loads(source)).toBe(loads(RCAS_SHADER));
+        }
+    });
+
+    it('is otherwise production RCAS, plus the motion binding', () => {
+        // _encodeRcas binds production's five entries, then the dilated motion.
+        expect(bindings(knee)).toEqual([0, 1, 2, 3, 4, 5]);
+        expect(knee).toContain('@group(0) @binding(4) var alphaSource : texture_2d<f32>;');
+        expect(knee).toContain('@group(0) @binding(5) var dilatedMotion : texture_2d<f32>;');
+        expect(knee.match(/@compute/g)).toHaveLength(1);
+        const stripped = withoutKnee(knee).replace(
+            /@group\(0\) @binding\(5\) var dilatedMotion : texture_2d<f32>;\n[\s\S]*?const KNEE_MOTION_HI : f32 = [\d.]+;\n/,
+            '',
+        );
+        expect(stripped).toBe(RCAS_SHADER);
+    });
+
+    it('keeps the ungated bench form on production bindings, age alone', () => {
+        expect(bindings(ungated)).toEqual([0, 1, 2, 3, 4]);
+        expect(ungated).toContain(`    if (hasFlag(FLAG_INPUT_REINHARD)) {
+        lobe *= smoothstep(0.0, 0.500000000, center.a);
+    }`);
+        expect(ungated).not.toContain('dilatedMotion');
+        expect(withoutKnee(ungated)).toBe(RCAS_SHADER);
+    });
+});
+
+describe("provided exposure (exposureMode: 'provided')", () => {
+    it('meters nothing: no color input, no sampler, no previous exposure', () => {
+        // Past the shared constants block (which names deltaTime for every pass).
+        const own = PROVIDED_EXPOSURE_SHADER.split('fn hasFlag')[1] ?? '';
+        expect(own).not.toBe('');
+        expect(own).not.toMatch(/textureSample|sampler|inputColor|prevExposure|log2|deltaTime/);
+        expect(PROVIDED_EXPOSURE_SHADER).not.toContain('FLAG_AUTO_EXPOSURE)');
+    });
+
+    it('selects the conditioning exposure like the metered pass with auto-exposure off', () => {
+        expect(PROVIDED_EXPOSURE_SHADER).toContain(
+            'let exposure = select(C.exposure, ext, hasFlag(FLAG_EXTERNAL_EXPOSURE));',
+        );
+        // The metered pass ends on the same two selects.
+        expect(LUMINANCE_PYRAMID_SHADER).toContain('exposure = select(C.exposure, exposure, hasFlag(FLAG_AUTO_EXPOSURE));');
+        expect(LUMINANCE_PYRAMID_SHADER).toContain('exposure = select(exposure, ext, hasFlag(FLAG_EXTERNAL_EXPOSURE));');
+    });
+
+    it('publishes host pre-exposure exactly as the metered pass does', () => {
+        for (const line of [
+            'let hostRaw = textureLoad(hostPreExposure, vec2i(0), 0).r;',
+            'let host = select(1.0, hostRaw, hostRaw > 0.0);',
+        ]) {
+            expect(PROVIDED_EXPOSURE_SHADER).toContain(line);
+            expect(LUMINANCE_PYRAMID_SHADER).toContain(line);
+        }
+        // r conditioning, g unmetered, b host pre-exposure: the layout every reader expects.
+        expect(PROVIDED_EXPOSURE_SHADER).toContain('textureStore(exposureOut, vec2i(0), vec4f(exposure, 0.0, host, 0.0));');
+        expect(LUMINANCE_PYRAMID_SHADER).toContain('textureStore(exposureOut, vec2i(0), vec4f(exposure, avgLum, host, 0.0));');
     });
 });
 
@@ -508,6 +618,52 @@ describe('reconstructed previous depth (issue #67)', () => {
     });
 });
 
+describe("linear view-depth input (depthMode: 'linear')", () => {
+    const head = (source: string) => source.split('//* Nearest Depth Search (dilate)');
+    const tail = (source: string) => source.split('let uvDelta = textureLoad(sceneVelocity')[1];
+
+    it('differs from the hardware form only in the depth binding and the dilation', () => {
+        // Everything after the dilation (the outputs and the scatter) is
+        // shared, so the depth clip sees the same footprint in both modes.
+        expect(tail(RECONSTRUCT_LINEAR_SHADER)).toBe(tail(RECONSTRUCT_SHADER));
+        expect(tail(RECONSTRUCT_LINEAR_SHADER)).toMatch(/atomicMin\(&reconstructedDepth/);
+        expect(RECONSTRUCT_SHADER).toContain('var sceneDepth : texture_depth_2d;');
+        expect(RECONSTRUCT_LINEAR_SHADER).toContain('var sceneDepth : texture_2d<f32>;');
+        expect(head(RECONSTRUCT_LINEAR_SHADER)[0].replace('texture_2d<f32>', 'texture_depth_2d'))
+            .toBe(head(RECONSTRUCT_SHADER)[0].replace(/\nfn linearizeDepth[\s\S]*?\n}\n/, ''));
+    });
+
+    it('loads the red channel of all nine texels, and clamps at the border', () => {
+        const dilate = RECONSTRUCT_LINEAR_SHADER.split('//* Nearest Depth Search (dilate)')[1].split('let uvDelta')[0];
+        // A float texture loads a vec4f: every read takes .r (a depth texture loads an f32).
+        expect(dilate.match(/textureLoad\(sceneDepth, \w+, 0\)\.r;/g)).toHaveLength(2);
+        expect(dilate).not.toMatch(/textureLoad\(sceneDepth, \w+, 0\);/);
+        expect(dilate).toContain('for (var y = -1; y <= 1; y++) {');
+        expect(dilate).toContain('for (var x = -1; x <= 1; x++) {');
+        expect(dilate).toContain('let p = clamp(center + vec2i(x, y), vec2i(0), maxCoord);');
+        // The motion comes from the nearest texel, as in the hardware form.
+        expect(dilate).toContain('bestCoord = p;');
+        expect(RECONSTRUCT_LINEAR_SHADER).toContain('textureLoad(sceneVelocity, bestCoord, 0).xy * C.motionScale');
+        expect(dilate).toContain('farthestDepth = max(farthestDepth, d);');
+    });
+
+    it('writes the same outputs as the hardware form', () => {
+        for (const source of [RECONSTRUCT_SHADER, RECONSTRUCT_LINEAR_SHADER]) {
+            expect(source).toContain('textureStore(dilatedDepth, gid.xy, vec4f(curDepth, 0.0, 0.0, 0.0));');
+            expect(source).toContain('textureStore(dilatedMotion, gid.xy, vec4f(uvDelta, localRelief, 0.0));');
+            // Positive floats order like their bits, which the atomicMin scatter relies on.
+            expect(source).toContain('let encoded = bitcast<u32>(max(curDepth, 0.0));');
+        }
+    });
+
+    it('reads view depth as is: nearest is the minimum, no device convention', () => {
+        expect(RECONSTRUCT_LINEAR_SHADER).not.toMatch(/linearizeDepth|FLAG_REVERSED_DEPTH\)|depthNearFar\./);
+        expect(RECONSTRUCT_LINEAR_SHADER).toContain('if (d < bestDepth) {');
+        expect(RECONSTRUCT_LINEAR_SHADER).toContain('let curDepth = bestDepth;');
+        expect(RECONSTRUCT_LINEAR_SHADER).toContain('let localRelief = max(farthestDepth - curDepth, 0.0);');
+    });
+});
+
 describe('depth-clip variants (issue #79)', () => {
     // Swapped in through Upscaler's _depthClipShader, which binds production's
     // six entries, so every variant must declare exactly bindings 0–5.
@@ -563,5 +719,94 @@ describe('depth clip tolerance (FSR2 Kfov)', () => {
     it('keeps the field when the exposure pass renames the last u32 slot', () => {
         expect(LUMINANCE_PYRAMID_SHADER).toContain('exposureTaps    : u32,    // offset 92');
         expect(LUMINANCE_PYRAMID_SHADER).toContain('depthClipKfov   : f32,    // offset 96');
+    });
+});
+
+describe('accumulate conditioning-exposure correction (upstream issue 99)', () => {
+    const corrected = buildAccumulateShader(true);
+
+    it('returns the production shader itself when off', () => {
+        expect(buildAccumulateShader(false)).toBe(ACCUMULATE_SHADER);
+        expect(ACCUMULATE_SHADER).not.toContain('conditioningRatio');
+    });
+
+    it("multiplies the host delta by this frame's over last frame's conditioning exposure", () => {
+        const body = corrected.split('fn main')[1] ?? '';
+        expect(body).toContain('let previousInfo = textureLoad(exposurePrevTex, vec2i(0), 0);');
+        expect(body).toContain('if (previousInfo.r > 1.0e-4) { conditioningRatio = exposure / max(previousInfo.r, 1.0e-4); }');
+        expect(body).toContain('let historyRatio = hostRatio * conditioningRatio;');
+        expect(body).toContain('tonemapInvertible(tonemapInvert(history.rgb) * historyRatio)');
+        // Exact: equal texels divide to exactly 1 (bit-identical frames), and a
+        // slow ramp's one-f16-ulp steps (~1e-3) are still corrected.
+        expect(body).toContain('if (historyRatio != 1.0) {');
+        expect(body).not.toContain('abs(historyRatio - 1.0)');
+        expect(body).not.toContain('* hostRatio), history.a)');
+        // The production comment that says the opposite is gone.
+        expect(body).not.toContain('deliberately not corrected here');
+    });
+
+    it('moves the locked luma by the same ratio, only when it is not 1', () => {
+        const body = corrected.split('fn main')[1] ?? '';
+        expect(body).toContain('lockRatio = historyRatio;');
+        expect(body).toContain('if (lockRatio != 1.0) {');
+        // y/(1-y) inverts the tonemap for grey: y' = y·r / (1 − y + y·r).
+        expect(body).toContain(
+            'previousLockLuma = previousLockLuma * lockRatio /\n                max(1.0 - previousLockLuma + previousLockLuma * lockRatio, 1.0e-6);',
+        );
+        expect(body).toContain('lockedLuma = select(previousLockLuma, curY, lockPrev.r < 0.05);');
+        expect(ACCUMULATE_SHADER).toContain('lockedLuma = select(lockPrev.g, curY, lockPrev.r < 0.05);');
+        // Corrected after the history ratio exists.
+        expect(body.indexOf('previousLockLuma')).toBeGreaterThan(body.indexOf('let historyRatio'));
+    });
+
+    it('recovers a grey value exactly through the lock-luma formula', () => {
+        // The WGSL expression, evaluated on the CPU: the conditioned luma of
+        // x·r from the conditioned luma of x, for grey x.
+        const condition = (x: number) => x / (1 + x);
+        const moved = (y: number, r: number) => (y * r) / Math.max(1 - y + y * r, 1e-6);
+        for (const x of [0, 0.05, 0.5, 1, 4, 30]) {
+            for (const r of [0.25, 0.9995, 1.001, 4]) {
+                expect(moved(condition(x), r)).toBeCloseTo(condition(x * r), 12);
+            }
+        }
+    });
+
+    it('builds once and reuses the module', () => {
+        expect(buildAccumulateShader(true)).toBe(corrected);
+    });
+
+    it('corrects after reprojection and before the age is read', () => {
+        const body = corrected.split('fn main')[1] ?? '';
+        const reproject = body.indexOf('var history = sampleHistoryCatmullRom(prevUV);');
+        const correct = body.indexOf('* historyRatio), history.a)');
+        const age = body.indexOf('var sampleCount = history.a * C.maxAccumulation;');
+        expect(reproject).toBeGreaterThan(0);
+        expect(correct).toBeGreaterThan(reproject);
+        expect(age).toBeGreaterThan(correct);
+    });
+
+    it('keeps the production bindings and is otherwise identical', () => {
+        const bindings = (source: string) =>
+            [...source.matchAll(/@group\(0\) @binding\((\d+)\) var (\w+)/g)].map((m) => `${m[1]}:${m[2]}`);
+        expect(bindings(corrected)).toEqual(bindings(ACCUMULATE_SHADER));
+        // Cut the two replaced regions: the history delta, and the locked luma.
+        const cut = (source: string, from: number, to: number) => source.slice(0, from) + source.slice(to);
+        const strip = (source: string) => {
+            const delta = source.indexOf('    // skipped, leaving the pass bit-identical.');
+            const deltaEnd = source.indexOf('    var sampleCount');
+            let out = cut(source, delta, deltaEnd);
+            const lockStart = out.includes('        var previousLockLuma')
+                ? out.indexOf('        var previousLockLuma')
+                : out.indexOf('        lockedLuma = select(');
+            const lockEnd = out.indexOf('\n', out.indexOf('        lockedLuma = select(')) + 1;
+            out = cut(out, lockStart, lockEnd);
+            return out;
+        };
+        expect(strip(corrected)).toBe(strip(ACCUMULATE_SHADER));
+    });
+
+    it('has one entry point and one constants block', () => {
+        expect(corrected.match(/@compute/g)).toHaveLength(1);
+        expect(corrected.match(/struct FsrConstants/g)).toHaveLength(1);
     });
 });

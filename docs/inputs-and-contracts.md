@@ -22,6 +22,7 @@ The **upscale ratio** is display / render, per axis.
 | `reactiveOpaqueColor` | render | opaque-only color, same domain as `color` | optional, temporal |
 | `exposureTexture` | any (1×1 typical) | red channel of texel (0, 0), any float format | optional, temporal |
 | `preExposureTexture` | any (1×1 typical) | red channel of texel (0, 0) | optional, temporal (raw `Upscaler` only) |
+| `hostPreExposure` | n/a | a number, finite and greater than 0 | optional, temporal (raw `Upscaler` only); the same input as `preExposureTexture`, held on the CPU |
 | `deltaTime` | n/a | seconds | auto-exposure adaptation |
 
 All inputs are ordinary three textures, typically render-target attachments. The
@@ -89,6 +90,36 @@ must be exactly what that node produces, rendered into a named MRT attachment:
   that rendered the frame.
 - **Not supported:** logarithmic depth (`logarithmicDepthBuffer`) has no
   linearization path, and multisampled depth won't bind.
+- **Linear view depth instead.** With `depthMode: 'linear'` in the configuration,
+  `depth` is a float texture (`FloatType` + `RedFormat`, i.e. `r32float`) whose red
+  channel holds positive view-space distance, and nothing is linearized. Every texel
+  must be finite and greater than zero, the background included. The rules are in
+  [Engine contract → Linear view depth](engine-contract.md#linear-view-depth). On
+  the nodes it is `upscale(color, depth, velocity, camera, { depthMode: 'linear' })`
+  and `temporalGuides(depth, velocity, camera, { depthMode: 'linear' })`.
+  `upscaleScene()` and `UpscalePass` render their own hardware depth.
+
+  A view-depth node, as run on a device (`upscale()` alone and linked to
+  `temporalGuides()`, inside a sky sphere so that no texel is left at the clear
+  value):
+
+  ```ts
+  const scenePass = pass(scene, camera);
+  scenePass.setMRT(mrt({ output, velocity, viewZ: positionView.z.negate() }));
+  scenePass.setResolutionScale(1 / ratio);
+  scenePass.getTexture('viewZ').type = THREE.FloatType;   // not the default half float
+  post.outputNode = upscale(
+      scenePass.getTextureNode('output'),
+      scenePass.getTextureNode('viewZ'),
+      scenePass.getTextureNode('velocity'),
+      camera,
+      { depthMode: 'linear' },
+  );
+  ```
+
+  The attachment is cleared like the color one, to the clear color: whatever the
+  scene does not cover reads as a tiny view depth, in front of everything. Cover the
+  background, or keep hardware depth.
 
 ## Jitter
 
@@ -201,6 +232,53 @@ final brightness**. Three sources, in increasing priority:
    `upscale()` node's `exposureTexture` option. It mirrors FSR3's `exposure`
    resource.
 
+**When the host already meters: `exposureMode: 'provided'`.** In the default mode
+(`'upstream'`) the luminance measurement runs every frame, even when a fixed exposure
+or an `exposureTexture` then overrides its result: 1024 bilinear taps of the color
+input, about 49 µs of the 226 µs the temporal path costs at 1920×1080, ratio 2 (the
+same 46–48 µs at ratios 1 and 3: it does not scale with resolution).
+Configuring `exposureMode: 'provided'` removes it. The exposure pass then only
+publishes the exposure state (about 2 µs):
+
+- the conditioning exposure is the frame's `exposureTexture` when one is passed,
+  else `settings.exposure`. `settings.autoExposure` is ignored: nothing is metered;
+- `preExposureTexture` and `hostPreExposure` work as before;
+- `guides.exposure.g`, the metered average luma, reads 0;
+- the output equals the default mode's with `autoExposure: false` and the same
+  inputs, byte for byte.
+
+It is configuration, not a setting: it selects a different exposure pipeline, so
+changing it means another `configure()`. Use the default mode if anything of yours
+reads `guides.exposure.g`. It is also an option of `upscale()` / `upscaleScene()`
+and of `UpscalePass.configure()`.
+
+**When the conditioning exposure moves: `correctConditioningExposure`.** History is
+stored conditioned by the exposure of the frame that wrote it. When the exposure
+changes, last frame's history decodes at the new one, so for a few frames the output
+is off by their ratio. Configuring `correctConditioningExposure: true` ratio-corrects
+the reprojected history in linear space, as host pre-exposure is (default `false`).
+Which one you want depends on *why* the exposure moves:
+
+- **It moves without the scene changing** (a manual exposure change, an
+  `exposureTexture` stepped or smoothed for reasons of your own): turn it on. On a
+  still scene a ×4 step changes the output by 21–24/255 in one frame without it,
+  then keeps it drifting for about a second (still 0.13/255 per frame 60 frames
+  later, against 0.10 at rest); with it, the output does not move
+  (0.13/255, the scene's own jitter churn). A ×8 ramp over a second churns 0.9/255
+  per frame without it, 0.12 with it.
+- **It follows the scene's lighting** (auto-exposure, or your own metering): leave
+  it off. When lighting dims, auto-exposure rises, and the uncorrected history
+  decodes darker, which happens to cancel part of the history's lag behind the new
+  lighting. With the correction that help is gone: on bench Q15's slow lighting
+  ramps the error against a lag-free reference rises from 3.5 to 5.4/255 (5.2 with
+  auto-exposure off, where the option changes nothing).
+
+Frames whose exposure is unchanged are bit-identical either way, including still
+frames inside auto-exposure's 1/16-stop dead-band. It selects a different accumulate
+pipeline, so it is configuration (also an option of `upscale()` / `upscaleScene()`
+and `UpscalePass.configure()`). Upstream issue 99; numbers in
+`bench/docs/NEXT-STEPS.md` §16.
+
 The conditioning exposure also sets the **HDR headroom** of the temporal output.
 Values resolve up to about `999 / exposure` in the input's linear domain. Below
 that they lose precision as they approach it, and sub-pixel highlights are
@@ -213,13 +291,16 @@ about 12.5 clips to the same value, so keep app-supplied values near what the
 scene's highlights allow. See issue
 [#49](https://github.com/pmndrs/upscaler/issues/49).
 
-**Host pre-exposure** (`preExposureTexture`, raw `Upscaler` only) is different: it
+**Host pre-exposure** (`preExposureTexture`, or the number `hostPreExposure`; raw
+`Upscaler` only) is different: it
 declares an exposure factor your app has *already baked into* the input color. That
 factor is part of your color domain, so it is **preserved** at output. The upscaler
 tracks its frame-to-frame ratio and corrects reprojected history across a change (FSR3's
 `DeltaPreExposure`), so stepping or ramping your exposure doesn't read as a full-screen
 shading change. Auto-exposure meters with it divided out, so it doesn't chase a step
-you already applied. Omitting it is equivalent to `1`.
+you already applied. Omitting it is equivalent to `1`. An app that holds the factor
+on the CPU passes `hostPreExposure` and skips the 1×1 texture; the texture wins when
+both are passed, and the two give byte-identical output.
 
 Don't pass a host pre-exposure as `exposureTexture`. The upscaler would divide it out
 at output and apply no history correction.

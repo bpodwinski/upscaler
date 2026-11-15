@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { UpscalerCore, depthClipKfov, tanHalfFovY } from './UpscalerCore';
-import { FLAG_PERSPECTIVE, FLAG_RESET, FLAG_REVERSED_DEPTH } from './shaders/common';
+import { FLAG_AUTO_EXPOSURE, FLAG_EXTERNAL_EXPOSURE, FLAG_PERSPECTIVE, FLAG_RESET, FLAG_REVERSED_DEPTH } from './shaders/common';
+import { ACCUMULATE_SHADER, buildAccumulateShader } from './shaders/accumulate';
 import type { CoreTexture, CoreTextureDescriptor } from './textures';
+import type { UpscalerConfig } from './types';
 
 //* Mock Device — answers every create* call with a stub so the core runs
 // end to end without a GPU or an engine (raw GPUTexture inputs only).
@@ -46,7 +48,8 @@ function mockDevice() {
         createBindGroup: vi.fn(resource),
         createCommandEncoder: vi.fn(() => encoder),
     };
-    return { device, writes, writeTargets, encoder, gpu: (label: string) => resource({ label }) as unknown as GPUTexture };
+    const gpu = (label: string, format = 'rgba16float') => ({ ...resource({ label }), format }) as unknown as GPUTexture;
+    return { device, writes, writeTargets, encoder, gpu };
 }
 
 // The flags word of the most recent constants upload (ConstantsBuffer u32[20]).
@@ -199,6 +202,602 @@ describe('UpscalerCore without an engine', () => {
         expect(writeTargets).toEqual(['upscale-constants-late']);
     });
 
+    describe("depthMode: 'linear'", () => {
+        const camera = { near: 0.1, far: 100, perspective: true, reversedDepth: true };
+        const shaderLabels = (device: ReturnType<typeof mockDevice>['device']) =>
+            (device.createShaderModule as ReturnType<typeof vi.fn>).mock.calls.map(
+                ([descriptor]) => (descriptor as { code: string }).code,
+            );
+
+        it('compiles the linear reconstruct and never stages a device depth convention', async () => {
+            const { device, writes, gpu } = mockDevice();
+            device.createShaderModule = vi.fn(device.createShaderModule);
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, depthMode: 'linear' });
+            await core.prepare();
+
+            const sources = shaderLabels(device);
+            expect(sources.some((code) => code.includes('var sceneDepth : texture_2d<f32>;'))).toBe(true);
+            expect(sources.some((code) => code.includes('var sceneDepth : texture_depth_2d;'))).toBe(false);
+
+            core.dispatch({ color: gpu('color'), depth: gpu('depth', 'r32float'), velocity: gpu('velocity') }, camera);
+            expect(lastFlags(writes) & FLAG_REVERSED_DEPTH).toBe(0);
+            expect(lastFlags(writes) & FLAG_PERSPECTIVE).toBe(FLAG_PERSPECTIVE);
+        });
+
+        it('keeps the hardware pipeline when reconfigured back', async () => {
+            const { device, writes, gpu } = mockDevice();
+            device.createShaderModule = vi.fn(device.createShaderModule);
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, depthMode: 'linear' });
+            await core.prepare();
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2 });
+            expect(core.isReady).toBe(false);
+            await core.prepare();
+            expect(shaderLabels(device).some((code) => code.includes('var sceneDepth : texture_depth_2d;'))).toBe(true);
+
+            core.dispatch({ color: gpu('color'), depth: gpu('depth', 'depth32float'), velocity: gpu('velocity') }, camera);
+            expect(lastFlags(writes) & FLAG_REVERSED_DEPTH).toBe(FLAG_REVERSED_DEPTH);
+        });
+
+        it('names the mode when the depth input has the other encoding', async () => {
+            const { device, gpu } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            const inputs = (format: string) => ({ color: gpu('color'), depth: gpu('depth', format), velocity: gpu('velocity') });
+
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, depthMode: 'linear' });
+            await core.prepare();
+            expect(() => core.dispatch(inputs('depth32float'), camera)).toThrow(/depthMode 'linear' needs a float texture/);
+
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2 });
+            await core.prepare();
+            expect(() => core.dispatch(inputs('r32float'), camera)).toThrow(/configure depthMode: 'linear'/);
+        });
+
+        it('rejects an unknown mode', () => {
+            const { device } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            expect(() => core.configure({ displayWidth: 64, displayHeight: 32, depthMode: 'log' as 'linear' }))
+                .toThrow(/unknown depthMode 'log'/);
+        });
+
+        it('runs the guides path on the linear reconstruct alone', async () => {
+            const { device, gpu } = mockDevice();
+            device.createShaderModule = vi.fn(device.createShaderModule);
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, path: 'guides', depthMode: 'linear' });
+            await core.prepare();
+            const sources = shaderLabels(device);
+            expect(sources.filter((code) => code.includes('var sceneDepth'))).toHaveLength(1);
+            expect(sources[sources.findIndex((code) => code.includes('var sceneDepth'))]).toContain('texture_2d<f32>');
+
+            device.createBindGroup.mockClear();
+            core.dispatchGuides({ depth: gpu('depth', 'r32float'), velocity: gpu('velocity') }, camera);
+            const labels = device.createBindGroup.mock.calls.map(([descriptor]) => (descriptor as unknown as { label: string }).label);
+            expect(labels).toEqual(['upscale-reconstruct', 'upscale-depth-clip']);
+            expect(core.guidesPending).toBe(false);
+        });
+
+        it('feeds a split frame the same way as a monolithic one', async () => {
+            const { device, encoder, gpu } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, depthMode: 'linear' });
+            await core.prepare();
+            const host = encoder as unknown as GPUCommandEncoder;
+            expect(() => core.encodeGuides(host, { depth: gpu('depth', 'depth32float'), velocity: gpu('velocity') }, camera))
+                .toThrow(/depthMode 'linear' needs a float texture/);
+            // The rejected call opened no split frame.
+            expect(core.guidesPending).toBe(false);
+            core.encodeGuides(host, { depth: gpu('depth', 'r32float'), velocity: gpu('velocity') }, camera);
+            core.encodeUpscale(host, { color: gpu('color') }, camera);
+            expect(core.guidesPending).toBe(false);
+        });
+
+        it('checks the format in both directions, for every format of each family', async () => {
+            const { device, gpu } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            const dispatch = (format: string) =>
+                core.dispatch({ color: gpu('color'), depth: gpu('depth', format), velocity: gpu('velocity') }, camera);
+
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, depthMode: 'linear' });
+            await core.prepare();
+            for (const format of ['depth16unorm', 'depth24plus', 'depth24plus-stencil8', 'depth32float', 'depth32float-stencil8']) {
+                expect(() => dispatch(format), format).toThrow(/depthMode 'linear' needs a float texture/);
+            }
+            // The contract names r32float; any float color format holds view depth in .r.
+            for (const format of ['r32float', 'r16float', 'rgba16float', 'rgba32float']) {
+                expect(() => dispatch(format), format).not.toThrow();
+            }
+
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2 });
+            await core.prepare();
+            for (const format of ['r32float', 'r16float']) {
+                expect(() => dispatch(format), format).toThrow(/configure depthMode: 'linear'/);
+            }
+            for (const format of ['depth16unorm', 'depth24plus-stencil8', 'depth32float']) {
+                expect(() => dispatch(format), format).not.toThrow();
+            }
+        });
+
+        it('asks for a depth-only view of a stencil format, and a plain view of linear depth', async () => {
+            const { device, gpu } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            const viewOf = (format: string) => {
+                const depth = gpu('depth', format);
+                const createView = vi.fn(() => ({}));
+                (depth as unknown as { createView: unknown }).createView = createView;
+                core.dispatch({ color: gpu('color'), depth, velocity: gpu('velocity') }, camera);
+                return createView.mock.calls[0] as unknown[];
+            };
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2 });
+            await core.prepare();
+            expect(viewOf('depth24plus-stencil8')).toEqual([{ aspect: 'depth-only' }]);
+            expect(viewOf('depth32float')).toEqual([undefined]);
+
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, depthMode: 'linear' });
+            await core.prepare();
+            expect(viewOf('r32float')).toEqual([undefined]);
+        });
+
+        it('refuses linear depth for the cross-frame bench identities', () => {
+            const { device } = mockDevice();
+            const core = new UpscalerCore({
+                device: device as unknown as GPUDevice,
+                _crossFrameReconstruct: { shader: 'x', cameraCompensated: false },
+            } as never);
+            expect(() => core.configure({ displayWidth: 64, displayHeight: 32, depthMode: 'linear' })).toThrow(/hardware depth only/);
+            expect(() => core.configure({ displayWidth: 64, displayHeight: 32 })).not.toThrow();
+        });
+
+        it('keeps the previous configuration when a mode is rejected', async () => {
+            const { device, gpu } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, depthMode: 'linear' });
+            await core.prepare();
+            expect(() => core.configure({ displayWidth: 128, displayHeight: 64, depthMode: 'log' as 'linear' })).toThrow();
+            expect([core.displayWidth, core.displayHeight]).toEqual([64, 32]);
+            expect(core.isReady).toBe(true);
+            // Still the linear pipeline: a float depth is accepted, a depth format is not.
+            const inputs = (format: string) => ({ color: gpu('color'), depth: gpu('depth', format), velocity: gpu('velocity') });
+            expect(() => core.dispatch(inputs('r32float'), camera)).not.toThrow();
+            expect(() => core.dispatch(inputs('depth32float'), camera)).toThrow(/depthMode 'linear'/);
+        });
+    });
+
+    describe('rcasAgeKnee', () => {
+        const compiled = (device: ReturnType<typeof mockDevice>['device']) =>
+            (device.createShaderModule as ReturnType<typeof vi.fn>).mock.calls.map(
+                ([descriptor]) => (descriptor as { code: string }).code,
+            );
+        const kneeShaders = (device: ReturnType<typeof mockDevice>['device']) =>
+            compiled(device).filter((code) => code.includes('//* Age Knee'));
+
+        it('compiles nothing extra at the default 0', async () => {
+            const { device } = mockDevice();
+            device.createShaderModule = vi.fn(device.createShaderModule);
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2 });
+            await core.prepare();
+            expect(kneeShaders(device)).toHaveLength(0);
+        });
+
+        it('runs the temporal path on a knee pipeline, cached per value', async () => {
+            const { device, gpu } = mockDevice();
+            device.createShaderModule = vi.fn(device.createShaderModule);
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            const configure = (rcasAgeKnee?: number) =>
+                core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, rcasAgeKnee });
+            const inputs = { color: gpu('color'), depth: gpu('depth'), velocity: gpu('velocity') };
+            const camera = { near: 0.1, far: 100, perspective: true };
+
+            configure(0.5);
+            await core.prepare();
+            expect(kneeShaders(device)).toHaveLength(1);
+            expect(kneeShaders(device)[0]).toContain('smoothstep(0.0, 0.500000000, center.a)');
+            // The knee pass binds production's five entries plus the dilated motion.
+            device.createBindGroup.mockClear();
+            core.dispatch(inputs, camera);
+            const rcas = device.createBindGroup.mock.calls
+                .map(([descriptor]) => descriptor as unknown as { label: string; entries: unknown[] })
+                .filter((descriptor) => descriptor.label === 'upscale-rcas');
+            expect(rcas.map((descriptor) => descriptor.entries.length)).toEqual([6]);
+
+            // Another value is another pipeline; going back reuses the first.
+            configure(0.25);
+            expect(core.isReady).toBe(false);
+            await core.prepare();
+            configure(0.5);
+            expect(core.isReady).toBe(true);
+            expect(kneeShaders(device)).toHaveLength(2);
+        });
+
+        it('binds five entries without a knee, and for the ungated bench form', async () => {
+            const sizes = async (options: object, rcasAgeKnee?: number) => {
+                const { device, gpu } = mockDevice();
+                const core = new UpscalerCore({ device: device as unknown as GPUDevice, ...options } as never);
+                core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, rcasAgeKnee });
+                await core.prepare();
+                core.dispatch({ color: gpu('color'), depth: gpu('depth'), velocity: gpu('velocity') }, { near: 0.1, far: 100, perspective: true });
+                return device.createBindGroup.mock.calls
+                    .map(([descriptor]) => descriptor as unknown as { label: string; entries: unknown[] })
+                    .filter((descriptor) => descriptor.label === 'upscale-rcas')
+                    .map((descriptor) => descriptor.entries.length);
+            };
+            expect(await sizes({})).toEqual([5]);
+            expect(await sizes({ _rcasAgeKneeUngated: true }, 0.5)).toEqual([5]);
+        });
+
+        it('accepts the ends of the range, and treats 0 as off', async () => {
+            const { device } = mockDevice();
+            device.createShaderModule = vi.fn(device.createShaderModule);
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, rcasAgeKnee: 0 });
+            await core.prepare();
+            expect(kneeShaders(device)).toHaveLength(0);
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, rcasAgeKnee: 1 });
+            await core.prepare();
+            expect(kneeShaders(device)).toHaveLength(1);
+            expect(kneeShaders(device)[0]).toContain('center.a < 1.00000000)');
+        });
+
+        it('builds the pipeline for the exact knee configured, whatever its digits', async () => {
+            const { device, gpu } = mockDevice();
+            device.createShaderModule = vi.fn(device.createShaderModule);
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            const knee = 0.1 + 0.2; // 0.30000000000000004: the pipeline name must round-trip it
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, rcasAgeKnee: knee });
+            await core.prepare();
+            expect(kneeShaders(device)).toHaveLength(1);
+            expect(kneeShaders(device)[0]).toContain(`smoothstep(0.0, ${knee.toPrecision(9)}, center.a)`);
+            expect(() => core.dispatch({ color: gpu('color'), depth: gpu('depth'), velocity: gpu('velocity') }, { near: 0.1, far: 100, perspective: true })).not.toThrow();
+        });
+
+        it('keeps the gated and the ungated pipelines apart', async () => {
+            const build = async (options: object) => {
+                const { device } = mockDevice();
+                device.createShaderModule = vi.fn(device.createShaderModule);
+                const core = new UpscalerCore({ device: device as unknown as GPUDevice, ...options } as never);
+                core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, rcasAgeKnee: 0.5 });
+                await core.prepare();
+                return kneeShaders(device)[0];
+            };
+            expect(await build({})).toContain('var dilatedMotion : texture_2d<f32>;');
+            expect(await build({ _rcasAgeKneeUngated: true })).not.toContain('dilatedMotion');
+        });
+
+        it('does not sharpen through the knee pipeline on a debug view or at sharpness 0', async () => {
+            const { device, gpu } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, rcasAgeKnee: 0.5 });
+            await core.prepare();
+            const inputs = { color: gpu('color'), depth: gpu('depth'), velocity: gpu('velocity') };
+            const labels = () => device.createBindGroup.mock.calls.map(([descriptor]) => (descriptor as unknown as { label: string }).label);
+
+            core.settings.sharpness = 0;
+            device.createBindGroup.mockClear();
+            core.dispatch(inputs, { near: 0.1, far: 100, perspective: true });
+            expect(labels()).not.toContain('upscale-rcas');
+            expect(labels()).toContain('upscale-blit');
+        });
+
+        it('keeps the previous configuration when a knee is rejected', async () => {
+            const { device, gpu } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, rcasAgeKnee: 0.5 });
+            await core.prepare();
+            expect(() => core.configure({ displayWidth: 128, displayHeight: 64, customUpscaleRatio: 2, rcasAgeKnee: 2 })).toThrow(/rcasAgeKnee/);
+            // Nothing moved: same sizes, still ready, still dispatching.
+            expect([core.displayWidth, core.displayHeight]).toEqual([64, 32]);
+            expect(core.isReady).toBe(true);
+            expect(() => core.dispatch({ color: gpu('color'), depth: gpu('depth'), velocity: gpu('velocity') }, { near: 0.1, far: 100, perspective: true })).not.toThrow();
+        });
+
+        it('leaves the spatial path on plain RCAS', async () => {
+            const { device, gpu } = mockDevice();
+            device.createShaderModule = vi.fn(device.createShaderModule);
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, path: 'spatial', rcasAgeKnee: 0.5 });
+            await core.prepare();
+            expect(kneeShaders(device)).toHaveLength(0);
+            expect(() => core.dispatch({ color: gpu('color') }, { near: 0.1, far: 100, perspective: true })).not.toThrow();
+        });
+
+        it('rejects values outside [0, 1] and a knee on an overridden RCAS', () => {
+            const { device } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            for (const rcasAgeKnee of [-0.1, 1.5, Number.NaN]) {
+                expect(() => core.configure({ displayWidth: 64, displayHeight: 32, rcasAgeKnee })).toThrow(/rcasAgeKnee must be in \[0, 1\]/);
+            }
+            const overridden = new UpscalerCore({ device: device as unknown as GPUDevice, _rcasShader: 'x' } as never);
+            expect(() => overridden.configure({ displayWidth: 64, displayHeight: 32, rcasAgeKnee: 0.5 })).toThrow(/_rcasShader override/);
+        });
+    });
+
+    describe("exposureMode: 'provided'", () => {
+        const camera = { near: 0.1, far: 100, perspective: true };
+        const compiled = (device: ReturnType<typeof mockDevice>['device']) =>
+            (device.createShaderModule as ReturnType<typeof vi.fn>).mock.calls.map(
+                ([descriptor]) => (descriptor as { code: string }).code,
+            );
+        const metering = (code: string) => code.includes('EXPOSURE_TAPS');
+        const publishing = (code: string) => code.includes('vec4f(exposure, 0.0, host, 0.0)');
+        // Bind groups created by one dispatch, by entry count.
+        const bindGroupSizes = (device: ReturnType<typeof mockDevice>['device'], run: () => void) => {
+            const create = vi.fn(device.createBindGroup);
+            device.createBindGroup = create;
+            run();
+            return create.mock.calls.map(([descriptor]) => (descriptor as unknown as { entries: unknown[] }).entries.length);
+        };
+
+        it('never compiles or runs the luminance measurement', async () => {
+            const { device, writes, gpu } = mockDevice();
+            device.createShaderModule = vi.fn(device.createShaderModule);
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, exposureMode: 'provided' });
+            await core.prepare();
+            expect(compiled(device).some(metering)).toBe(false);
+            expect(compiled(device).filter(publishing)).toHaveLength(1);
+
+            const inputs = { color: gpu('color'), depth: gpu('depth'), velocity: gpu('velocity') };
+            const sizes = bindGroupSizes(device, () => core.dispatch(inputs, camera));
+            // The metered exposure pass binds 7 entries; the provided one binds 4.
+            expect(sizes).not.toContain(7);
+            expect(sizes).toContain(4);
+            // settings.autoExposure defaults to true and must not reach the shaders.
+            expect(core.settings.autoExposure).toBe(true);
+            expect(lastFlags(writes) & FLAG_AUTO_EXPOSURE).toBe(0);
+        });
+
+        it('takes the conditioning exposure from the frame texture when one is passed', async () => {
+            const { device, writes, gpu } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, exposureMode: 'provided' });
+            await core.prepare();
+            const inputs = { color: gpu('color'), depth: gpu('depth'), velocity: gpu('velocity') };
+
+            core.dispatch(inputs, camera);
+            expect(lastFlags(writes) & FLAG_EXTERNAL_EXPOSURE).toBe(0);
+            core.dispatch({ ...inputs, exposureTexture: gpu('exposure') }, camera);
+            expect(lastFlags(writes) & (FLAG_EXTERNAL_EXPOSURE | FLAG_AUTO_EXPOSURE)).toBe(FLAG_EXTERNAL_EXPOSURE);
+        });
+
+        it('keeps metering by default, and when reconfigured back', async () => {
+            const { device, writes, gpu } = mockDevice();
+            device.createShaderModule = vi.fn(device.createShaderModule);
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            const inputs = { color: gpu('color'), depth: gpu('depth'), velocity: gpu('velocity') };
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, exposureMode: 'provided' });
+            await core.prepare();
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2 });
+            expect(core.isReady).toBe(false);
+            await core.prepare();
+            expect(compiled(device).filter(metering)).toHaveLength(1);
+
+            const sizes = bindGroupSizes(device, () => core.dispatch(inputs, camera));
+            expect(sizes).toContain(7);
+            expect(lastFlags(writes) & FLAG_AUTO_EXPOSURE).toBe(FLAG_AUTO_EXPOSURE);
+        });
+
+        it('rejects an unknown mode', () => {
+            const { device } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            expect(() => core.configure({ displayWidth: 64, displayHeight: 32, exposureMode: 'auto' as 'upstream' }))
+                .toThrow(/unknown exposureMode 'auto'/);
+        });
+
+        it('keeps the previous configuration when a mode is rejected', async () => {
+            const { device, gpu } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, exposureMode: 'provided' });
+            await core.prepare();
+            expect(() => core.configure({ displayWidth: 128, displayHeight: 64, exposureMode: 'auto' as 'upstream' })).toThrow();
+            expect([core.displayWidth, core.displayHeight]).toEqual([64, 32]);
+            expect(core.isReady).toBe(true);
+            const sizes = bindGroupSizes(device, () =>
+                core.dispatch({ color: gpu('color'), depth: gpu('depth'), velocity: gpu('velocity') }, camera));
+            expect(sizes).not.toContain(7);
+        });
+
+        it('binds constants, the exposure target, the external exposure and the host pre-exposure, in that order', async () => {
+            const { device, gpu } = mockDevice();
+            const createTexture = device.createTexture;
+            device.createTexture = vi.fn((descriptor?: { label?: string }) => ({
+                ...createTexture(descriptor),
+                createView: () => ({ owner: descriptor?.label }),
+            })) as typeof device.createTexture;
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, exposureMode: 'provided' });
+            await core.prepare();
+            const view = (owner: string) => ({ ...gpu(owner), createView: () => ({ owner }) }) as unknown as GPUTexture;
+            const create = vi.fn(device.createBindGroup);
+            device.createBindGroup = create;
+            core.dispatch(
+                { color: gpu('color'), depth: gpu('depth'), velocity: gpu('velocity'), exposureTexture: view('app-exposure'), hostPreExposure: 2 },
+                camera,
+            );
+            const exposure = create.mock.calls
+                .map(([descriptor]) => descriptor as unknown as { label: string; entries: { resource: { owner?: string; buffer?: { label?: string } } }[] })
+                .find((descriptor) => descriptor.label === 'upscale-exposure')!;
+            expect(exposure.entries.map((entry) => entry.resource.owner ?? entry.resource.buffer?.label)).toEqual([
+                'upscale-constants-late',
+                expect.stringMatching(/^upscale-exposure-[01]$/),
+                'app-exposure',
+                'upscale-host-pre-exposure',
+            ]);
+        });
+
+        it('runs no exposure pass on the paths that have none, whatever the mode', async () => {
+            for (const path of ['spatial', 'bilinear'] as const) {
+                const { device, gpu } = mockDevice();
+                const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+                core.configure({ displayWidth: 64, displayHeight: 32, path, exposureMode: 'provided' });
+                await core.prepare();
+                const create = vi.fn(device.createBindGroup);
+                device.createBindGroup = create;
+                expect(() => core.dispatch({ color: gpu('color'), hostPreExposure: 2 }, camera)).not.toThrow();
+                const labels = create.mock.calls.map(([descriptor]) => (descriptor as unknown as { label: string }).label);
+                expect(labels, path).not.toContain('upscale-exposure');
+                // No temporal path, no host pre-exposure texel to stage.
+                expect(device.queue.writeTexture).not.toHaveBeenCalled();
+            }
+        });
+
+        it('finishes a split frame through the provided pass', async () => {
+            const { device, encoder, gpu } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, exposureMode: 'provided' });
+            await core.prepare();
+            const host = encoder as unknown as GPUCommandEncoder;
+            const guides = bindGroupSizes(device, () =>
+                core.encodeGuides(host, { depth: gpu('depth'), velocity: gpu('velocity') }, camera));
+            // The exposure pass belongs to the late stage.
+            expect(guides).toHaveLength(2);
+            const late = bindGroupSizes(device, () => core.encodeUpscale(host, { color: gpu('color') }, camera));
+            expect(late).toContain(4);
+            expect(late).not.toContain(7);
+            expect(core.guidesPending).toBe(false);
+        });
+    });
+
+    describe('hostPreExposure (CPU-side host pre-exposure)', () => {
+        const camera = { near: 0.1, far: 100, perspective: true };
+        // The texture each dispatch binds as the exposure pass's host pre-exposure
+        // (its last entry), by label.
+        const boundHostTextures = (device: ReturnType<typeof mockDevice>['device'], run: () => void) => {
+            const create = vi.fn(device.createBindGroup);
+            device.createBindGroup = create;
+            run();
+            return create.mock.calls
+                .map(([descriptor]) => descriptor as unknown as { label: string; entries: { resource: { owner?: string } }[] })
+                .filter((descriptor) => descriptor.label === 'upscale-exposure')
+                .map((descriptor) => descriptor.entries.at(-1)!.resource.owner);
+        };
+        // Views that remember the texture they came from.
+        const tracked = (device: ReturnType<typeof mockDevice>['device']) => {
+            const createTexture = device.createTexture;
+            device.createTexture = vi.fn((descriptor?: { label?: string }) => {
+                const texture = createTexture(descriptor);
+                return { ...texture, createView: () => ({ owner: descriptor?.label }) };
+            }) as typeof device.createTexture;
+        };
+
+        it('reaches the exposure pass through the core-owned texel, written when the value changes', async () => {
+            const { device, gpu } = mockDevice();
+            tracked(device);
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2 });
+            await core.prepare();
+            const inputs = { color: gpu('color'), depth: gpu('depth'), velocity: gpu('velocity') };
+            const hostWrites = () =>
+                device.queue.writeTexture.mock.calls.filter(
+                    ([target]) => (target as { texture: { label?: string } }).texture.label === 'upscale-host-pre-exposure',
+                );
+
+            expect(boundHostTextures(device, () => core.dispatch(inputs, camera))).toEqual(['upscale-reactive-dummy']);
+            expect(hostWrites()).toHaveLength(0);
+
+            expect(boundHostTextures(device, () => core.dispatch({ ...inputs, hostPreExposure: 2.5 }, camera)))
+                .toEqual(['upscale-host-pre-exposure']);
+            expect(hostWrites()).toHaveLength(1);
+            expect(Array.from(hostWrites()[0][1] as Float32Array)).toEqual([2.5]);
+
+            // The same value again is not rewritten; a new one is.
+            core.dispatch({ ...inputs, hostPreExposure: 2.5 }, camera);
+            expect(hostWrites()).toHaveLength(1);
+            core.dispatch({ ...inputs, hostPreExposure: 1.25 }, camera);
+            expect(hostWrites()).toHaveLength(2);
+        });
+
+        it('writes the value again after a reconfigure, into the new texel', async () => {
+            const { device, gpu } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            const inputs = { color: gpu('color'), depth: gpu('depth'), velocity: gpu('velocity'), hostPreExposure: 2.5 };
+            const hostWrites = () =>
+                device.queue.writeTexture.mock.calls.filter(
+                    ([target]) => (target as { texture: { label?: string } }).texture.label === 'upscale-host-pre-exposure',
+                );
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2 });
+            await core.prepare();
+            core.dispatch(inputs, camera);
+            core.dispatch(inputs, camera);
+            expect(hostWrites()).toHaveLength(1);
+            const first = (hostWrites()[0][0] as { texture: object }).texture;
+
+            // configure() reallocates: the old texel is destroyed, the cache must not outlive it.
+            core.configure({ displayWidth: 128, displayHeight: 64, customUpscaleRatio: 2 });
+            core.dispatch(inputs, camera);
+            expect(hostWrites()).toHaveLength(2);
+            const second = (hostWrites()[1][0] as { texture: object }).texture;
+            expect(second).not.toBe(first);
+            expect((first as { destroy: ReturnType<typeof vi.fn> }).destroy).toHaveBeenCalledTimes(1);
+        });
+
+        it('stages the value from the late stage of a split frame only', async () => {
+            const { device, encoder, gpu } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2 });
+            await core.prepare();
+            const host = encoder as unknown as GPUCommandEncoder;
+            const hostWrites = () =>
+                device.queue.writeTexture.mock.calls.filter(
+                    ([target]) => (target as { texture: { label?: string } }).texture.label === 'upscale-host-pre-exposure',
+                );
+            core.encodeGuides(host, { depth: gpu('depth'), velocity: gpu('velocity') }, camera);
+            expect(hostWrites()).toHaveLength(0);
+            core.encodeUpscale(host, { color: gpu('color'), hostPreExposure: 3 }, camera);
+            expect(hostWrites()).toHaveLength(1);
+            expect(Array.from(hostWrites()[0][1] as Float32Array)).toEqual([3]);
+        });
+
+        it('frees the texel on dispose', async () => {
+            const { device } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2 });
+            const texel = device.createTexture.mock.results
+                .map((result) => result.value as { label?: string; destroy: ReturnType<typeof vi.fn> })
+                .find((texture) => texture.label === 'upscale-host-pre-exposure')!;
+            expect(texel).toBeDefined();
+            core.dispose();
+            expect(texel.destroy).toHaveBeenCalledTimes(1);
+        });
+
+        it('allocates the texel as a 1×1 r32float the queue can write', () => {
+            const { device } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2 });
+            const descriptor = device.createTexture.mock.calls
+                .map(([value]) => value as unknown as GPUTextureDescriptor)
+                .find((value) => value?.label === 'upscale-host-pre-exposure')!;
+            expect(descriptor).toMatchObject({ size: { width: 1, height: 1 }, format: 'r32float' });
+            // TEXTURE_BINDING | COPY_DST (the stubbed usage bits).
+            expect(descriptor.usage).toBe(4 | 2);
+            // The spatial path never reads it.
+            const spatial = mockDevice();
+            new UpscalerCore({ device: spatial.device as unknown as GPUDevice }).configure({ displayWidth: 64, displayHeight: 32, path: 'spatial' });
+            expect(spatial.device.createTexture.mock.calls.some(([value]) => (value as { label?: string } | undefined)?.label === 'upscale-host-pre-exposure')).toBe(false);
+        });
+
+        it('lets preExposureTexture win, and rejects values that are not positive and finite', async () => {
+            const { device, gpu } = mockDevice();
+            tracked(device);
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2 });
+            await core.prepare();
+            const inputs = { color: gpu('color'), depth: gpu('depth'), velocity: gpu('velocity') };
+            const app = { ...gpu('app'), createView: () => ({ owner: 'app-texture' }) } as unknown as GPUTexture;
+
+            expect(boundHostTextures(device, () => core.dispatch({ ...inputs, preExposureTexture: app, hostPreExposure: 2 }, camera)))
+                .toEqual(['app-texture']);
+            const hostWrites = device.queue.writeTexture.mock.calls.filter(
+                ([target]) => (target as { texture: { label?: string } }).texture.label === 'upscale-host-pre-exposure',
+            );
+            expect(hostWrites).toHaveLength(0);
+            for (const hostPreExposure of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+                expect(() => core.dispatch({ ...inputs, hostPreExposure }, camera)).toThrow(/hostPreExposure must be a finite number/);
+            }
+        });
+    });
+
     it('advances jitter only on the temporal path with jitter on', async () => {
         const { device } = mockDevice();
         const core = new UpscalerCore({ device: device as unknown as GPUDevice });
@@ -333,5 +932,126 @@ describe('depth clip FOV factor', () => {
     it('rejects an invalid fovY at dispatch', async () => {
         const { core, inputs } = await temporalCore();
         expect(() => core.dispatch(inputs, { near: 0.1, far: 100, perspective: true, fovY: 0 })).toThrow(/fovY/);
+    });
+});
+
+//* Conditioning-Exposure History Correction (upstream issue 99)
+
+describe('correctConditioningExposure', () => {
+    beforeEach(() => {
+        vi.stubGlobal('GPUBufferUsage', { MAP_READ: 1, COPY_SRC: 4, COPY_DST: 8, UNIFORM: 64, STORAGE: 128 });
+        vi.stubGlobal('GPUTextureUsage', { COPY_SRC: 1, COPY_DST: 2, TEXTURE_BINDING: 4, STORAGE_BINDING: 8 });
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
+    });
+
+    const camera = { near: 0.1, far: 100, perspective: true, fovY: 1 };
+    const compiled = (device: ReturnType<typeof mockDevice>['device']) =>
+        (device.createShaderModule as ReturnType<typeof vi.fn>).mock.calls.map(
+            ([descriptor]) => (descriptor as { code: string }).code,
+        );
+    const CORRECTED = buildAccumulateShader(true);
+    // The accumulate bind group a dispatch creates, by its pipeline's shader.
+    const accumulateLayoutOwner = (device: ReturnType<typeof mockDevice>['device'], run: () => void) => {
+        const create = vi.fn(device.createBindGroup);
+        device.createBindGroup = create;
+        run();
+        return create.mock.calls
+            .map(([descriptor]) => descriptor as unknown as { label: string; layout: { owner?: string } })
+            .filter((descriptor) => descriptor.label === 'upscale-accumulate')
+            .map((descriptor) => descriptor.layout.owner);
+    };
+
+    async function core(config: Partial<UpscalerConfig> = {}) {
+        const mock = mockDevice();
+        // Tag each pipeline's layout with the shader it was compiled from.
+        const createPipeline = mock.device.createComputePipelineAsync;
+        mock.device.createComputePipelineAsync = vi.fn(async (descriptor: { compute: { module: { code?: string } } }) => {
+            const pipeline = await createPipeline();
+            const code = descriptor.compute.module.code;
+            const owner = code === CORRECTED ? 'corrected' : code === ACCUMULATE_SHADER ? 'production' : 'other';
+            return { ...pipeline, getBindGroupLayout: () => ({ owner }) };
+        }) as unknown as typeof createPipeline;
+        mock.device.createShaderModule = vi.fn((descriptor: { code: string }) => ({ code: descriptor.code })) as never;
+        const upscaler = new UpscalerCore({ device: mock.device as unknown as GPUDevice });
+        upscaler.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, ...config });
+        await upscaler.prepare();
+        const inputs = { color: mock.gpu('color'), depth: mock.gpu('depth'), velocity: mock.gpu('velocity') };
+        return { ...mock, upscaler, inputs };
+    }
+
+    it('compiles only the production accumulate by default', async () => {
+        const { device } = await core();
+        expect(compiled(device)).toContain(ACCUMULATE_SHADER);
+        expect(compiled(device)).not.toContain(CORRECTED);
+    });
+
+    it('compiles and dispatches the corrected accumulate when on', async () => {
+        const { device, upscaler, inputs } = await core({ correctConditioningExposure: true });
+        expect(compiled(device)).toContain(CORRECTED);
+        expect(compiled(device)).not.toContain(ACCUMULATE_SHADER);
+        expect(accumulateLayoutOwner(device, () => upscaler.dispatch(inputs, camera))).toEqual(['corrected']);
+    });
+
+    it('dispatches production when off, including explicitly false', async () => {
+        const { device, upscaler, inputs } = await core({ correctConditioningExposure: false });
+        expect(accumulateLayoutOwner(device, () => upscaler.dispatch(inputs, camera))).toEqual(['production']);
+    });
+
+    it('switches pipeline when reconfigured, in both directions', async () => {
+        const { device, upscaler, inputs } = await core({ correctConditioningExposure: true });
+        upscaler.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2 });
+        await upscaler.prepare();
+        expect(accumulateLayoutOwner(device, () => upscaler.dispatch(inputs, camera))).toEqual(['production']);
+        upscaler.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, correctConditioningExposure: true });
+        // Already compiled: ready without another compile.
+        const before = compiled(device).length;
+        await upscaler.prepare();
+        expect(compiled(device).length).toBe(before);
+        expect(accumulateLayoutOwner(device, () => upscaler.dispatch(inputs, camera))).toEqual(['corrected']);
+    });
+
+    it('finishes a split frame through the corrected accumulate', async () => {
+        const { device, encoder, upscaler, inputs } = await core({ correctConditioningExposure: true });
+        const host = encoder as unknown as GPUCommandEncoder;
+        upscaler.encodeGuides(host, { depth: inputs.depth, velocity: inputs.velocity }, camera);
+        expect(accumulateLayoutOwner(device, () => upscaler.encodeUpscale(host, { color: inputs.color }, camera)))
+            .toEqual(['corrected']);
+    });
+
+    it('combines with the provided exposure mode', async () => {
+        const { device, upscaler, inputs } = await core({ correctConditioningExposure: true, exposureMode: 'provided' });
+        expect(compiled(device).some((code) => code.includes('EXPOSURE_TAPS'))).toBe(false);
+        expect(accumulateLayoutOwner(device, () => upscaler.dispatch(inputs, camera))).toEqual(['corrected']);
+    });
+
+    it('is ignored on the paths without an accumulate pass', async () => {
+        for (const path of ['spatial', 'bilinear', 'guides'] as const) {
+            const { device, upscaler, gpu } = await core({ correctConditioningExposure: true, path });
+            expect(compiled(device), path).not.toContain(CORRECTED);
+            const owners = accumulateLayoutOwner(device, () =>
+                path === 'guides'
+                    ? upscaler.dispatchGuides({ depth: gpu('depth'), velocity: gpu('velocity') }, camera)
+                    : upscaler.dispatch({ color: gpu('color') }, camera),
+            );
+            expect(owners, path).toEqual([]);
+        }
+    });
+
+    it.each([1, 'yes', 0])('rejects %s and keeps the previous configuration', async (value) => {
+        const { device, upscaler, inputs } = await core({ correctConditioningExposure: true });
+        expect(() =>
+            upscaler.configure({
+                displayWidth: 128,
+                displayHeight: 64,
+                correctConditioningExposure: value as unknown as boolean,
+            }),
+        ).toThrow(/correctConditioningExposure must be a boolean/);
+        expect([upscaler.displayWidth, upscaler.displayHeight]).toEqual([64, 32]);
+        expect(upscaler.isReady).toBe(true);
+        expect(accumulateLayoutOwner(device, () => upscaler.dispatch(inputs, camera))).toEqual(['corrected']);
     });
 });

@@ -17,7 +17,7 @@ import type { TemporalGuidesNode } from './TemporalGuidesNode';
 import { getGPUTexture } from './internal/threeWebGPU';
 import { getPipelineEvents, installRenderPipelineHooks } from './internal/renderPipelineHooks';
 import { getPassRenderResolution, getQualityModeRatio } from '@pmndrs/upscaler-core/math/resolution';
-import { QualityMode, type UpscalePath } from './types';
+import { QualityMode, type DepthMode, type ExposureMode, type UpscalePath } from './types';
 
 // three's node base + its builder/frame carry incomplete TS types and expect a
 // WebGPURenderer the public d.ts only types as `Renderer`, so setup()/
@@ -72,6 +72,33 @@ export interface UpscalerNodeOptions {
      * the better fit (see `examples/06-screenspace-gi`).
      */
     jitter?: boolean;
+    /**
+     * What the `depth` node holds — see {@link UpscalerConfig.depthMode}.
+     * `'hardware'` (default) is a depth texture, e.g.
+     * `pass.getTextureNode('depth')`. `'linear'` is a float texture node
+     * (`r32float`) of positive view-space distance, finite and greater than
+     * zero on every texel. {@link upscale} only: {@link upscaleScene} renders
+     * its own hardware depth. Linked to a guides node, this value configures
+     * the shared upscaler, so give both nodes the same depth input.
+     */
+    depthMode?: DepthMode;
+    /**
+     * Age knee for temporal RCAS, in `[0, 1]` — see
+     * {@link UpscalerConfig.rcasAgeKnee}. `0` (default) is off.
+     */
+    rcasAgeKnee?: number;
+    /**
+     * Who supplies the conditioning exposure — see
+     * {@link UpscalerConfig.exposureMode}. `'provided'` skips the luminance
+     * measurement and uses {@link exposureTexture} (or
+     * `node.upscaler.settings.exposure`).
+     */
+    exposureMode?: ExposureMode;
+    /**
+     * Correct history for conditioning-exposure changes — see
+     * {@link UpscalerConfig.correctConditioningExposure}. Defaults to `false`.
+     */
+    correctConditioningExposure?: boolean;
     /**
      * Collect per-pass GPU times into `node.upscaler.gpuTimings` — see
      * {@link Upscaler.gpuTiming}. Defaults to `false`. Linked to a guides node,
@@ -396,6 +423,10 @@ export class UpscalerNode extends TempNode<'vec4'> {
             renderHeight: Math.max(1, Math.floor(this._input.y)),
             path: this._options.path,
             jitter: this._jitterActive,
+            depthMode: this._options.depthMode,
+            rcasAgeKnee: this._options.rcasAgeKnee,
+            exposureMode: this._options.exposureMode,
+            correctConditioningExposure: this._options.correctConditioningExposure,
         });
         this._configured = true;
         if (this._textureNode) {
@@ -596,6 +627,12 @@ export const upscaleScene = (
     options: UpscalerNodeOptions = {},
 ): UpscalerNode => {
     const ratio = options.ratio ?? getQualityModeRatio(options.quality ?? QualityMode.Quality);
+    if (options.depthMode === 'linear') {
+        throw new Error(
+            "@pmndrs/upscaler: upscaleScene() renders its own hardware depth — depthMode: 'linear' " +
+                'needs upscale() with your linear depth node.',
+        );
+    }
 
     //* Render the scene at 1/ratio with a color + velocity MRT — the two inputs
     //* FSR3's temporal path needs (depth is the pass's own depth buffer). The

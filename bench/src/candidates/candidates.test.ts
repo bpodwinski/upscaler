@@ -4,7 +4,9 @@ import * as variants from '../benchmark/variants';
 import {
     createBaselineResolver,
     createRcasExperimentResolver,
+    createConditioningExposureResolver,
     createDepthClipVariantResolver,
+    exposureStepSchedule,
     createReconstructExperimentResolver,
     createRcasNumericParityResolver,
     createSourceBundleResolver,
@@ -276,5 +278,28 @@ describe('benchmark resolver ownership', () => {
             'depth-clip-half-diagonal-v1',
         ] as const)
             expect(resolveFactory?.(id)).toBe(createDepthClipVariantResolver);
+
+        for (const id of [
+            'conditioning-exposure-corrected-v1',
+            'exposure-step-v1',
+            'exposure-step-corrected-v1',
+        ] as const)
+            expect(resolveFactory?.(id)).toBe(createConditioningExposureResolver);
+    });
+});
+
+describe('exposure-step schedule (upstream issue 99)', () => {
+    it('holds 1, steps to 4 at 120, back to 1 at 180', () => {
+        expect([0, 119, 120, 179, 180, 239].map(exposureStepSchedule)).toEqual([1, 1, 4, 4, 1, 1]);
+    });
+
+    it('ramps ×8 exponentially over 240–299, then holds 8', () => {
+        expect(exposureStepSchedule(240)).toBe(1);
+        expect(exposureStepSchedule(270)).toBeCloseTo(Math.sqrt(8));
+        expect(exposureStepSchedule(299)).toBeCloseTo(8 ** (59 / 60));
+        expect(exposureStepSchedule(300)).toBe(8);
+        expect(exposureStepSchedule(10_000)).toBe(8);
+        // The same ratio every frame of the ramp.
+        expect(exposureStepSchedule(251) / exposureStepSchedule(250)).toBeCloseTo(exposureStepSchedule(281) / exposureStepSchedule(280));
     });
 });

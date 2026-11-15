@@ -11,6 +11,8 @@ export {
     type RuntimeSettings,
     type TemporalGuides,
     type UpscalePath,
+    type DepthMode,
+    type ExposureMode,
     type UpscalerConfig,
 } from './types';
 export { UpscalerNotReadyError } from '@pmndrs/upscaler-core/initializationError';

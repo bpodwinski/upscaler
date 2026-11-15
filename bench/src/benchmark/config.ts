@@ -25,6 +25,18 @@ const VARIANTS = [
     'shading-frame-pair-v1',
     'shading-memory-gated8-k1',
     'shading-memory-gated4',
+    'linear-depth-input-v1',
+    'rcas-age-knee-v1',
+    'rcas-age-knee-25-v1',
+    'rcas-age-knee-12-v1',
+    'rcas-age-knee-ungated-v1',
+    'exposure-provided-v1',
+    'host-pre-exposure-cpu-v1',
+    'exposure-texture-v1',
+    'exposure-provided-texture-v1',
+    'conditioning-exposure-corrected-v1',
+    'exposure-step-v1',
+    'exposure-step-corrected-v1',
 ] as const;
 const SCENARIOS = [
     'Q0', 'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6', 'Q7', 'Q8', 'Q9', 'Q10', 'Q11', 'Q12', 'Q13', 'Q14', 'Q15',

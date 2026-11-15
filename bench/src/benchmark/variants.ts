@@ -1,9 +1,15 @@
 import {
     createBaselineResolver,
+    createHostPreExposureCpuResolver,
     createProductionRcasResolver,
+    createRcasAgeKneeResolver,
+    createProvidedExposureResolver,
     createRcasExperimentResolver,
     createRcasNumericParityResolver,
     createDepthClipVariantResolver,
+    createExposureTextureResolver,
+    createConditioningExposureResolver,
+    createLinearDepthResolver,
     createReconstructExperimentResolver,
     createShadingMemoryResolver,
     createSourceBundleResolver,
@@ -55,6 +61,18 @@ const RESOLVER_FACTORIES = {
     'shading-frame-pair-v1': createShadingMemoryResolver,
     'shading-memory-gated8-k1': createShadingMemoryResolver,
     'shading-memory-gated4': createShadingMemoryResolver,
+    'linear-depth-input-v1': createLinearDepthResolver,
+    'rcas-age-knee-v1': createRcasAgeKneeResolver,
+    'rcas-age-knee-25-v1': createRcasAgeKneeResolver,
+    'rcas-age-knee-12-v1': createRcasAgeKneeResolver,
+    'rcas-age-knee-ungated-v1': createRcasAgeKneeResolver,
+    'exposure-provided-v1': createProvidedExposureResolver,
+    'host-pre-exposure-cpu-v1': createHostPreExposureCpuResolver,
+    'exposure-texture-v1': createExposureTextureResolver,
+    'exposure-provided-texture-v1': createExposureTextureResolver,
+    'conditioning-exposure-corrected-v1': createConditioningExposureResolver,
+    'exposure-step-v1': createConditioningExposureResolver,
+    'exposure-step-corrected-v1': createConditioningExposureResolver,
 } satisfies Record<BenchmarkVariantId, BenchmarkVariantDefinition['create']>;
 
 /**
@@ -94,6 +112,11 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
     const reconstructExperiment = id.startsWith('reconstruct-');
     const depthClipVariant = id.startsWith('depth-clip-');
     const shadingMemory = id.startsWith('shading-memory-') || id === 'shading-frame-pair-v1';
+    const linearDepth = id === 'linear-depth-input-v1';
+    const rcasAgeKnee = id.startsWith('rcas-age-knee-');
+    const providedExposure = id === 'exposure-provided-v1';
+    // A different accumulate pipeline (issue 99).
+    const conditioningCorrected = id === 'conditioning-exposure-corrected-v1' || id === 'exposure-step-corrected-v1';
     const sourceResourceGraph = spdResolver
         ? [
               'scene-color-depth-velocity',
@@ -173,6 +196,26 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
                     ? `Shading change with block memory (${id.slice('shading-memory-'.length)})`
                   : id === 'production'
                     ? 'Production pipeline (production RCAS on every path)'
+                  : linearDepth
+                    ? "Baseline fed linear view depth (depthMode: 'linear')"
+                  : rcasAgeKnee
+                    ? id === 'rcas-age-knee-ungated-v1'
+                        ? 'Production pipeline with an ungated age knee of 0.5 (age alone)'
+                        : `Production pipeline with rcasAgeKnee ${id === 'rcas-age-knee-25-v1' ? 0.25 : id === 'rcas-age-knee-12-v1' ? 0.125 : 0.5}`
+                  : providedExposure
+                    ? "Baseline with exposureMode: 'provided' (no luminance metering)"
+                  : id === 'host-pre-exposure-cpu-v1'
+                    ? 'Baseline with the host pre-exposure passed as a number'
+                  : id === 'exposure-texture-v1'
+                    ? 'Baseline with an exposureTexture of 2 (metered, then overridden)'
+                  : id === 'exposure-provided-texture-v1'
+                    ? "Baseline with exposureMode: 'provided' and an exposureTexture of 2"
+                  : id === 'conditioning-exposure-corrected-v1'
+                    ? 'Baseline with correctConditioningExposure'
+                  : id === 'exposure-step-v1'
+                    ? 'Baseline with a stepped and ramped exposureTexture'
+                  : id === 'exposure-step-corrected-v1'
+                    ? 'Baseline with a stepped and ramped exposureTexture, corrected'
                 : rcasDenoise
             ? 'FSR 3.1.5 RCAS limiter + denoise'
             : rcasLimiterParity
@@ -199,6 +242,10 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
                 shadingMemory ||
                 reconstructExperiment ||
                 depthClipVariant ||
+                linearDepth ||
+                rcasAgeKnee ||
+                providedExposure ||
+                conditioningCorrected ||
                 id === 'production'
                 ? id
                 : rcasNumericParity
@@ -206,7 +253,7 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
                     ? 'rcas-fsr315-numeric'
                     : 'rcas-fsr315-limiter'
                 : 'local-baseline-5d6a65e',
-            pipelineKey: sourceBundle || reconstructExperiment ? id : 'temporal-baseline',
+            pipelineKey: sourceBundle || reconstructExperiment || linearDepth || providedExposure ? id : 'temporal-baseline',
             assembledChunks: sourceBundle
                 ? [
                       'constants',

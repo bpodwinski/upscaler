@@ -21,6 +21,7 @@ import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNod
 import { SimplexNoise } from 'three/addons/math/SimplexNoise.js';
 
 import { DebugView, QualityMode, getQualityModeRatio } from '@pmndrs/upscaler';
+import { scalarTexture } from './scalarTexture';
 
 /** Bench render modes — what fills the screen each frame. */
 export type BenchMode = 'native' | 'bilinear' | 'fsr1-spatial' | 'upscale-temporal';
@@ -815,24 +816,8 @@ export class BenchPipeline {
         this._hostPreExposureValue = value;
     }
 
-    // The 1×1 texture is created per distinct value: three only re-uploads
-    // texture data for textures its own render graph consumes, so mutating one
-    // texture's texels would never reach the GPU. initTexture() forces upload.
     private _hostPreExposureTexture(value: number): THREE.DataTexture {
-        let tex = this._hostPreExposureTextures.get(value);
-        if (!tex) {
-            tex = new THREE.DataTexture(
-                new Float32Array([value, 0, 0, 1]),
-                1,
-                1,
-                THREE.RGBAFormat,
-                THREE.FloatType,
-            );
-            tex.needsUpdate = true;
-            this._renderer.initTexture(tex);
-            this._hostPreExposureTextures.set(value, tex);
-        }
-        return tex;
+        return scalarTexture(this._renderer, this._hostPreExposureTextures, value);
     }
 
     dispatchResolver(

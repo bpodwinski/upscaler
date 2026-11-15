@@ -289,6 +289,23 @@ on the next dispatch, with no rebuild:
 
 All except `sharpness` and `rcasDenoise` affect only the temporal path.
 
+One sharpening control is configuration, not a setting: **`rcasAgeKnee`** in
+`configure()` (default `0`, off). On still pixels a positive knee scales temporal
+RCAS by `smoothstep(0, knee, age)`, age being the pixel's accumulated sample count
+over `maxAccumulation`, so history that was just reset (the trail a moving object
+uncovers, a camera cut) is sharpened progressively instead of at once. Pixels that
+are themselves moving are sharpened as usual. The value is compiled into the RCAS
+pipeline, so changing it means another `configure()`. At `0.5` it cuts temporal
+error on those trails by 17 % and costs nothing measurable under camera motion; for
+about a third of a second after a camera cut the image is slightly softer. Numbers
+in `packages/core/src/shaders/README.md` → *RCAS age knee*. It is also an option of
+`upscale()` / `upscaleScene()` and of `UpscalePass.configure()`.
+
+**`correctConditioningExposure`** (configuration, default `false`) corrects history when
+the conditioning exposure changes between frames. Turn it on when you move the
+exposure yourself (a fixed `exposure` or an `exposureTexture` you change); leave it off
+with auto-exposure. See [Inputs and contracts](inputs-and-contracts.md) → Exposure.
+
 **Camera cuts:** call `upscaler.resetHistory()`, or pass `reset: true` in that
 frame's dispatch inputs, so the first frame after a teleport doesn't blend against
 the old view.

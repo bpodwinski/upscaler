@@ -6,7 +6,7 @@ Every pass is a WGSL compute module assembled from shared chunks (`common.ts` + 
 
 - **Coordinate space** — texel coordinates and UVs are top-left origin. Motion vectors arrive from three's `velocity` node as NDC deltas (`current − previous`) and are converted to UV deltas with `motionScale = (0.5, −0.5)`; reprojection is `prevUV = uv − motion`.
 - **Jitter** — applied via `camera.setViewOffset`, so a render texel at index `i` holds scene content from unjittered position `i + jitter`. The accumulate pass measures kernel distances against `srcPos = uv·renderSize − 0.5 − jitter`.
-- **Depth** — supports three's standard and reversed WebGPU depth conventions (flag bit + `linearizeDepth`, derived from `Matrix4.makePerspective`). Comparisons happen on positive view-space distances.
+- **Depth** — supports three's standard and reversed WebGPU depth conventions (flag bit + `linearizeDepth`, derived from `Matrix4.makePerspective`). Comparisons happen on positive view-space distances. `depthMode: 'linear'` skips the conversion: `RECONSTRUCT_LINEAR_SHADER` reads positive view depth from a float texture and takes the 3×3 minimum directly; everything after the dilation is shared with the hardware form.
 - **Color and exposure domains** — the local temporal pipeline multiplies input by the
   selected local conditioning exposure (auto, fixed, or external), then accumulates in
   _invertible-tonemap space_ (`c / (1 + max(c))`). RCAS sharpens that conditioned history
@@ -167,6 +167,72 @@ denoise luma/range. Re-evaluate the temporal denoise default after the linear/HD
 conversion on representative noisy content. Separately benchmark native versus
 approximate-medium final normalization and 8×8 per-pixel dispatch versus quad-remapped
 coverage only if RCAS performance becomes material.
+
+#### RCAS age knee (`rcasAgeKnee`, opt-in)
+
+`buildRcasAgeKneeShader(knee)` is production RCAS with one change on the temporal
+path: on **still** pixels the lobe is multiplied by `smoothstep(0, knee, age)`, where
+age is the history's `.a` (accumulated samples over `maxAccumulation`). The age comes
+from the center tap, loaded once as a `vec4f` instead of through `rcasLoad`. "Still"
+is this frame's dilated motion (binding 5) under 0.05–0.5 render texels, the range
+accumulate's still-scene relax fades over. A knee of 0 returns `RCAS_SHADER` itself
+and the spatial path is untouched.
+
+- **Why still pixels only.** Young history is one or two jittered samples. On a still
+  surface the true image does not change, so sharpening those samples shows as
+  flicker: on the trails behind Q3's moving objects, production's output changes
+  3.15× as much per frame as the 64 spp reference does. A pixel that is itself moving
+  changes every frame anyway. The first form of the knee used age alone (bench
+  identity `rcas-age-knee-ungated-v1`). Under camera motion every surface that slid
+  into view in the last `knee · maxAccumulation` frames is young, 6–30 % of a Q19
+  frame, and that form took 0.13–0.18 dB off those pixels for under 2 % temporal
+  error.
+- **Measured against a 64 spp reference**, ratio 2, 1280×720
+  (`measure-reference-quality.mjs --modes temporal --young-age 0.5 --variant <id>` vs
+  `production`). `--young-age 0.5` scores the pixels whose age is below 0.5; the mask
+  is the same for every variant, since RCAS does not feed back into history.
+
+  | variant | Q3 trails (1.5 % of frame): temporal error | PSNR there | Q19 motion, young pixels: PSNR |
+  | --- | --- | --- | --- |
+  | knee 0.5 | −17.3 % | −0.10 dB | 0.00 to −0.01 dB |
+  | knee 0.25 | −13.4 % | −0.06 dB | 0.00 dB |
+  | knee 0.125 | −8.2 % | −0.02 dB | 0.00 dB |
+  | knee 0.5, ungated | −20.5 % | −0.08 dB | −0.13 to −0.18 dB |
+  | `rcasDenoise`, no knee | −9.9 % | +0.03 dB | −0.02 to −0.05 dB |
+
+  Whole frame, knee 0.5: Q3 temporal error −2.4 %, PSNR −0.003 dB; every Q19 window
+  within 0.001 dB and 0.1 %. `rcasDenoise` softens converged pixels too (Q3 whole-frame
+  PSNR −0.10 dB). The lobe ceiling (#50) is on in every run; it bounds overshoot, not
+  flicker.
+- **The gate's range is measured, not only borrowed.** Knee 0.5, same runs with the
+  two constants edited:
+
+  | `KNEE_MOTION_LO`–`HI` (render texels) | Q3 trails: temporal error | Q19 young pixels: PSNR |
+  | --- | --- | --- |
+  | 0.0125–0.05 | −11.7 % | 0.00 dB |
+  | **0.05–0.5** | −17.3 % | 0.00 to −0.01 dB |
+  | 0.5–2 | −19.8 % | −0.04 to −0.08 dB on four of five segments |
+
+  A tighter range gives up a third of the gain: the dilated motion of a trail texel
+  next to the moving object is the object's, not zero. A wider one starts softening
+  slow camera motion again.
+- **Other motion** (knee 0.5 against production): on Q2's slow dolly, where motion is
+  under a texel and the gate is partly open, young pixels are 0.6 % of the frame and
+  their temporal error drops 7.3 % for −0.13 dB; on Q4's orbit, 3.0 %, −6.2 % and
+  −0.15 dB; on Q4's translate and second orbit nothing changes. Whole frame, every
+  Q2 and Q4 window is within 0.007 dB and 0.3 %.
+- **After a history reset** (Q1, a still scene, `--frames reset=0:23`), knee 0.5:
+  temporal error is 30 % lower on frames 1–3 (1.67 → 1.17 on frame 1) and PSNR is
+  0.42–0.46 dB lower until about frame 7, when the image is still filling in; from
+  frame 11 the two are identical.
+- **Cost:** the motion is fetched only for pixels under the knee, so a converged frame
+  pays for one comparison: +0.06 to +0.28 µs RCAS at 1920×1080 ratio 2 (≤ 1.2 %, at the
+  noise floor, two ABBA runs). Fetching it for every pixel cost +4.7 µs (+20 %): that
+  is the bound for a frame where every pixel is young, such as the dozen frames after
+  a camera cut. Nothing at knee 0.
+- **Why a build-time constant:** a uniform would be cheaper to change, but `FsrConstants`
+  has no free slot the RCAS pass can name without re-fingerprinting every shader. Fold
+  it into the next UBO change if the knee is ever animated.
 
 #### RCAS load domain (temporal path)
 
@@ -584,8 +650,13 @@ resolver variant, with debug visualization for every signal that scales the box.
 
 #### Exposure history
 
-- **Current status:** Host pre-exposure parity adopted (2026-07-21, NEXT-STEPS item 2);
-  conditioning-exposure drift remains uncorrected by design.
+- **Current status:** Host pre-exposure parity adopted (2026-07-21, NEXT-STEPS item 2).
+  Conditioning-exposure drift is uncorrected by default and corrected on request
+  (`correctConditioningExposure`, 2026-11-15, NEXT-STEPS §16): `buildAccumulateShader(true)`
+  multiplies the host delta by this frame's over last frame's conditioning exposure
+  (`.r` of the two texels). Off by default because under auto-exposure the uncorrected
+  decode cancels part of the lighting lag (Q15 3.46 → 5.36/255 corrected); on, a host
+  exposure step on a still scene no longer moves the output (21.5 → 0.13/255).
 - **Local implementation:** The pyramid publishes the app's `preExposureTexture` value
   in the 1×1 exposure texel's `.b` (1.0 when absent) and meters auto-exposure
   host-invariantly (divides host out of the measured average, as FSR2 divides
@@ -717,6 +788,25 @@ and replace them only inside the coordinated parity resolver tested on
 SPD and coordinated resolver variants, not as a standalone toggle in the local blend.
 
 #### Luma and exposure analysis (`luminancePyramid.ts`)
+
+`PROVIDED_EXPOSURE_SHADER` (`exposureMode: 'provided'`) is the same pass without the
+measurement, for hosts that meter themselves: it reads the external exposure (or
+`C.exposure`) and the host pre-exposure and writes the 1×1 state, with `.g` = 0. It
+binds four entries instead of seven (no color, sampler or previous exposure). Its
+output equals the metered pass's with `FLAG_AUTO_EXPOSURE` clear, apart from `.g`,
+which no shader reads: Q1 / Q9 / Q11 captures are byte-identical to `autoExposure:
+false`, and so are Q1 / Q9 with a real `exposureTexture` against a fixed exposure
+of the same value. Measured at 1920×1080, interleaved ABBA: exposure 50.2 → 2.5 µs
+at ratio 1, 49.2 → 2.3 µs at ratio 2, 48.4 → 2.0 µs at ratio 3. The saving is a
+flat 46–48 µs, since the reduction is a fixed 1024 taps: −16 %, −21 % and −22 % of
+the temporal path's compute.
+
+The ~2 µs that remain are the cost of dispatching a one-texel pass. Writing the
+texel from the CPU would remove them when no texture is passed, but the exposure
+state is rgba16float: the CPU would have to round to f16 exactly as the GPU does,
+or provided mode would stop matching `autoExposure: false` bit for bit, and the
+texture case would still need the pass. One path for both cases is worth 1 % of the
+frame.
 
 - **Current status:** Custom scalar replacement; despite its filename, it is not a pyramid.
 - **Local implementation:** Serially samples a fixed 32×32 grid and reduces it to one
