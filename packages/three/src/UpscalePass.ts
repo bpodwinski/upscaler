@@ -20,6 +20,8 @@ export interface UpscalePassConfig {
     rcasAgeKnee?: number;
     /** Who supplies the conditioning exposure — see `UpscalerConfig.exposureMode`. */
     exposureMode?: ExposureMode;
+    /** Correct history for conditioning-exposure changes — see `UpscalerConfig.correctConditioningExposure`. */
+    correctConditioningExposure?: boolean;
 }
 
 /**
@@ -127,6 +129,7 @@ export class UpscalePass {
             path: this._path,
             rcasAgeKnee: config.rcasAgeKnee,
             exposureMode: config.exposureMode,
+            correctConditioningExposure: config.correctConditioningExposure,
         });
 
         const rw = this.upscaler.renderWidth;
