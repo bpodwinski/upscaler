@@ -1689,6 +1689,75 @@ motion does.
 cross-frame identity disoccludes **44.4%** of the interior (80% of pixels young, mean age
 0.21); production **0.49%** (mean age 0.75).
 
+## 16. Conditioning-exposure history correction — OPTION, default off (2026-11-15, upstream issue 99)
+
+**Problem.** History is stored as `x/(1+x)` of the colour times the conditioning
+exposure of the frame that wrote it. When that exposure changes, last frame's history
+decodes at the new one, so the output is off by their ratio until the history
+re-converges. Host pre-exposure was already corrected (`DeltaPreExposure`, item 2);
+the conditioning exposure was not ("not planned" below, pending evidence).
+
+**Change.** `UpscalerConfig.correctConditioningExposure` (default `false`) selects
+`buildAccumulateShader(true)`: the history ratio becomes host delta × this frame's
+`.r` over last frame's `.r`, applied in linear space where the host delta already
+was. A ratio within 1e-3 of 1 is skipped, so frames whose exposure did not move are
+bit-identical to production. `ACCUMULATE_SHADER` is unchanged (same fingerprint).
+
+**Evidence** (RTX 5080, ratio 2, 1280×720; bench identities in BENCHMARKING.md).
+
+*Exposure moved by the host, scene still* — `measure-convergence.mjs --scenario Q1
+--settle 110 --pairs 220 --variant exposure-step-v1` vs `exposure-step-corrected-v1`
+(consecutive-frame mean |Δ|, /255; 0.104 at rest):
+
+| frames | uncorrected | corrected |
+| --- | --- | --- |
+| ×4 step up (f120) | **21.53**, then 2.22, 2.13, 1.43 | 0.129, 0.111, 0.114 |
+| f121–179 mean (max) | 0.373 (2.22) | 0.102 (0.114) |
+| ×4 step down (f180) | **23.52**, then 3.98 | 0.111, 0.114 |
+| ×8 ramp over 60 frames, mean (max) | 0.905 (1.17) | 0.117 (0.133) |
+| hold at 8, mean | 0.342 | 0.106 |
+
+Uncorrected, the drift after a step decays over a full second (0.47 at +10 frames,
+0.13 at +59). Corrected, the output never leaves its resting churn.
+
+*Exposure following the lighting* — auto-exposure on, `measure-drift-lag.mjs`
+(mean |ramp − lag-free reference|, /255):
+
+| Q15 (slow sun ramps ×4) | down ramp + hold | up ramp + hold | all (peak) |
+| --- | --- | --- | --- |
+| production | 3.21 | 3.76 | 3.46 (6.58) |
+| corrected | 5.83 | 5.21 | 5.41 (10.29) |
+| production, auto-exposure off | 5.92 | 4.73 | 5.20 (9.51) |
+
+| Q9 (exposure-transition) | ramp 116–179 (peak) | step at 180 (peak) | after 240 |
+| --- | --- | --- | --- |
+| production | 5.66 (7.97) | 1.68 (3.53) | 0.28 |
+| corrected | 5.78 (11.80) | 2.08 (5.47) | 0.29 |
+
+The 30–45 % of drift lag that "auto-exposure masks" (item 8) is this mechanism: when
+lighting dims, auto-exposure rises, and decoding the stale-bright history at the
+higher exposure darkens it toward the new lighting. The correction removes that help,
+and Q15 lands where it reads with auto-exposure off (5.41 vs 5.20). It is an accident,
+not a design: it works only when the exposure change and the lighting change are the
+same change. With auto-exposure off the exposure is constant and the option is
+inert.
+
+*No exposure change* — Q1 convergence identical pair for pair (0.1042); Q11 (host
+pre-exposure step and ramp; auto-exposure meters host-invariantly, so its exposure
+holds) identical over all 150 pairs. Q12 changes slightly for the better (0.0166 →
+0.0153 mean, max 0.0233 → 0.0172): its first pairs after settling still see the
+exposure move past the dead-band.
+
+*Cost* — `run-benchmark.mjs --smoke --ratios 2 --blocks 6 --variant baseline
+--comparison conditioning-exposure-corrected-v1`, 1080p: compute sum 225.8 vs
+221.7 µs, accumulate 118.3 vs 113.8 µs. One more 1×1 load and a multiply cannot make
+the pass faster; read it as code-generation variance, i.e. no cost.
+
+**Decision.** Opt-in, default off. On for hosts that move the exposure independently
+of the scene (a manual exposure, a provided exposure smoothed or stepped by the app);
+off with auto-exposure or a host meter that follows the lighting. Making it the default
+would cost every auto-exposure user ~55 % more drift lag on slow lighting changes.
+
 ## Explicitly not planned (measured against)
 
 - Lanczos2/bicubic history filtering (+47% accumulate, no visible win).
@@ -1696,6 +1765,6 @@ cross-frame identity disoccludes **44.4%** of the interior (80% of pixels young,
 - ~~Atomic depth scatter as a wholesale replacement for the fused reconstruct pass.~~
   Adopted 2026-10-05 (§15): the fused form was not camera-invariant (issue #67).
 - T&C as a distinct softer channel — revisit only on user demand with real content.
-- Conditioning-exposure history correction (beyond host pre-exposure): eased
-  adaptation keeps the per-frame mismatch under the shading detector's threshold;
-  correcting it changes output for every auto-exposure user. Revisit with evidence.
+- Conditioning-exposure history correction **as the default** (§16): shipped as the
+  opt-in `correctConditioningExposure`. Under auto-exposure the uncorrected decode
+  cancels part of the lighting lag (Q15 3.46 → 5.41 corrected), so the default stays off.

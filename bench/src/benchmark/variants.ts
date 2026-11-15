@@ -8,6 +8,7 @@ import {
     createRcasNumericParityResolver,
     createDepthClipVariantResolver,
     createExposureTextureResolver,
+    createConditioningExposureResolver,
     createLinearDepthResolver,
     createReconstructExperimentResolver,
     createShadingMemoryResolver,
@@ -69,6 +70,9 @@ const RESOLVER_FACTORIES = {
     'host-pre-exposure-cpu-v1': createHostPreExposureCpuResolver,
     'exposure-texture-v1': createExposureTextureResolver,
     'exposure-provided-texture-v1': createExposureTextureResolver,
+    'conditioning-exposure-corrected-v1': createConditioningExposureResolver,
+    'exposure-step-v1': createConditioningExposureResolver,
+    'exposure-step-corrected-v1': createConditioningExposureResolver,
 } satisfies Record<BenchmarkVariantId, BenchmarkVariantDefinition['create']>;
 
 /**
@@ -111,6 +115,8 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
     const linearDepth = id === 'linear-depth-input-v1';
     const rcasAgeKnee = id.startsWith('rcas-age-knee-');
     const providedExposure = id === 'exposure-provided-v1';
+    // A different accumulate pipeline (issue 99).
+    const conditioningCorrected = id === 'conditioning-exposure-corrected-v1' || id === 'exposure-step-corrected-v1';
     const sourceResourceGraph = spdResolver
         ? [
               'scene-color-depth-velocity',
@@ -204,6 +210,12 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
                     ? 'Baseline with an exposureTexture of 2 (metered, then overridden)'
                   : id === 'exposure-provided-texture-v1'
                     ? "Baseline with exposureMode: 'provided' and an exposureTexture of 2"
+                  : id === 'conditioning-exposure-corrected-v1'
+                    ? 'Baseline with correctConditioningExposure'
+                  : id === 'exposure-step-v1'
+                    ? 'Baseline with a stepped and ramped exposureTexture'
+                  : id === 'exposure-step-corrected-v1'
+                    ? 'Baseline with a stepped and ramped exposureTexture, corrected'
                 : rcasDenoise
             ? 'FSR 3.1.5 RCAS limiter + denoise'
             : rcasLimiterParity
@@ -233,6 +245,7 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
                 linearDepth ||
                 rcasAgeKnee ||
                 providedExposure ||
+                conditioningCorrected ||
                 id === 'production'
                 ? id
                 : rcasNumericParity

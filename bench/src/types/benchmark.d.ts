@@ -33,7 +33,10 @@ declare type BenchmarkVariantId =
     | 'exposure-provided-v1'
     | 'host-pre-exposure-cpu-v1'
     | 'exposure-texture-v1'
-    | 'exposure-provided-texture-v1';
+    | 'exposure-provided-texture-v1'
+    | 'conditioning-exposure-corrected-v1'
+    | 'exposure-step-v1'
+    | 'exposure-step-corrected-v1';
 declare type BenchmarkScenarioId =
     | 'Q0'
     | 'Q1'
