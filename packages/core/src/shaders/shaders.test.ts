@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import * as accumulateModule from './accumulate';
-import { ACCUMULATE_SHADER } from './accumulate';
+import { ACCUMULATE_SHADER, buildAccumulateShader } from './accumulate';
 import * as blitModule from './blit';
 import { BLIT_SHADER } from './blit';
 import { DEBUG_SHADER } from './debug';
@@ -719,5 +719,54 @@ describe('depth clip tolerance (FSR2 Kfov)', () => {
     it('keeps the field when the exposure pass renames the last u32 slot', () => {
         expect(LUMINANCE_PYRAMID_SHADER).toContain('exposureTaps    : u32,    // offset 92');
         expect(LUMINANCE_PYRAMID_SHADER).toContain('depthClipKfov   : f32,    // offset 96');
+    });
+});
+
+describe('accumulate conditioning-exposure correction (upstream issue 99)', () => {
+    const corrected = buildAccumulateShader(true);
+
+    it('returns the production shader itself when off', () => {
+        expect(buildAccumulateShader(false)).toBe(ACCUMULATE_SHADER);
+        expect(ACCUMULATE_SHADER).not.toContain('conditioningRatio');
+    });
+
+    it("multiplies the host delta by this frame's over last frame's conditioning exposure", () => {
+        const body = corrected.split('fn main')[1] ?? '';
+        expect(body).toContain('let previousInfo = textureLoad(exposurePrevTex, vec2i(0), 0);');
+        expect(body).toContain('if (previousInfo.r > 1.0e-4) { conditioningRatio = exposure / max(previousInfo.r, 1.0e-4); }');
+        expect(body).toContain('let historyRatio = hostRatio * conditioningRatio;');
+        expect(body).toContain('tonemapInvertible(tonemapInvert(history.rgb) * historyRatio)');
+        // The skip keeps an unchanged exposure bit-identical to production.
+        expect(body).toContain('if (abs(historyRatio - 1.0) > 1.0e-3)');
+        expect(body).not.toContain('* hostRatio), history.a)');
+    });
+
+    it('corrects after reprojection and before the age is read', () => {
+        const body = corrected.split('fn main')[1] ?? '';
+        const reproject = body.indexOf('var history = sampleHistoryCatmullRom(prevUV);');
+        const correct = body.indexOf('* historyRatio), history.a)');
+        const age = body.indexOf('var sampleCount = history.a * C.maxAccumulation;');
+        expect(reproject).toBeGreaterThan(0);
+        expect(correct).toBeGreaterThan(reproject);
+        expect(age).toBeGreaterThan(correct);
+    });
+
+    it('keeps the production bindings and is otherwise identical', () => {
+        const bindings = (source: string) =>
+            [...source.matchAll(/@group\(0\) @binding\((\d+)\) var (\w+)/g)].map((m) => `${m[1]}:${m[2]}`);
+        expect(bindings(corrected)).toEqual(bindings(ACCUMULATE_SHADER));
+        const strip = (source: string) => {
+            const start = source.indexOf('    let hostPrev');
+            const fromPrevious = source.indexOf('    let previousInfo');
+            const from = fromPrevious >= 0 ? fromPrevious : start;
+            const end = source.indexOf('    var sampleCount');
+            return source.slice(0, from) + source.slice(end);
+        };
+        expect(strip(corrected)).toBe(strip(ACCUMULATE_SHADER));
+    });
+
+    it('has one entry point and one constants block', () => {
+        expect(corrected.match(/@compute/g)).toHaveLength(1);
+        expect(corrected.match(/struct FsrConstants/g)).toHaveLength(1);
     });
 });
