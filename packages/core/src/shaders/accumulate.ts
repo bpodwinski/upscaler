@@ -48,11 +48,9 @@ import { assembleShader } from './wgsl';
  * - 12: shading-change response, ceil(render/2) (r32float from
  *       shadingChange.ts; 1×1 zero dummy when the detector is off)
  */
-export const ACCUMULATE_SHADER = assembleShader(
-    WGSL_CONSTANTS,
-    WGSL_COLOR,
-    WGSL_TONEMAP,
-    /* wgsl */ `
+// The WGSL body, shared by both forms below. Kept as one string so the
+// production form stays byte-identical to its reviewed fingerprint.
+const ACCUMULATE_BODY = /* wgsl */ `
 @group(0) @binding(1) var inputColor : texture_2d<f32>;
 @group(0) @binding(2) var dilatedMotion : texture_2d<f32>;
 @group(0) @binding(3) var masks : texture_2d<f32>;
@@ -383,5 +381,54 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     // b = shading-change factor (for the debug view); a = resolved alpha.
     textureStore(locksOut, gid.xy, vec4f(lockLife, lockedLuma, shadingChange, resultAlpha));
 }
-`,
+`;
+
+// History is stored as tonemapInvertible(color · conditioning exposure). With
+// the correction on, a change of conditioning exposure between frames is
+// ratio-corrected in linear space with the host pre-exposure delta, so the
+// reprojected history decodes at this frame's exposure (issue 99).
+const HOST_DELTA = /* wgsl */ `    let hostPrev = textureLoad(exposurePrevTex, vec2i(0), 0).b;
+    var hostRatio = 1.0;
+    if (hostPrev > 1.0e-4 && frameInfo.b > 1.0e-4) { hostRatio = frameInfo.b / hostPrev; }
+    if (abs(hostRatio - 1.0) > 1.0e-3) {
+        history = vec4f(tonemapInvertible(tonemapInvert(history.rgb) * hostRatio), history.a);
+    }
+`;
+const HOST_AND_CONDITIONING_DELTA = /* wgsl */ `    let previousInfo = textureLoad(exposurePrevTex, vec2i(0), 0);
+    let hostPrev = previousInfo.b;
+    var hostRatio = 1.0;
+    if (hostPrev > 1.0e-4 && frameInfo.b > 1.0e-4) { hostRatio = frameInfo.b / hostPrev; }
+    // The conditioning exposure the history was stored under: last frame's .r.
+    // 0 means no previous frame wrote it (first frame after allocation).
+    var conditioningRatio = 1.0;
+    if (previousInfo.r > 1.0e-4) { conditioningRatio = exposure / max(previousInfo.r, 1.0e-4); }
+    let historyRatio = hostRatio * conditioningRatio;
+    if (abs(historyRatio - 1.0) > 1.0e-3) {
+        history = vec4f(tonemapInvertible(tonemapInvert(history.rgb) * historyRatio), history.a);
+    }
+`;
+
+/**
+ * Builds the accumulate pass.
+ * @param correctConditioningExposure - Also ratio-correct the reprojected
+ *   history for a change of conditioning exposure since last frame
+ *   (`UpscalerConfig.correctConditioningExposure`). `false` returns
+ *   {@link ACCUMULATE_SHADER} itself.
+ * @returns The assembled WGSL module
+ */
+export function buildAccumulateShader(correctConditioningExposure: boolean): string {
+    if (!correctConditioningExposure) return ACCUMULATE_SHADER;
+    return assembleShader(
+        WGSL_CONSTANTS,
+        WGSL_COLOR,
+        WGSL_TONEMAP,
+        ACCUMULATE_BODY.replace(HOST_DELTA, HOST_AND_CONDITIONING_DELTA),
+    );
+}
+
+export const ACCUMULATE_SHADER = assembleShader(
+    WGSL_CONSTANTS,
+    WGSL_COLOR,
+    WGSL_TONEMAP,
+    ACCUMULATE_BODY,
 );

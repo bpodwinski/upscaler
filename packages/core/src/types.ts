@@ -174,6 +174,30 @@ export interface UpscalerConfig {
      * See docs/inputs-and-contracts.md → Exposure.
      */
     exposureMode?: ExposureMode;
+    /**
+     * Correct the reprojected history when the conditioning exposure changes
+     * between frames (temporal path). Default `false`.
+     *
+     * History is stored in invertible-tonemap space of the color times the
+     * conditioning exposure. When that exposure moves (auto-exposure adapting
+     * after a lighting change, a fixed `settings.exposure` or an
+     * `exposureTexture` the host steps), last frame's history decodes at the
+     * new exposure, so the output brightness is off by their ratio until the
+     * history re-converges. On, the history is ratio-corrected in linear
+     * space with the host pre-exposure delta, so the output does not move.
+     *
+     * Turn it on when the exposure moves without the scene changing (a manual
+     * exposure, an `exposureTexture` the host steps or smooths). Leave it off
+     * with auto-exposure or a host meter that follows the lighting: there the
+     * uncorrected decode cancels part of the history's lag behind a lighting
+     * change, and correcting it measured ~55 % more drift lag on slow ramps.
+     * Frames whose exposure is unchanged — every still frame inside the
+     * auto-exposure dead-band — are bit-identical either way.
+     *
+     * It selects a different accumulate pipeline, so it is configuration.
+     * See docs/inputs-and-contracts.md → Exposure.
+     */
+    correctConditioningExposure?: boolean;
 }
 
 /** How the `depth` input is encoded. See {@link UpscalerConfig.depthMode}. */

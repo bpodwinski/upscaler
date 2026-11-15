@@ -252,6 +252,33 @@ changing it means another `configure()`. Use the default mode if anything of you
 reads `guides.exposure.g`. It is also an option of `upscale()` / `upscaleScene()`
 and of `UpscalePass.configure()`.
 
+**When the conditioning exposure moves: `correctConditioningExposure`.** History is
+stored conditioned by the exposure of the frame that wrote it. When the exposure
+changes, last frame's history decodes at the new one, so for a few frames the output
+is off by their ratio. Configuring `correctConditioningExposure: true` ratio-corrects
+the reprojected history in linear space, as host pre-exposure is (default `false`).
+Which one you want depends on *why* the exposure moves:
+
+- **It moves without the scene changing** (a manual exposure change, an
+  `exposureTexture` stepped or smoothed for reasons of your own): turn it on. On a
+  still scene a ×4 step changes the output by 21–24/255 in one frame without it,
+  then keeps it drifting for about a second (still 0.13/255 per frame 60 frames
+  later, against 0.10 at rest); with it, the output does not move
+  (0.13/255, the scene's own jitter churn). A ×8 ramp over a second churns 0.9/255
+  per frame without it, 0.12 with it.
+- **It follows the scene's lighting** (auto-exposure, or your own metering): leave
+  it off. When lighting dims, auto-exposure rises, and the uncorrected history
+  decodes darker, which happens to cancel part of the history's lag behind the new
+  lighting. With the correction that help is gone: on bench Q15's slow lighting
+  ramps the error against a lag-free reference rises from 3.5 to 5.4/255 (5.2 with
+  auto-exposure off, where the option changes nothing).
+
+Frames whose exposure is unchanged are bit-identical either way, including still
+frames inside auto-exposure's 1/16-stop dead-band. It selects a different accumulate
+pipeline, so it is configuration (also an option of `upscale()` / `upscaleScene()`
+and `UpscalePass.configure()`). Upstream issue 99; numbers in
+`bench/docs/NEXT-STEPS.md` §16.
+
 The conditioning exposure also sets the **HDR headroom** of the temporal output.
 Values resolve up to about `999 / exposure` in the input's linear domain. Below
 that they lose precision as they approach it, and sub-pixel highlights are

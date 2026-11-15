@@ -4,7 +4,7 @@ import { ConstantsBuffer } from './internal/ConstantsBuffer';
 import { GpuTimer } from './internal/GpuTimer';
 import { JitterSequence } from './math/jitter';
 import { getQualityModeRatio, getRenderResolution } from './math/resolution';
-import { ACCUMULATE_SHADER } from './shaders/accumulate';
+import { ACCUMULATE_SHADER, buildAccumulateShader } from './shaders/accumulate';
 import { BLIT_SHADER } from './shaders/blit';
 import {
     FLAG_AUTO_EXPOSURE,
@@ -214,6 +214,7 @@ export class UpscalerCore<THandle = GPUTexture> {
     private _reprojectBuffer: GPUBuffer | null = null;
     private readonly _reprojectData: (() => Float32Array<ArrayBuffer>) | null;
     private _accumulatePass!: ComputePass;
+    private _accumulateConditionedPass!: ComputePass;
     private _exposurePass!: ComputePass;
     // exposureMode: 'provided' — publishes the exposure state, meters nothing.
     private _providedExposurePass!: ComputePass;
@@ -225,6 +226,7 @@ export class UpscalerCore<THandle = GPUTexture> {
     private _depthMode: DepthMode = 'hardware';
     private _rcasAgeKnee = 0;
     private _exposureMode: ExposureMode = 'upstream';
+    private _correctConditioningExposure = false;
     private _displayWidth = 0;
     private _displayHeight = 0;
     private _renderWidth = 0;
@@ -432,7 +434,7 @@ export class UpscalerCore<THandle = GPUTexture> {
         const geometry = this._crossFrameReconstruct ? ['reconstruct'] : [reconstruct, 'depthClip'];
         const exposure = this._exposureMode === 'provided' ? 'providedExposure' : 'exposure';
         return this._path === 'guides' ? geometry :
-            [...geometry, 'accumulate', exposure, 'generateReactive', this._temporalRcasName(), 'blit'];
+            [...geometry, this._correctConditioningExposure ? 'accumulateConditioned' : 'accumulate', exposure, 'generateReactive', this._temporalRcasName(), 'blit'];
     }
 
     // Each age knee is its own pipeline, cached under its own name, so
@@ -459,6 +461,7 @@ export class UpscalerCore<THandle = GPUTexture> {
             reconstructLinear: ['reconstruct', RECONSTRUCT_LINEAR_SHADER],
             depthClip: ['depth-clip', this._depthClipShader ?? DEPTH_CLIP_SHADER],
             accumulate: ['accumulate', ACCUMULATE_SHADER],
+            accumulateConditioned: ['accumulate', buildAccumulateShader(true)],
             exposure: ['exposure', LUMINANCE_PYRAMID_SHADER],
             providedExposure: ['exposure', PROVIDED_EXPOSURE_SHADER],
             generateReactive: ['gen-reactive', GENERATE_REACTIVE_SHADER],
@@ -483,6 +486,7 @@ export class UpscalerCore<THandle = GPUTexture> {
                 case 'reconstructLinear': this._reconstructLinearPass = pass; break;
                 case 'depthClip': this._depthClipPass = pass; break;
                 case 'accumulate': this._accumulatePass = pass; break;
+                case 'accumulateConditioned': this._accumulateConditionedPass = pass; break;
                 case 'exposure': this._exposurePass = pass; break;
                 case 'providedExposure': this._providedExposurePass = pass; break;
                 case 'generateReactive': this._generateReactivePass = pass; break;
@@ -560,10 +564,17 @@ export class UpscalerCore<THandle = GPUTexture> {
         if (exposureMode !== 'upstream' && exposureMode !== 'provided') {
             throw new Error(`@pmndrs/upscaler: unknown exposureMode '${String(exposureMode)}' (expected 'upstream' or 'provided').`);
         }
+        const correctConditioningExposure = config.correctConditioningExposure ?? false;
+        if (typeof correctConditioningExposure !== 'boolean') {
+            throw new Error(
+                `@pmndrs/upscaler: correctConditioningExposure must be a boolean; got ${String(correctConditioningExposure)}.`,
+            );
+        }
         this._path = config.path ?? 'temporal';
         this._depthMode = depthMode;
         this._rcasAgeKnee = rcasAgeKnee;
         this._exposureMode = exposureMode;
+        this._correctConditioningExposure = correctConditioningExposure;
         this._jitterEnabled = config.jitter ?? true;
         this._displayWidth = Math.max(1, Math.floor(config.displayWidth));
         this._displayHeight = Math.max(1, Math.floor(config.displayHeight));
@@ -1358,7 +1369,9 @@ export class UpscalerCore<THandle = GPUTexture> {
         }
 
         //* Accumulate — jittered upsample + history reprojection/rectification
-        const accumulateBindGroup = this._accumulatePass.createBindGroup([
+        // Same bindings in both forms; only the history correction differs.
+        const accumulate = this._correctConditioningExposure ? this._accumulateConditionedPass : this._accumulatePass;
+        const accumulateBindGroup = accumulate.createBindGroup([
             { buffer: this._constantsLate.buffer },
             colorGPU.createView(),
             this._dilatedMotion!.createView(),
@@ -1377,7 +1390,7 @@ export class UpscalerCore<THandle = GPUTexture> {
             label: 'upscale-accumulate',
             timestampWrites: this._timer?.passDescriptor('accumulate'),
         });
-        this._accumulatePass.dispatch(
+        accumulate.dispatch(
             accumulatePass,
             accumulateBindGroup,
             this._displayWidth,
