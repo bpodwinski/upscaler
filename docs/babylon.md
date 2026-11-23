@@ -109,7 +109,44 @@ packs motion into `[0, 1]` with a cube-root curve, so it can't be fed in as is.
 from `minZ` to `maxZ`, or reversed under `engine.useReverseDepthBuffer`, which
 the adapter reads. Bind the geometry renderer's depth texture (`depth32float`,
 or a depth-stencil format) directly. The view-depth color textures aren't
-depth textures and won't bind.
+depth textures and won't bind in the default mode.
+
+**Linear view depth.** Configuring `depthMode: 'linear'` takes a positive
+view-distance `r32float` texture instead
+([Engine contract → Linear view depth](engine-contract.md#linear-view-depth)). The
+geometry renderer's view depth (`PREPASS_DEPTH_TEXTURE_TYPE`, requested as
+`TEXTURETYPE_FLOAT` + `TEXTUREFORMAT_R`, bound from `geometryViewDepthTexture`)
+qualifies only under two conditions:
+
+- **Geometry must cover every pixel.** `FrameGraphGeometryRendererTask` clears that
+  attachment to 0, which is not a valid view depth: it reads as the nearest surface
+  and wins every 3×3 dilation, so silhouettes against the background take the
+  background's motion. A sky box or sky dome fixes it.
+- **Left-handed scenes only.** The attachment holds view-space z, which is negative
+  under `scene.useRightHandedSystem`. Measured with `--query rh`: every texel of
+  the depth view is wrong and 11.7 % of the image differs from hardware depth by
+  more than 8/255. Hardware depth works in both systems.
+
+Measured on `examples/babylon/hello` (`node scripts/verify-babylon-linear-depth.mjs`,
+90 animated frames, 1280×720, against hardware depth): with a sky box
+(`?depth=linear&enclosed`) the motion, disocclusion and depth views match within
+8/255 on isolated pixels and the image differs by 0.12/255 on average (0.16 % of
+pixels by more than 8/255); without one, 0.72 % of pixels differ by more than 8/255.
+That 0.12 is not error in either input. The color input is the same in both setups
+(the bilinear path diffs to exactly 0); the two depth sources just round differently,
+and it shows in two places:
+
+- **Ties.** Under a level camera every image row of the flat ground has one view
+  depth, so the 3×3 nearest-depth search picks among equal texels. Tilting the ground
+  20° (`--query tilt=20`) removes those ties: 0.12 → 0.03/255, motion view identical.
+- **Hardware depth precision.** What is left sits on silhouettes and where surfaces
+  meet, where two depths are nearly equal, and it shrinks as hardware depth gets
+  finer: with the tilt and a sky dome (`--query "tilt=20&sky=sphere"`) it is 0.033
+  at the default near plane of 0.1, 0.008 at `--near 1` and 0.002 at `--near 4`. A
+  sky dome in place of the box changes nothing (0.031 → 0.033), so flat walls are
+  not part of it.
+The upscaler gains no GPU time from linear depth, so on Babylon hardware depth
+remains the simpler input.
 
 **Submission.** Each dispatch calls `engine.flushFramebuffer()` first. That
 submits everything Babylon has recorded so far, which includes the input renders,

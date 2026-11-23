@@ -89,6 +89,36 @@ must be exactly what that node produces, rendered into a named MRT attachment:
   that rendered the frame.
 - **Not supported:** logarithmic depth (`logarithmicDepthBuffer`) has no
   linearization path, and multisampled depth won't bind.
+- **Linear view depth instead.** With `depthMode: 'linear'` in the configuration,
+  `depth` is a float texture (`FloatType` + `RedFormat`, i.e. `r32float`) whose red
+  channel holds positive view-space distance, and nothing is linearized. Every texel
+  must be finite and greater than zero, the background included. The rules are in
+  [Engine contract → Linear view depth](engine-contract.md#linear-view-depth). On
+  the nodes it is `upscale(color, depth, velocity, camera, { depthMode: 'linear' })`
+  and `temporalGuides(depth, velocity, camera, { depthMode: 'linear' })`.
+  `upscaleScene()` and `UpscalePass` render their own hardware depth.
+
+  A view-depth node, as run on a device (`upscale()` alone and linked to
+  `temporalGuides()`, inside a sky sphere so that no texel is left at the clear
+  value):
+
+  ```ts
+  const scenePass = pass(scene, camera);
+  scenePass.setMRT(mrt({ output, velocity, viewZ: positionView.z.negate() }));
+  scenePass.setResolutionScale(1 / ratio);
+  scenePass.getTexture('viewZ').type = THREE.FloatType;   // not the default half float
+  post.outputNode = upscale(
+      scenePass.getTextureNode('output'),
+      scenePass.getTextureNode('viewZ'),
+      scenePass.getTextureNode('velocity'),
+      camera,
+      { depthMode: 'linear' },
+  );
+  ```
+
+  The attachment is cleared like the color one, to the clear color: whatever the
+  scene does not cover reads as a tiny view depth, in front of everything. Cover the
+  background, or keep hardware depth.
 
 ## Jitter
 

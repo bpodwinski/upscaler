@@ -4,7 +4,7 @@ import { nodeObject, passTexture } from 'three/tsl';
 
 import { Upscaler } from './Upscaler';
 import { getGPUTexture } from './internal/threeWebGPU';
-import type { TemporalGuides } from './types';
+import type { DepthMode, TemporalGuides } from './types';
 
 // Same typing posture as UpscalerNode: three's node builder/frame carry
 // incomplete TS types, so the boundary takes `any` and casts.
@@ -21,6 +21,12 @@ export interface TemporalGuidesNodeOptions {
      * {@link Upscaler.gpuTiming}. Defaults to `false`.
      */
     gpuTiming?: boolean;
+    /**
+     * What the `depth` node holds — see {@link UpscalerConfig.depthMode}.
+     * Used while the node is standalone; linked to an upscale node, that
+     * node's `depthMode` option configures the shared upscaler.
+     */
+    depthMode?: DepthMode;
 }
 
 /**
@@ -65,6 +71,7 @@ export class TemporalGuidesNode extends TempNode {
     private _placeholder: DataTexture | null = null;
     private readonly _size = new Vector2();
     private _lastTime = 0;
+    private readonly _depthMode: DepthMode | undefined;
 
     constructor(
         depthNode: TextureNodeLike,
@@ -78,6 +85,7 @@ export class TemporalGuidesNode extends TempNode {
         this._velocity = velocityNode;
         this._camera = camera;
         this._gpuTiming = options.gpuTiming;
+        this._depthMode = options.depthMode;
     }
 
     /** The underlying upscaler — inspect `.guides`, `.gpuTimings`, etc. */
@@ -200,6 +208,7 @@ export class TemporalGuidesNode extends TempNode {
             renderWidth: Math.max(1, Math.round(width)),
             renderHeight: Math.max(1, Math.round(height)),
             path: 'guides',
+            depthMode: this._depthMode,
         });
     }
 

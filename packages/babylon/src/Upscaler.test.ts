@@ -95,6 +95,7 @@ describe('Babylon Upscaler', () => {
             renderWidth: 640,
             renderHeight: 360,
             beginFrame: () => ({ x: 0.25, y: -0.125 }),
+            configure: vi.fn(),
             dispatch: vi.fn(() => log.push('dispatch')),
         };
         const jitter = { x: 0, y: 0, set(x: number, y: number) { this.x = x; this.y = y; } };
@@ -109,6 +110,22 @@ describe('Babylon Upscaler', () => {
         expect(jitter.y).toBeCloseTo((-2 * -0.125) / 360);
         upscaler.endFrame();
         expect(jitter).toMatchObject({ x: 0, y: 0 });
+    });
+
+    it('hands configure() to the core unchanged, so every option reaches it', () => {
+        const { upscaler, core } = upscalerWithCore([]);
+        const config = { displayWidth: 64, displayHeight: 32, depthMode: 'linear' as const };
+        upscaler.configure(config);
+        expect(core.configure.mock.calls[0][0]).toBe(config);
+    });
+
+    it('resolves a view-depth texture like any other input', () => {
+        const { upscaler, core } = upscalerWithCore([]);
+        const color = fakeGPUTexture('color');
+        const depth = fakeGPUTexture('view-depth');
+        const velocity = fakeGPUTexture('velocity');
+        upscaler.dispatch({ color: fakeInternal(color), depth: fakeInternal(depth), velocity: fakeInternal(velocity) }, camera());
+        expect(core.dispatch).toHaveBeenCalledWith(expect.objectContaining({ color, depth, velocity }), expect.anything());
     });
 
     it('flushes the engine before submitting, with the GPU textures behind the inputs', () => {

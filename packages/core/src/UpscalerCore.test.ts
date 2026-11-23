@@ -46,7 +46,8 @@ function mockDevice() {
         createBindGroup: vi.fn(resource),
         createCommandEncoder: vi.fn(() => encoder),
     };
-    return { device, writes, writeTargets, encoder, gpu: (label: string) => resource({ label }) as unknown as GPUTexture };
+    const gpu = (label: string, format = 'rgba16float') => ({ ...resource({ label }), format }) as unknown as GPUTexture;
+    return { device, writes, writeTargets, encoder, gpu };
 }
 
 // The flags word of the most recent constants upload (ConstantsBuffer u32[20]).
@@ -197,6 +198,168 @@ describe('UpscalerCore without an engine', () => {
         await core.prepare();
         core.dispatch({ color: gpu('color') }, { near: 0.1, far: 100, perspective: true });
         expect(writeTargets).toEqual(['upscale-constants-late']);
+    });
+
+    describe("depthMode: 'linear'", () => {
+        const camera = { near: 0.1, far: 100, perspective: true, reversedDepth: true };
+        const shaderLabels = (device: ReturnType<typeof mockDevice>['device']) =>
+            (device.createShaderModule as ReturnType<typeof vi.fn>).mock.calls.map(
+                ([descriptor]) => (descriptor as { code: string }).code,
+            );
+
+        it('compiles the linear reconstruct and never stages a device depth convention', async () => {
+            const { device, writes, gpu } = mockDevice();
+            device.createShaderModule = vi.fn(device.createShaderModule);
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, depthMode: 'linear' });
+            await core.prepare();
+
+            const sources = shaderLabels(device);
+            expect(sources.some((code) => code.includes('var sceneDepth : texture_2d<f32>;'))).toBe(true);
+            expect(sources.some((code) => code.includes('var sceneDepth : texture_depth_2d;'))).toBe(false);
+
+            core.dispatch({ color: gpu('color'), depth: gpu('depth', 'r32float'), velocity: gpu('velocity') }, camera);
+            expect(lastFlags(writes) & FLAG_REVERSED_DEPTH).toBe(0);
+            expect(lastFlags(writes) & FLAG_PERSPECTIVE).toBe(FLAG_PERSPECTIVE);
+        });
+
+        it('keeps the hardware pipeline when reconfigured back', async () => {
+            const { device, writes, gpu } = mockDevice();
+            device.createShaderModule = vi.fn(device.createShaderModule);
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, depthMode: 'linear' });
+            await core.prepare();
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2 });
+            expect(core.isReady).toBe(false);
+            await core.prepare();
+            expect(shaderLabels(device).some((code) => code.includes('var sceneDepth : texture_depth_2d;'))).toBe(true);
+
+            core.dispatch({ color: gpu('color'), depth: gpu('depth', 'depth32float'), velocity: gpu('velocity') }, camera);
+            expect(lastFlags(writes) & FLAG_REVERSED_DEPTH).toBe(FLAG_REVERSED_DEPTH);
+        });
+
+        it('names the mode when the depth input has the other encoding', async () => {
+            const { device, gpu } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            const inputs = (format: string) => ({ color: gpu('color'), depth: gpu('depth', format), velocity: gpu('velocity') });
+
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, depthMode: 'linear' });
+            await core.prepare();
+            expect(() => core.dispatch(inputs('depth32float'), camera)).toThrow(/depthMode 'linear' needs a float texture/);
+
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2 });
+            await core.prepare();
+            expect(() => core.dispatch(inputs('r32float'), camera)).toThrow(/configure depthMode: 'linear'/);
+        });
+
+        it('rejects an unknown mode', () => {
+            const { device } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            expect(() => core.configure({ displayWidth: 64, displayHeight: 32, depthMode: 'log' as 'linear' }))
+                .toThrow(/unknown depthMode 'log'/);
+        });
+
+        it('runs the guides path on the linear reconstruct alone', async () => {
+            const { device, gpu } = mockDevice();
+            device.createShaderModule = vi.fn(device.createShaderModule);
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, path: 'guides', depthMode: 'linear' });
+            await core.prepare();
+            const sources = shaderLabels(device);
+            expect(sources.filter((code) => code.includes('var sceneDepth'))).toHaveLength(1);
+            expect(sources[sources.findIndex((code) => code.includes('var sceneDepth'))]).toContain('texture_2d<f32>');
+
+            device.createBindGroup.mockClear();
+            core.dispatchGuides({ depth: gpu('depth', 'r32float'), velocity: gpu('velocity') }, camera);
+            const labels = device.createBindGroup.mock.calls.map(([descriptor]) => (descriptor as unknown as { label: string }).label);
+            expect(labels).toEqual(['upscale-reconstruct', 'upscale-depth-clip']);
+            expect(core.guidesPending).toBe(false);
+        });
+
+        it('feeds a split frame the same way as a monolithic one', async () => {
+            const { device, encoder, gpu } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, depthMode: 'linear' });
+            await core.prepare();
+            const host = encoder as unknown as GPUCommandEncoder;
+            expect(() => core.encodeGuides(host, { depth: gpu('depth', 'depth32float'), velocity: gpu('velocity') }, camera))
+                .toThrow(/depthMode 'linear' needs a float texture/);
+            // The rejected call opened no split frame.
+            expect(core.guidesPending).toBe(false);
+            core.encodeGuides(host, { depth: gpu('depth', 'r32float'), velocity: gpu('velocity') }, camera);
+            core.encodeUpscale(host, { color: gpu('color') }, camera);
+            expect(core.guidesPending).toBe(false);
+        });
+
+        it('checks the format in both directions, for every format of each family', async () => {
+            const { device, gpu } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            const dispatch = (format: string) =>
+                core.dispatch({ color: gpu('color'), depth: gpu('depth', format), velocity: gpu('velocity') }, camera);
+
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, depthMode: 'linear' });
+            await core.prepare();
+            for (const format of ['depth16unorm', 'depth24plus', 'depth24plus-stencil8', 'depth32float', 'depth32float-stencil8']) {
+                expect(() => dispatch(format), format).toThrow(/depthMode 'linear' needs a float texture/);
+            }
+            // The contract names r32float; any float color format holds view depth in .r.
+            for (const format of ['r32float', 'r16float', 'rgba16float', 'rgba32float']) {
+                expect(() => dispatch(format), format).not.toThrow();
+            }
+
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2 });
+            await core.prepare();
+            for (const format of ['r32float', 'r16float']) {
+                expect(() => dispatch(format), format).toThrow(/configure depthMode: 'linear'/);
+            }
+            for (const format of ['depth16unorm', 'depth24plus-stencil8', 'depth32float']) {
+                expect(() => dispatch(format), format).not.toThrow();
+            }
+        });
+
+        it('asks for a depth-only view of a stencil format, and a plain view of linear depth', async () => {
+            const { device, gpu } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            const viewOf = (format: string) => {
+                const depth = gpu('depth', format);
+                const createView = vi.fn(() => ({}));
+                (depth as unknown as { createView: unknown }).createView = createView;
+                core.dispatch({ color: gpu('color'), depth, velocity: gpu('velocity') }, camera);
+                return createView.mock.calls[0] as unknown[];
+            };
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2 });
+            await core.prepare();
+            expect(viewOf('depth24plus-stencil8')).toEqual([{ aspect: 'depth-only' }]);
+            expect(viewOf('depth32float')).toEqual([undefined]);
+
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, depthMode: 'linear' });
+            await core.prepare();
+            expect(viewOf('r32float')).toEqual([undefined]);
+        });
+
+        it('refuses linear depth for the cross-frame bench identities', () => {
+            const { device } = mockDevice();
+            const core = new UpscalerCore({
+                device: device as unknown as GPUDevice,
+                _crossFrameReconstruct: { shader: 'x', cameraCompensated: false },
+            } as never);
+            expect(() => core.configure({ displayWidth: 64, displayHeight: 32, depthMode: 'linear' })).toThrow(/hardware depth only/);
+            expect(() => core.configure({ displayWidth: 64, displayHeight: 32 })).not.toThrow();
+        });
+
+        it('keeps the previous configuration when a mode is rejected', async () => {
+            const { device, gpu } = mockDevice();
+            const core = new UpscalerCore({ device: device as unknown as GPUDevice });
+            core.configure({ displayWidth: 64, displayHeight: 32, customUpscaleRatio: 2, depthMode: 'linear' });
+            await core.prepare();
+            expect(() => core.configure({ displayWidth: 128, displayHeight: 64, depthMode: 'log' as 'linear' })).toThrow();
+            expect([core.displayWidth, core.displayHeight]).toEqual([64, 32]);
+            expect(core.isReady).toBe(true);
+            // Still the linear pipeline: a float depth is accepted, a depth format is not.
+            const inputs = (format: string) => ({ color: gpu('color'), depth: gpu('depth', format), velocity: gpu('velocity') });
+            expect(() => core.dispatch(inputs('r32float'), camera)).not.toThrow();
+            expect(() => core.dispatch(inputs('depth32float'), camera)).toThrow(/depthMode 'linear'/);
+        });
     });
 
     it('advances jitter only on the temporal path with jitter on', async () => {

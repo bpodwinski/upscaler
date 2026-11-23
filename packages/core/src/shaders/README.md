@@ -6,7 +6,7 @@ Every pass is a WGSL compute module assembled from shared chunks (`common.ts` + 
 
 - **Coordinate space** — texel coordinates and UVs are top-left origin. Motion vectors arrive from three's `velocity` node as NDC deltas (`current − previous`) and are converted to UV deltas with `motionScale = (0.5, −0.5)`; reprojection is `prevUV = uv − motion`.
 - **Jitter** — applied via `camera.setViewOffset`, so a render texel at index `i` holds scene content from unjittered position `i + jitter`. The accumulate pass measures kernel distances against `srcPos = uv·renderSize − 0.5 − jitter`.
-- **Depth** — supports three's standard and reversed WebGPU depth conventions (flag bit + `linearizeDepth`, derived from `Matrix4.makePerspective`). Comparisons happen on positive view-space distances.
+- **Depth** — supports three's standard and reversed WebGPU depth conventions (flag bit + `linearizeDepth`, derived from `Matrix4.makePerspective`). Comparisons happen on positive view-space distances. `depthMode: 'linear'` skips the conversion: `RECONSTRUCT_LINEAR_SHADER` reads positive view depth from a float texture and takes the 3×3 minimum directly; everything after the dilation is shared with the hardware form.
 - **Color and exposure domains** — the local temporal pipeline multiplies input by the
   selected local conditioning exposure (auto, fixed, or external), then accumulates in
   _invertible-tonemap space_ (`c / (1 + max(c))`). RCAS sharpens that conditioned history

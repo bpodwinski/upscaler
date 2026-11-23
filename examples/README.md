@@ -64,7 +64,7 @@ The experimental Babylon adapter, `@pmndrs/upscaler/babylon` ([`docs/babylon.md`
 
 | # | Demo | Shows |
 |---|------|-------|
-| B1 | **Babylon.js** (`babylon/hello`) | A Babylon frame graph: a geometry renderer writes linear HDR color, depth and linear velocity at render resolution, `FrameGraphUpscaleTask` upscales them on Babylon's device (jittered through `TAAMaterialManager`, so velocity stays jitter-free), and image processing presents the output. The same scene and keys as W1. |
+| B1 | **Babylon.js** (`babylon/hello`) | A Babylon frame graph: a geometry renderer writes linear HDR color, depth and linear velocity at render resolution, `FrameGraphUpscaleTask` upscales them on Babylon's device (jittered through `TAAMaterialManager`, so velocity stays jitter-free), and image processing presents the output. The same scene and keys as W1. `?depth=linear` feeds the geometry renderer's view depth with `depthMode: 'linear'` (add `&enclosed` for the sky box that makes it valid; see docs/babylon.md). |
 
 ## pixi.js
 

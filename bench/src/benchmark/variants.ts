@@ -4,6 +4,7 @@ import {
     createRcasExperimentResolver,
     createRcasNumericParityResolver,
     createDepthClipVariantResolver,
+    createLinearDepthResolver,
     createReconstructExperimentResolver,
     createShadingMemoryResolver,
     createSourceBundleResolver,
@@ -55,6 +56,7 @@ const RESOLVER_FACTORIES = {
     'shading-frame-pair-v1': createShadingMemoryResolver,
     'shading-memory-gated8-k1': createShadingMemoryResolver,
     'shading-memory-gated4': createShadingMemoryResolver,
+    'linear-depth-input-v1': createLinearDepthResolver,
 } satisfies Record<BenchmarkVariantId, BenchmarkVariantDefinition['create']>;
 
 /**
@@ -94,6 +96,7 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
     const reconstructExperiment = id.startsWith('reconstruct-');
     const depthClipVariant = id.startsWith('depth-clip-');
     const shadingMemory = id.startsWith('shading-memory-') || id === 'shading-frame-pair-v1';
+    const linearDepth = id === 'linear-depth-input-v1';
     const sourceResourceGraph = spdResolver
         ? [
               'scene-color-depth-velocity',
@@ -173,6 +176,8 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
                     ? `Shading change with block memory (${id.slice('shading-memory-'.length)})`
                   : id === 'production'
                     ? 'Production pipeline (production RCAS on every path)'
+                  : linearDepth
+                    ? "Baseline fed linear view depth (depthMode: 'linear')"
                 : rcasDenoise
             ? 'FSR 3.1.5 RCAS limiter + denoise'
             : rcasLimiterParity
@@ -199,6 +204,7 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
                 shadingMemory ||
                 reconstructExperiment ||
                 depthClipVariant ||
+                linearDepth ||
                 id === 'production'
                 ? id
                 : rcasNumericParity
@@ -206,7 +212,7 @@ function metadata(id: BenchmarkVariantId): BenchmarkVariantMetadata {
                     ? 'rcas-fsr315-numeric'
                     : 'rcas-fsr315-limiter'
                 : 'local-baseline-5d6a65e',
-            pipelineKey: sourceBundle || reconstructExperiment ? id : 'temporal-baseline',
+            pipelineKey: sourceBundle || reconstructExperiment || linearDepth ? id : 'temporal-baseline',
             assembledChunks: sourceBundle
                 ? [
                       'constants',

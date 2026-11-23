@@ -54,6 +54,13 @@ describe('pixi Upscaler', () => {
         );
     });
 
+    it('hands configure() to the core unchanged, so every option reaches it', () => {
+        const { upscaler, core } = upscalerWithCore([]);
+        const config = { displayWidth: 8, displayHeight: 8, path: 'temporal' as const, depthMode: 'linear' as const };
+        upscaler.configure(config);
+        expect(core.configure.mock.calls[0][0]).toBe(config);
+    });
+
     it('requires camera facts on the temporal path', () => {
         const { upscaler } = upscalerWithCore([]);
         upscaler.configure({ displayWidth: 8, displayHeight: 8, path: 'temporal' });

@@ -78,7 +78,7 @@ multisampled input; it can't bind). All render-resolution inputs are exactly
 | Input | Format | Notes |
 | --- | --- | --- |
 | `color` | filterable float, `rgba16float` recommended | Linear, scene-referred; HDR is fine. Before tone mapping and output encoding. Alpha is carried through. |
-| `depth` | a depth format (`depth32float`, `depth24plus`, `depth24plus-stencil8`, …) | Bound as `texture_depth_2d`. A stencil format is fine: the core binds a depth-only view. |
+| `depth` | a depth format (`depth32float`, `depth24plus`, `depth24plus-stencil8`, …) | Bound as `texture_depth_2d`. A stencil format is fine: the core binds a depth-only view. With `depthMode: 'linear'`: `r32float` view depth instead, see [Linear view depth](#linear-view-depth). |
 | `velocity` | float, motion in `.xy` (`rg16float` / `rgba16float`) | See [Motion](#motion). |
 | `reactive` | float, `.r` in `[0, 1]` | Optional. 1 = trust this frame over history. |
 | `reactiveOpaqueColor` | as `color` | Optional. The opaque-only render; the core derives a reactive mask from its difference to `color`. |
@@ -113,11 +113,34 @@ Each dispatch takes the camera facts the passes need, as plain data:
   projection matrix, so zoom and a tiled view offset count.
 - **Depth convention.** WebGPU depth, in `[0, 1]`. Standard: 0 at near, 1 at far
   (`depthCompare: 'less'`, cleared to 1). Reversed (`reversedDepth: true`): 1 at
-  near, 0 at far. Logarithmic depth, or depth written to a color texture, is not
-  supported. A different convention needs a new linearization path in core, not a
-  conversion in the adapter.
+  near, 0 at far. Logarithmic depth, or device depth written to a color texture, is
+  not supported. A different convention needs a new linearization path in core, not
+  a conversion in the adapter.
 
 The non-temporal paths never read these values, but they must still be finite.
+
+### Linear view depth
+
+An engine that already keeps linear depth (a deferred G-buffer, a view-depth
+attachment) can pass it as is: configure `depthMode: 'linear'` and `depth` becomes a
+float texture whose red channel is **positive view-space distance**, in the same
+units as `near` / `far`. `r32float` is the intended format. It is read with
+`textureLoad`, so it need not be filterable.
+
+- **Every texel must be finite and greater than zero**, the background included:
+  write the far distance (or any finite distance behind the scene) where nothing was
+  rendered. Zero, negative values and NaN are invalid. A background left at a clear
+  value of 0 reads as the nearest surface on screen and drags its motion over every
+  silhouette.
+- `reversedDepth` is ignored: there is no device convention to undo. `near`, `far`
+  and the projection type must still be finite, although reconstruct no longer reads
+  them (the depth debug view does).
+- The mode is configuration, not a per-frame setting: it selects a second
+  reconstruct pipeline that binds `texture_2d<f32>` and takes the 3×3 minimum
+  directly. The dilated depth, the depth clip and every later pass are shared, and
+  `'hardware'` (the default) is unchanged.
+- The core throws when the `depth` texture's format belongs to the other mode (a
+  depth format in linear mode, `r32float` / `r16float` in hardware mode).
 
 ## Jitter
 
@@ -240,7 +263,7 @@ object:
 | Lifecycle | `configure` / `dispatch` / `resetHistory` / `dispose`, `gpuTimings` | same, plus `prepare()` (async compile) |
 | Submission | `dispatch()` records and submits its own encoder; queue order | same; `encode*()` additionally records into a host encoder |
 | Motion | NDC delta, current − previous (three's `velocity`) | same (`motionScale` for other conventions) |
-| Depth | hardware depth or r32float device depth; `reversedDepth` | hardware depth only; `reversedDepth` |
+| Depth | hardware depth or r32float device depth; `reversedDepth` | hardware depth with `reversedDepth`, or r32float linear view depth (`depthMode: 'linear'`) |
 | Camera | `FrameCamera` with `view`, `projection`, previous matrices, `jitter`, `near`, `far`, `reversedDepth` | reads `near`, `far`, `reversedDepth`, `perspective` and `fovY`, or derives both from `projection` |
 | Output | returned `GPUTexture`, owned by the denoiser | `output` getter, allocated through `TextureAllocator` |
 

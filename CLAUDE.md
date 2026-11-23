@@ -132,6 +132,11 @@ node scripts/measure-timer-overhead.mjs --conditions temporal:2:dispatch,tempora
 # runs it on Chrome's SwiftShader adapter (no GPU needed; the comparison is exact).
 node scripts/verify-split-encoder.mjs
 
+# Babylon, depthMode: 'linear' fed the geometry renderer's view depth vs hardware
+# depth (examples/babylon/hello, deterministic stepping, screenshots diffed). The
+# view-depth attachment is cleared to 0, so only the ?enclosed scene must match.
+node scripts/verify-babylon-linear-depth.mjs
+
 # Receding-camera disocclusion (issue #67): Q19 (dolly back/forward, orbit,
 # slide, scene receding under a still camera) through the disocclusion and
 # accumulation-age views, per variant, summarized per segment.

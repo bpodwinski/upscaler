@@ -18,7 +18,7 @@ import {
     RCAS_SHADER,
     RCAS_TONEMAP_SPACE_SHADER,
 } from './rcas';
-import { DEPTH_CLIP_SHADER, RECONSTRUCT_SHADER } from './reconstruct';
+import { DEPTH_CLIP_SHADER, RECONSTRUCT_LINEAR_SHADER, RECONSTRUCT_SHADER } from './reconstruct';
 import {
     DEPTH_CLIP_VARIANTS,
     RECONSTRUCT_CROSS_FRAME_SHADER,
@@ -32,6 +32,8 @@ const ALL_SHADERS: Record<string, string> = {
     easu: EASU_SHADER,
     rcas: RCAS_SHADER,
     reconstruct: RECONSTRUCT_SHADER,
+    // depthMode: 'linear' — the same pass reading view depth from a float texture.
+    reconstructLinear: RECONSTRUCT_LINEAR_SHADER,
     depthClip: DEPTH_CLIP_SHADER,
     // Frozen bench identity (reconstruct-cross-frame-v1), pre-#67 production.
     reconstructCrossFrame: RECONSTRUCT_CROSS_FRAME_SHADER,
@@ -50,6 +52,7 @@ const BASELINE_BINDING_COUNTS: Record<string, number> = {
     rcas: 5,
     // 6 since 2026-10-05: dilate + scatter, depth clip split out (issue #67).
     reconstruct: 6,
+    reconstructLinear: 6,
     depthClip: 6,
     reconstructCrossFrame: 7,
     // 11 since 2026-10-05: per-block memory in/out (NEXT-STEPS §14).
@@ -88,6 +91,8 @@ const BASELINE_FINGERPRINTS: Record<string, string> = {
     // 2026-11-14: the depth clip tolerance is upstream's full diagonal times
     // Kfov (was half the diagonal, no FOV term).
     reconstruct: '91ec85ce',
+    // Added with depthMode: 'linear' (upstream issue 97).
+    reconstructLinear: '9b7ba90b',
     depthClip: '4ce56aab',
     reconstructCrossFrame: '8232fe2d',
     // Added 2026-07-21: multi-scale shading-change detector (NEXT-STEPS item 4);
@@ -505,6 +510,52 @@ describe('reconstructed previous depth (issue #67)', () => {
         // Off-screen pixels return early but must still empty their slot.
         expect(clear).toBeLessThan(body.indexOf('if (any(prevUV'));
         expect(DEPTH_CLIP_SHADER).toMatch(/EMPTY_DEPTH : u32 = 0x7f800000u/);
+    });
+});
+
+describe("linear view-depth input (depthMode: 'linear')", () => {
+    const head = (source: string) => source.split('//* Nearest Depth Search (dilate)');
+    const tail = (source: string) => source.split('let uvDelta = textureLoad(sceneVelocity')[1];
+
+    it('differs from the hardware form only in the depth binding and the dilation', () => {
+        // Everything after the dilation (the outputs and the scatter) is
+        // shared, so the depth clip sees the same footprint in both modes.
+        expect(tail(RECONSTRUCT_LINEAR_SHADER)).toBe(tail(RECONSTRUCT_SHADER));
+        expect(tail(RECONSTRUCT_LINEAR_SHADER)).toMatch(/atomicMin\(&reconstructedDepth/);
+        expect(RECONSTRUCT_SHADER).toContain('var sceneDepth : texture_depth_2d;');
+        expect(RECONSTRUCT_LINEAR_SHADER).toContain('var sceneDepth : texture_2d<f32>;');
+        expect(head(RECONSTRUCT_LINEAR_SHADER)[0].replace('texture_2d<f32>', 'texture_depth_2d'))
+            .toBe(head(RECONSTRUCT_SHADER)[0].replace(/\nfn linearizeDepth[\s\S]*?\n}\n/, ''));
+    });
+
+    it('loads the red channel of all nine texels, and clamps at the border', () => {
+        const dilate = RECONSTRUCT_LINEAR_SHADER.split('//* Nearest Depth Search (dilate)')[1].split('let uvDelta')[0];
+        // A float texture loads a vec4f: every read takes .r (a depth texture loads an f32).
+        expect(dilate.match(/textureLoad\(sceneDepth, \w+, 0\)\.r;/g)).toHaveLength(2);
+        expect(dilate).not.toMatch(/textureLoad\(sceneDepth, \w+, 0\);/);
+        expect(dilate).toContain('for (var y = -1; y <= 1; y++) {');
+        expect(dilate).toContain('for (var x = -1; x <= 1; x++) {');
+        expect(dilate).toContain('let p = clamp(center + vec2i(x, y), vec2i(0), maxCoord);');
+        // The motion comes from the nearest texel, as in the hardware form.
+        expect(dilate).toContain('bestCoord = p;');
+        expect(RECONSTRUCT_LINEAR_SHADER).toContain('textureLoad(sceneVelocity, bestCoord, 0).xy * C.motionScale');
+        expect(dilate).toContain('farthestDepth = max(farthestDepth, d);');
+    });
+
+    it('writes the same outputs as the hardware form', () => {
+        for (const source of [RECONSTRUCT_SHADER, RECONSTRUCT_LINEAR_SHADER]) {
+            expect(source).toContain('textureStore(dilatedDepth, gid.xy, vec4f(curDepth, 0.0, 0.0, 0.0));');
+            expect(source).toContain('textureStore(dilatedMotion, gid.xy, vec4f(uvDelta, localRelief, 0.0));');
+            // Positive floats order like their bits, which the atomicMin scatter relies on.
+            expect(source).toContain('let encoded = bitcast<u32>(max(curDepth, 0.0));');
+        }
+    });
+
+    it('reads view depth as is: nearest is the minimum, no device convention', () => {
+        expect(RECONSTRUCT_LINEAR_SHADER).not.toMatch(/linearizeDepth|FLAG_REVERSED_DEPTH\)|depthNearFar\./);
+        expect(RECONSTRUCT_LINEAR_SHADER).toContain('if (d < bestDepth) {');
+        expect(RECONSTRUCT_LINEAR_SHADER).toContain('let curDepth = bestDepth;');
+        expect(RECONSTRUCT_LINEAR_SHADER).toContain('let localRelief = max(farthestDepth - curDepth, 0.0);');
     });
 });
 
