@@ -352,6 +352,15 @@ export interface FrameCamera {
      * @pmndrs/denoiser's `FrameCamera` already carries.
      */
     projection?: ArrayLike<number>;
+    /**
+     * Vertical field of view of the render, in radians (FSR's
+     * `cameraFovAngleVertical`). Perspective only: it scales the depth clip's
+     * separation tolerance by how much farther the view plane's corners are
+     * than its center. When omitted it is read from {@link projection}
+     * (`2·atan(1 / |element 5|)`); with neither, the tolerance takes no FOV
+     * term (warned once per instance), which disoccludes slightly more.
+     */
+    fovY?: number;
     /** The depth input is reversed-Z (1 = near). Defaults to `false`. */
     reversedDepth?: boolean;
 }

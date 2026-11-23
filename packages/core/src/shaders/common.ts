@@ -40,6 +40,7 @@ struct FsrConstants {
     frameIndex      : u32,    // offset 84
     debugMode       : u32,    // offset 88 — DebugView
     _pad            : u32,    // offset 92
+    depthClipKfov   : f32,    // offset 96 — |view-plane corner| / |center| (FSR2's Kfov; 1 = orthographic)
 }
 @group(0) @binding(0) var<uniform> C : FsrConstants;
 

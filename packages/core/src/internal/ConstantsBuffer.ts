@@ -8,7 +8,7 @@
  * split frame can sit in one command encoder.
  */
 export class ConstantsBuffer {
-    /** Uniform block size. 96 bytes of payload, padded to a round 256. */
+    /** Uniform block size. 100 bytes of payload, padded to a round 256. */
     static readonly SIZE = 256;
 
     readonly buffer: GPUBuffer;
@@ -26,6 +26,8 @@ export class ConstantsBuffer {
         this._device = device;
         // Fixed 32×32 metering. A uniform loop bound keeps Windows shader compiles small.
         this._u32[23] = 32;
+        // The depth clip's FOV factor; 1 is the orthographic (no-FOV) value.
+        this._f32[24] = 1;
         this.buffer = device.createBuffer({
             label,
             size: ConstantsBuffer.SIZE,
@@ -92,6 +94,15 @@ export class ConstantsBuffer {
 
     setDebugMode(value: number): void {
         this._u32[22] = value;
+    }
+
+    /**
+     * The depth clip's tolerance FOV factor (FSR2's `Kfov`): how much farther
+     * from the eye the view plane's corner is than its center, at any depth.
+     * @param value - `sqrt(1 + tan²(fovY/2)·(1 + aspect²))`, or 1 (orthographic)
+     */
+    setDepthClipKfov(value: number): void {
+        this._f32[24] = value;
     }
 
     /** Uploads the staged values to the GPU. Call once per frame before dispatch. */

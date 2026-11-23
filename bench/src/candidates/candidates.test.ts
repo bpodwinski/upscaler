@@ -77,26 +77,28 @@ const CANDIDATE_BINDING_COUNTS: Record<string, number> = {
 };
 
 const CANDIDATE_FINGERPRINTS: Record<string, string> = {
+    // Re-fingerprinted 2026-11-14 for FsrConstants' new trailing field
+    // (depthClipKfov, offset 96); no candidate reads it, the code is unchanged.
     // Both re-fingerprinted 2026-08-25: alpha passthrough (issue #15) reaches
     // these through their production bases. The A/B pairings are unaffected —
     // candidate and baseline gained the same plumbing.
-    rcasPerTap: '1246988b',
-    easuSourceApprox: '0f58117c',
-    exposureHistory: 'bf1c681d',
-    generateReactiveSource: '57ab78cd',
-    prepareInputsSource: 'ce97e835',
-    depthClipSource: 'b24d2d16',
-    prepareReactivitySource: 'e75e7462',
-    accumulateSourceFilter: '77a25ca8',
-    accumulateSourceStructural: '2100d06e',
-    lumaSpdSource: '4c3b6837',
-    shadingSpdSource: '65bb82d4',
-    shadingResolveSource: '39852a6f',
-    lumaInstabilitySource: '3ac0beff',
-    accumulateSourceResolver: 'f9c3b249',
-    debugSourceFilter: '700cb1a6',
-    debugSourceStructural: 'eb6c2290',
-    debugSourceResolver: '7d44eceb',
+    rcasPerTap: 'b79dedb9',
+    easuSourceApprox: '50e93da2',
+    exposureHistory: '2f591533',
+    generateReactiveSource: '62f1ced7',
+    prepareInputsSource: '56d1b62b',
+    depthClipSource: '517cb380',
+    prepareReactivitySource: '7be82510',
+    accumulateSourceFilter: 'd951837a',
+    accumulateSourceStructural: 'a3ac9318',
+    lumaSpdSource: '5d0431f1',
+    shadingSpdSource: '07941146',
+    shadingResolveSource: '5d972cc5',
+    lumaInstabilitySource: 'c865f1d5',
+    accumulateSourceResolver: '260f8b2f',
+    debugSourceFilter: '82500da4',
+    debugSourceStructural: '1a7ba72a',
+    debugSourceResolver: '7823a4c9',
 };
 
 function fingerprint(source: string): string {
@@ -271,6 +273,7 @@ describe('benchmark resolver ownership', () => {
             'depth-clip-mean-vote-v1',
             'depth-clip-upstream-tolerance-v1',
             'depth-clip-upstream-v1',
+            'depth-clip-half-diagonal-v1',
         ] as const)
             expect(resolveFactory?.(id)).toBe(createDepthClipVariantResolver);
     });
