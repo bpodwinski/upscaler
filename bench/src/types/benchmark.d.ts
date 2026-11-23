@@ -29,7 +29,11 @@ declare type BenchmarkVariantId =
     | 'rcas-age-knee-v1'
     | 'rcas-age-knee-25-v1'
     | 'rcas-age-knee-12-v1'
-    | 'rcas-age-knee-ungated-v1';
+    | 'rcas-age-knee-ungated-v1'
+    | 'exposure-provided-v1'
+    | 'host-pre-exposure-cpu-v1'
+    | 'exposure-texture-v1'
+    | 'exposure-provided-texture-v1';
 declare type BenchmarkScenarioId =
     | 'Q0'
     | 'Q1'

@@ -48,6 +48,8 @@ export class FrameGraphUpscaleTask extends FrameGraphTask {
     exposureTexture?: FrameGraphTextureHandle;
     /** Optional host pre-exposure baked into the color (red of texel 0, 0). */
     preExposureTexture?: FrameGraphTextureHandle;
+    /** The same host pre-exposure as a number; {@link preExposureTexture} wins. */
+    hostPreExposure?: number;
     /** The camera the inputs are rendered with. */
     camera?: Camera;
 
@@ -122,6 +124,7 @@ export class FrameGraphUpscaleTask extends FrameGraphTask {
                     reactiveOpaqueColor: resolve(this.reactiveOpaqueColorTexture),
                     exposureTexture: resolve(this.exposureTexture),
                     preExposureTexture: resolve(this.preExposureTexture),
+                    hostPreExposure: this.hostPreExposure,
                     deltaTime: this._frameGraph.engine.getDeltaTime() / 1000,
                 },
                 camera,

@@ -86,3 +86,19 @@ describe('UpscalerNode rcasAgeKnee', () => {
         });
     });
 });
+
+describe('UpscalerNode exposureMode', () => {
+    it('forwards the mode, and leaves it unset by default', () => {
+        expect(nodeConfiguration({ exposureMode: 'provided' }).exposureMode).toBe('provided');
+        expect(nodeConfiguration({ exposureMode: 'upstream' }).exposureMode).toBe('upstream');
+        expect(nodeConfiguration({}).exposureMode).toBeUndefined();
+    });
+
+    it('keeps the other options beside it', () => {
+        expect(nodeConfiguration({ exposureMode: 'provided', rcasAgeKnee: 0.5, depthMode: 'linear' })).toMatchObject({
+            exposureMode: 'provided',
+            rcasAgeKnee: 0.5,
+            depthMode: 'linear',
+        });
+    });
+});

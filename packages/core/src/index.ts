@@ -14,6 +14,7 @@ export {
     QualityMode,
     type DepthMode,
     type DispatchInputs,
+    type ExposureMode,
     type FrameCamera,
     type GuideDispatchInputs,
     type JitterOffset,

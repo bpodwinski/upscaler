@@ -77,3 +77,18 @@ describe('UpscalePass.configure', () => {
         expect(pass.upscaler.configure).not.toHaveBeenCalled();
     });
 });
+
+describe('UpscalePass.configure exposureMode', () => {
+    it('forwards the mode beside the knee, and leaves it unset by default', () => {
+        const configure = (config: Parameters<InstanceType<typeof UpscalePass>['configure']>[0]) => {
+            const pass = new UpscalePass({} as THREE.WebGPURenderer, { shareVelocityMatrix: false });
+            pass.configure(config);
+            return (pass.upscaler.configure as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as Record<string, unknown>;
+        };
+        expect(configure({ displayWidth: 64, displayHeight: 32, exposureMode: 'provided', rcasAgeKnee: 0.5 })).toMatchObject({
+            exposureMode: 'provided',
+            rcasAgeKnee: 0.5,
+        });
+        expect(configure({ displayWidth: 64, displayHeight: 32 }).exposureMode).toBeUndefined();
+    });
+});

@@ -349,6 +349,7 @@ export class Upscaler {
             reactiveOpaqueColor: inputs.reactiveOpaqueColor && getGPUTexture(inputs.reactiveOpaqueColor),
             exposureTexture: inputs.exposureTexture && getGPUTexture(inputs.exposureTexture),
             preExposureTexture: inputs.preExposureTexture && getGPUTexture(inputs.preExposureTexture),
+            hostPreExposure: inputs.hostPreExposure,
             reset: inputs.reset,
             deltaTime: inputs.deltaTime,
         };
