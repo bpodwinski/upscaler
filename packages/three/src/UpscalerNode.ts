@@ -95,6 +95,11 @@ export interface UpscalerNodeOptions {
      */
     exposureMode?: ExposureMode;
     /**
+     * Correct history for conditioning-exposure changes — see
+     * {@link UpscalerConfig.correctConditioningExposure}. Defaults to `false`.
+     */
+    correctConditioningExposure?: boolean;
+    /**
      * Collect per-pass GPU times into `node.upscaler.gpuTimings` — see
      * {@link Upscaler.gpuTiming}. Defaults to `false`. Linked to a guides node,
      * a value set here applies to the shared upscaler.
@@ -421,6 +426,7 @@ export class UpscalerNode extends TempNode<'vec4'> {
             depthMode: this._options.depthMode,
             rcasAgeKnee: this._options.rcasAgeKnee,
             exposureMode: this._options.exposureMode,
+            correctConditioningExposure: this._options.correctConditioningExposure,
         });
         this._configured = true;
         if (this._textureNode) {

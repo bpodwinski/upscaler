@@ -107,6 +107,8 @@ temporal path and the FSR1 spatial path. Shader names refer to
 | `host-pre-exposure-cpu-v1`: `baseline`, with the host pre-exposure passed as the `hostPreExposure` number instead of `preExposureTexture` (must equal `baseline`; Q11) | `RCAS_LEGACY_SHADER` | **`RCAS_SHADER` (production)** |
 | `exposure-texture-v1` / `exposure-provided-texture-v1`: `baseline` handed an `exposureTexture` of 2, in the default mode / with `exposureMode: 'provided'` (both must equal `baseline` with `autoExposure: false`, `exposure: 2`) | `RCAS_LEGACY_SHADER` | **`RCAS_SHADER` (production)** |
 | `exposure-provided-v1`: `baseline` configured with `exposureMode: 'provided'` (no luminance metering; equals `baseline` with `autoExposure: false`) | `RCAS_LEGACY_SHADER` | **`RCAS_SHADER` (production)** |
+| `conditioning-exposure-corrected-v1`: `baseline` configured with `correctConditioningExposure` (Q9/Q11/Q15 under auto-exposure) | `RCAS_LEGACY_SHADER` | **`RCAS_SHADER` (production)** |
+| `exposure-step-v1` / `exposure-step-corrected-v1`: `baseline` handed a scheduled `exposureTexture` (1, ×4 at frame 120, back at 180, ×8 ramp over 240–299), without / with the correction; run on a still scenario, e.g. `measure-convergence.mjs --scenario Q1 --settle 110 --pairs 220` | `RCAS_LEGACY_SHADER` | **`RCAS_SHADER` (production)** |
 
 Native and bilinear modes run no RCAS; they use the blit pass. FSR1 with
 `sharpness` 0 blits too.
