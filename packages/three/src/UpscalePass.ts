@@ -16,6 +16,8 @@ export interface UpscalePassConfig {
     quality?: QualityMode;
     /** Explicit upscale ratio (overrides `quality`). `1` = render at display res. */
     ratio?: number;
+    /** Age knee for temporal RCAS, in `[0, 1]` — see `UpscalerConfig.rcasAgeKnee`. `0` (default) is off. */
+    rcasAgeKnee?: number;
 }
 
 /**
@@ -121,6 +123,7 @@ export class UpscalePass {
             displayHeight: config.displayHeight,
             customUpscaleRatio: ratio,
             path: this._path,
+            rcasAgeKnee: config.rcasAgeKnee,
         });
 
         const rw = this.upscaler.renderWidth;

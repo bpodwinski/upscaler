@@ -83,6 +83,11 @@ export interface UpscalerNodeOptions {
      */
     depthMode?: DepthMode;
     /**
+     * Age knee for temporal RCAS, in `[0, 1]` — see
+     * {@link UpscalerConfig.rcasAgeKnee}. `0` (default) is off.
+     */
+    rcasAgeKnee?: number;
+    /**
      * Collect per-pass GPU times into `node.upscaler.gpuTimings` — see
      * {@link Upscaler.gpuTiming}. Defaults to `false`. Linked to a guides node,
      * a value set here applies to the shared upscaler.
@@ -407,6 +412,7 @@ export class UpscalerNode extends TempNode<'vec4'> {
             path: this._options.path,
             jitter: this._jitterActive,
             depthMode: this._options.depthMode,
+            rcasAgeKnee: this._options.rcasAgeKnee,
         });
         this._configured = true;
         if (this._textureNode) {

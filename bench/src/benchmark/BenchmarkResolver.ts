@@ -46,6 +46,8 @@ class BenchmarkResolverAdapter implements BenchmarkResolver {
     private readonly _upscaler: Upscaler | CandidateUpscaler;
     // Set by the linear-depth identity: the same scene, handed over as view depth.
     protected _linearDepth: LinearDepthConverter | null = null;
+    // Configuration an identity adds to every configure() (e.g. rcasAgeKnee).
+    protected _extraConfig: { rcasAgeKnee?: number } = {};
 
     constructor(
         upscaler: Upscaler | CandidateUpscaler,
@@ -119,6 +121,7 @@ class BenchmarkResolverAdapter implements BenchmarkResolver {
             customUpscaleRatio: config.ratio,
             path: config.path,
             depthMode: this._linearDepth ? 'linear' : 'hardware',
+            ...this._extraConfig,
         });
         this._linearDepth?.configure(this._upscaler.renderWidth, this._upscaler.renderHeight);
     }
@@ -202,6 +205,7 @@ function createProductionUpscaler(
     shadingChangeShader?: string,
     crossFrameReconstruct?: CrossFrameReconstruct,
     depthClipShader?: string,
+    rcasAgeKneeUngated?: boolean,
 ): Upscaler {
     // The bench always times: its HUD and the benchmark protocol read the timer.
     const options = {
@@ -212,6 +216,7 @@ function createProductionUpscaler(
         _shadingChangeShader: shadingChangeShader,
         _crossFrameReconstruct: crossFrameReconstruct,
         _depthClipShader: depthClipShader,
+        _rcasAgeKneeUngated: rcasAgeKneeUngated,
     };
     return new Upscaler(options);
 }
@@ -242,6 +247,15 @@ export class BaselineBenchmarkResolver extends BenchmarkResolverAdapter {
         this._linearDepth = converter;
     }
 
+    /**
+     * Adds configuration to every `configure()`. Call before the first one.
+     * @param config - Extra `UpscalerConfig` fields for this identity
+     */
+    withConfig(config: { rcasAgeKnee?: number }): this {
+        this._extraConfig = config;
+        return this;
+    }
+
     constructor(
         renderer: THREE.WebGPURenderer,
         metadata: BenchmarkVariantMetadata,
@@ -250,6 +264,7 @@ export class BaselineBenchmarkResolver extends BenchmarkResolverAdapter {
         shadingChangeShader?: string,
         crossFrameReconstruct?: CrossFrameReconstruct,
         depthClipShader?: string,
+        rcasAgeKneeUngated?: boolean,
     ) {
         super(
             createProductionUpscaler(
@@ -259,6 +274,7 @@ export class BaselineBenchmarkResolver extends BenchmarkResolverAdapter {
                 shadingChangeShader,
                 crossFrameReconstruct,
                 depthClipShader,
+                rcasAgeKneeUngated,
             ),
             metadata,
         );
@@ -348,6 +364,34 @@ export function createProductionRcasResolver(
         RCAS_SHADER,
         RCAS_SHADER,
     );
+}
+
+/**
+ * Creates the age-knee identities: `production` configured with an
+ * `rcasAgeKnee`, so temporal RCAS holds back on young history. No RCAS
+ * override is passed (the knee is built from production RCAS by the core).
+ * `rcas-age-knee-v1` is 0.5, `-25-` 0.25 and `-12-` 0.125; `-ungated-` is 0.5
+ * without the still-pixel gate (age alone, the form first measured).
+ * @param renderer - Initialized three WebGPU renderer
+ * @param metadata - Registry metadata for the identity
+ * @returns One age-knee resolver instance
+ */
+export function createRcasAgeKneeResolver(
+    renderer: unknown,
+    metadata: BenchmarkVariantMetadata,
+): BenchmarkResolver {
+    const ungated = metadata.id === 'rcas-age-knee-ungated-v1';
+    const knee = metadata.id === 'rcas-age-knee-25-v1' ? 0.25 : metadata.id === 'rcas-age-knee-12-v1' ? 0.125 : 0.5;
+    return new BaselineBenchmarkResolver(
+        renderer as THREE.WebGPURenderer,
+        metadata,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        ungated,
+    ).withConfig({ rcasAgeKnee: knee });
 }
 
 /**
